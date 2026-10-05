@@ -14,6 +14,32 @@ Object.assign(Zusia, {
 			/(?:do not|don't|dont|stop|without)\s+(?:re-?reading|reading|read|searching|search|opening|open)[^.!?;]{0,40}(?:pdf|document|source|paper|file)/i.test(question);
 	},
 
+	requestsReadingSource(question) {
+		// Numbered claims belong to this document; general knowledge cannot
+		// establish which theorem/section the author assigned that number to.
+		return /\b(?:theorem|lemma|proposition|corollary|definition|example|equation|section|chapter|figure|table|appendix)\s*(?:no\.?\s*)?[([]?\d+(?:\.\d+)*\b/i.test(question) ||
+			/(?:定理|引理|命题|推论|定义|例题|公式|方程|章节|小节|第)\s*\d+(?:\.\d+)*(?:\s*[章节页])?/.test(question) ||
+			/\b(?:read|search|look up|look at|consult|check|verify)\b[^.!?;]{0,60}\b(?:pdf|document|source|paper|book|section|chapter|theorem|passage)\b/i.test(question) ||
+			/(?:阅读|读取|搜索|检索|查阅|查看|核对|看一下|去看|看看)[^，。；]{0,30}(?:pdf|文档|原文|书|论文|章节|节|定理|页)/i.test(question);
+	},
+
+	requestsCurrentReadingPage(question) {
+		return /(?:当前页|这一页|这页|本页|当前页面|选中|选定)/.test(question) ||
+			/\b(?:current|this)\s+page\b|\bselected\s+(?:text|passage)\b/i.test(question);
+	},
+
+	async reuseCurrentReadingPage(ctx) {
+		let location = ctx.reading.currentPage;
+		if (!location || location.verified) return;
+		// Only reuse already loaded text. Never call getPage or read source-text
+		// during an ordinary knowledge follow-up.
+		let pdf = this.readingPDFApplication(ctx)?.pdfDocument;
+		let cached = pdf && this._nativeReadingPages.get(pdf)?.get(location.pageIndex);
+		if (!cached) return;
+		try { ctx.reading.currentPage = { ...location, text: (await cached).slice(0, 12000), verified: true }; }
+		catch (e) { this.logError("cached current page", e); }
+	},
+
 	async knowledgeReadingSource(ctx) {
 		// Validate identity without extracting the entire document again.
 		let signature = "knowledge:" + ctx.attachmentItem.key;
@@ -326,7 +352,17 @@ Object.assign(Zusia, {
 	updateReadingControls(view) {
 		let reading = view.ctx.reading;
 		let evidence = view.root.querySelector(".zs-reading-evidence-mode");
-		if (evidence) { evidence.hidden = !reading; evidence.value = this.getReadingEvidenceMode(); }
+		if (evidence) {
+			let mode = this.getReadingEvidenceMode();
+			evidence.hidden = !reading;
+			evidence.dataset.mode = mode;
+			let label = mode === "knowledge" ? "Knowledge discussion" : "Source verification";
+			evidence.title = label + " — change reading discussion mode";
+			evidence.setAttribute("aria-label", evidence.title);
+			let icon = mode === "knowledge" ? "effort" : "book";
+			let current = evidence.querySelector(".zs-i:not(.zs-chevron)");
+			if (current?.dataset.icon !== icon) current?.replaceWith(this.svgIcon(view.doc, icon));
+		}
 		let label = view.root.querySelector(".zs-reading-status");
 		if (label) label.textContent = reading ?
 			(reading.type === "book" ? "Book" : "Paper") + " · " + (this.getLanguage() || "Same as my question") + " · Codex" : "";
@@ -343,7 +379,7 @@ Object.assign(Zusia, {
 		if (resume) resume.hidden = !reading?.referenceNavigation;
 		let sourceStatus = view.root.querySelector(".zs-reading-source-status");
 		if (sourceStatus) sourceStatus.textContent = reading && this.getReadingEvidenceMode() === "knowledge" ?
-			"Knowledge discussion · existing context · no PDF search" : reading?.pdfSource ? (reading.pdfSource.status === "ready" ?
+			"Knowledge discussion · context first · verify sources when needed" : reading?.pdfSource ? (reading.pdfSource.status === "ready" ?
 			"PDF text ready · " + reading.pdfSource.extractedPages + "/" + reading.pdfSource.totalPages + " pages" +
 			(reading.pdfSource.pageMapping ? "" : " · page links unverified") : reading.pdfSource.status === "context-only" ?
 			"Discussion context ready · full PDF text not loaded" : "PDF text unavailable — use a selected passage or page image") : "";
@@ -357,7 +393,10 @@ Object.assign(Zusia, {
 			return "AbstractIn Knowledge discussion. " + this.languageInstruction() +
 				" Answer from the supplied current page/selection, saved notes and previous conversation, supplemented by your existing knowledge. " +
 				"Do not open or search the PDF, source-text.md, skills or workspace files for this discussion. No file tools are needed. " +
-				"For a missing exact quotation, author-specific claim, experiment detail or page location, say it needs Source verification mode; do not guess. " +
+				(reading.forbidSource ?
+					"The user explicitly prohibited document access for this turn. If document-specific evidence is missing, explain that limitation and ask for the passage; do not guess or request tools. " :
+					"If the supplied context cannot establish a document-specific statement, exact quotation, section, theorem, experiment or page location, output ONLY <abstractin-source-needed>brief description of the missing evidence</abstractin-source-needed>. The plugin will verify the original source automatically before answering. Never guess a numbered theorem or claim it follows from general knowledge. ") +
+				"Write formulas as $...$ or $$...$$ (or standard LaTeX math delimiters), without wrapping the answer in a code fence. Use standard LaTeX commands supported by KaTeX; avoid undefined custom macros such as \\ThetaSpace and write the intended symbol explicitly. " +
 				"Label independent explanations and alternative derivations naturally. Do not claim that generic knowledge was verified in this document. " +
 				"Document identity: " + JSON.stringify({ itemKey: ctx.paperItem.key, attachmentKey: ctx.attachmentItem.key }) + ". " +
 				"Supplied passage: " + JSON.stringify(selection || null) + ". Current page: " + JSON.stringify(reading.currentPage || null) + ". " +
@@ -396,6 +435,7 @@ Object.assign(Zusia, {
 			"PDF source status: " + JSON.stringify(reading.pdfSource || { status: "not checked" }) + ". " +
 			"When PDF source status is ready, source.pdf is the exact attachment and source-text.md contains its extracted text in this working directory. " +
 			"Read the requested portions of source-text.md using local file tools; you do not need a Zotero browser or reader tool to access it. " +
+			(reading.sourceLookup ? "This turn automatically verifies missing evidence from Knowledge discussion. Search the exact requested theorem/section/claim, read only its statement and relevant nearby definitions or proof, and answer from that evidence. Use cached source-text.md first; do not scan the whole book or perform general initialization. If the passage cannot be found, say so and ask for clarification rather than guessing. " : "") +
 			"For a book overview, inspect the actual contents and chapter openings; for a chapter or proof question, locate the requested section and its dependencies. " +
 			"Start from the selected passage or attached page when supplied. Expand only to answer the user's request, not by reading the whole book by default. " +
 			"Do not claim to have read content you have not inspected, or to have verified a whole-book synthesis from metadata or highlights alone. " +
@@ -452,7 +492,7 @@ Object.assign(Zusia, {
 
 	readingVisibleText(text) {
 		text = String(text);
-		for (let marker of ["<abstractin-record>", "<abstractin-workspace>"]) {
+		for (let marker of ["<abstractin-record>", "<abstractin-workspace>", "<abstractin-source-needed>"]) {
 			let index = text.indexOf(marker);
 			if (index >= 0) text = text.slice(0, index);
 			for (let length = marker.length - 1; length > 0; length--) {

@@ -253,3 +253,56 @@ test("theorem links: boxes are numbered across the chat, \\ref and [text](#label
 	assert.doesNotMatch(note, /zs-ref|\\label/);
 	assert.match(note, /See lem:a\./);
 });
+
+test("multiline inline formulas and embedded display delimiters render through KaTeX", () => {
+ const c = render(env, String.raw`The relation \(\frac{a}{b}
+ + c\) and $x+
+y$.
+The display is \[\sum_{i=1}^n x_i\] here.
+A normal prose line
+continues here.`);
+ assert.equal(c.querySelectorAll('math').length, 3); assert.deepEqual(texErrors(c), []);
+ assert.equal(c.querySelectorAll('.zs-math-block').length, 1);
+ assert.ok(c.querySelector('br')); assert.deepEqual(leftoverMarkup(c), []);
+});
+
+test("math-focused latex fences render while ordinary code fences remain literal", () => {
+ const c = render(env, '```latex\n\\[\\frac{1}{2}\\]\n```\n\n```tex\n\\sum_{i=1}^n x_i\n```\n\n```js\nconst x = "$y$";\n```');
+ assert.equal(c.querySelectorAll('math').length, 2); assert.deepEqual(texErrors(c), []);
+ assert.ok(c.querySelector('code').textContent.includes('$y$'));
+});
+
+test("reported parameter-space formulas and bare array environments render without guessing a macro definition", () => {
+ const c = render(env, String.raw`$C\subseteq\ThetaSpace$.
+
+$$C=\ThetaSpace \tag{14}$$
+
+$$\Pr(X\in A)=\int_{\ThetaSpace}P_\theta(A)\,P_\Theta(d\theta).\tag{15}$$
+
+\begin{array}{c|c}
+\text{记号} & \text{定义在哪个空间上}\\ \hline
+\Pr & (\Omega_0,\mathcal F)
+\end{array}`);
+ assert.equal(c.querySelectorAll('math').length, 4); assert.deepEqual(texErrors(c), []);
+ assert.ok(c.querySelector('math[title]').getAttribute('title').includes('no supplied definition'));
+ assert.ok(c.querySelector('math').textContent.includes('ThetaSpace')); assert.deepEqual(leftoverMarkup(c), []);
+});
+
+test("copying selected rendered answers keeps TeX once and does not intercept composer copy", () => {
+ const local = loadPlugin({ prefs: { 'extensions.abstractin.onboarded': true } });
+ const { plugin: p, document: doc, window } = local;
+ const body = doc.createElement('div'); doc.body.append(body); p.renderSkeleton(doc, body);
+ const root = body.querySelector('.zs-root'), rich = p.el(doc, 'div', 'zs-rich'); root.querySelector('.zs-log').append(rich);
+ p.renderMarkdown(doc, rich, 'Inline $x^2$.\n\n$$\\frac{1}{2}$$\n\nNext paragraph.');
+ const range = doc.createRange(); range.selectNodeContents(rich); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+ let copied = ''; const event = new window.Event('copy', { bubbles: true, cancelable: true });
+ Object.defineProperty(event, 'clipboardData', { value: { setData: (type, text) => { assert.equal(type, 'text/plain'); copied = text; } } });
+ rich.dispatchEvent(event); assert.equal(event.defaultPrevented, true);
+ assert.ok(copied.includes('$x^2$')); assert.ok(copied.includes('$$\\frac{1}{2}$$')); assert.equal(copied.match(/x\^2/g).length, 1);
+ assert.ok(!copied.includes('Copy TeX')); assert.ok(copied.includes('\nNext paragraph.'));
+ window.Zotero.Utilities.Internal.copyTextToClipboard = text => { copied = text; };
+ rich.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true }));
+ assert.ok(copied.includes('$x^2$'));
+ const input = root.querySelector('.zs-input'); selection.removeAllRanges();
+ const composerEvent = new window.Event('copy', { bubbles: true, cancelable: true }); input.dispatchEvent(composerEvent); assert.equal(composerEvent.defaultPrevented, false);
+});

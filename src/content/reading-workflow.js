@@ -331,7 +331,7 @@ Object.assign(Zusia, {
 		}
 		catch (e) {
 			this.logError("current PDF page", e);
-			if (ctx.reading.pdfSource?.pageMapping) {
+			if (ctx.reading.evidenceMode !== "knowledge" && ctx.reading.pdfSource?.pageMapping) {
 				let text = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
 				ctx.reading.currentPage = { ...location, text: this.pdfPageText(text, location.pageIndex).slice(0, 12000), verified: true };
 			}

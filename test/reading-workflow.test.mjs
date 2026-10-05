@@ -409,8 +409,17 @@ test("knowledge discussion skips full PDF extraction, supplies corrected notes i
  let result = await p.ask(ctx, 'Why does this work?', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined); assert.ok(result.recordKey);
  let calls = 0; p.runBackend = async (_, request) => { calls++; assert.equal(request.session.id, 'knowledge-thread'); return { text: 'Follow-up\n<abstractin-record>{"title":"Follow-up","summary":"More intuition","openQuestions":[]}</abstractin-record>' }; };
  result = await p.ask(ctx, 'Give an example', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined); assert.equal(calls, 1);
- p.updateReadingControls(view); const select = view.root.querySelector('.zs-reading-evidence-mode'); assert.equal(select.value, 'knowledge');
- select.value = 'source'; select.dispatchEvent(new view.doc.defaultView.Event('change')); assert.equal(p.getReadingEvidenceMode(), 'source');
+ p.updateReadingControls(view); const button = view.root.querySelector('.zs-reading-evidence-mode');
+ assert.equal(button.dataset.mode, 'knowledge');
+ assert.equal(button.previousElementSibling.textContent, 'AbstractIn');
+ assert.ok(button.closest('.zs-header')); assert.equal(view.root.querySelector('.zs-reading-bar .zs-reading-evidence-mode'), null);
+ assert.equal(button.querySelector('.zs-i').dataset.icon, 'effort');
+ button.click(); assert.equal(button.getAttribute('aria-expanded'), 'true');
+ const choices = [...view.root.querySelectorAll('.zs-menu-item')];
+ assert.equal(choices[0].getAttribute('aria-checked'), 'true'); choices[1].click();
+ assert.equal(p.getReadingEvidenceMode(), 'source'); assert.equal(button.dataset.mode, 'source');
+ assert.equal(button.querySelector('.zs-i').dataset.icon, 'book');
+ assert.equal(button.getAttribute('aria-expanded'), 'false'); assert.equal(view.root.querySelector('.zs-menu'), null);
 });
 
 test("switching evidence modes starts a fresh thread while preserving chat history", async () => {
@@ -479,4 +488,70 @@ test("explicit paper-summary actions still verify the source while knowledge pre
  p.runBackend = async (_, request) => { assert.equal(request.ctx.reading.evidenceMode, 'source'); return { text: 'Summary\n<abstractin-workspace>{"kind":"summary","coverage":"Methods and results"}</abstractin-workspace>' }; };
  const result = await p.ask(ctx, 'Summarize the paper', { backend: 'codex', readingAction: 'summary', progress() {} });
  assert.equal(result.error, undefined); assert.equal(extractions, 1); assert.equal(p.getReadingEvidenceMode(), 'knowledge');
+});
+
+test("ordinary knowledge follow-ups neither prepare PDF pages nor show PDF preparation", async () => {
+ const { plugin: p, prefs, ctx } = await setup(); prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
+ p.currentReadingLocation = () => ({ pageIndex: 2 });
+ p.prepareCurrentReadingPage = async () => { throw new Error('Unrequested PDF page read'); };
+ p.exportReadingSource = async () => { throw new Error('Unrequested full PDF read'); };
+ p.runBackend = async () => ({ text: 'General intuition' });
+ const statuses = []; const result = await p.ask(ctx, 'Give a simple intuition', { backend: 'codex', progress: event => statuses.push(event.status || '') });
+ assert.equal(result.error, undefined); assert.ok(statuses.includes('using saved discussion context'));
+ assert.ok(!statuses.includes('preparing PDF text'));
+});
+
+test("knowledge mode automatically verifies numbered document references with targeted source instructions", async () => {
+ const { plugin: p, prefs, ctx } = await setup(); prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
+ p.prepareReadingSkills = async ctx => ctx.reading;
+ let checks = 0; p.exportReadingSource = async () => { checks++; return ctx.reading.pdfSource; };
+ p.runBackend = async (_, request) => {
+  assert.equal(request.ctx.reading.evidenceMode, 'source'); assert.equal(request.ctx.reading.sourceLookup, true);
+  assert.match(request.question, /Search the exact requested theorem\/section\/claim/);
+  return { text: 'The verified statement' };
+ };
+ const result = await p.ask(ctx, 'What does theorem 1.1 say?', { backend: 'codex', progress() {} });
+ assert.equal(result.error, undefined); assert.equal(checks, 1); assert.equal(p.getReadingEvidenceMode(), 'knowledge');
+ for (const q of ['Explain Lemma 2.3', '第1.1节讲什么', '定理 1.1 说明什么', 'Go read the section about consistency']) assert.equal(p.requestsReadingSource(q), true, q);
+ assert.equal(p.requestsReadingSource('Explain Bayes theorem generally'), false);
+});
+
+test("missing document evidence triggers one source lookup without saving the preliminary reply", async () => {
+ const { plugin: p, prefs, ctx, dir } = await setup(); prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
+ p.prepareReadingSkills = async ctx => ctx.reading; p.exportReadingSource = async () => ctx.reading.pdfSource;
+ let calls = 0; const pending = { backend: 'codex', progress() {} };
+ p.runBackend = async (_, request) => {
+  calls++; if (calls === 1) {
+   assert.equal(request.ctx.reading.evidenceMode, 'knowledge');
+   return { text: '<abstractin-source-needed>The author-specific argument is missing</abstractin-source-needed>' };
+  }
+  assert.equal(request.ctx.reading.evidenceMode, 'source'); request.onSpawn({ kill() {} });
+  return { text: 'Verified from the requested passage' };
+ };
+ const result = await p.ask(ctx, 'Why did the author make that assumption?', pending);
+ assert.equal(result.error, undefined); assert.equal(calls, 2); assert.ok(pending.proc);
+ const history = await p.loadHistory(dir); assert.equal(history.filter(m => m.role === 'assistant').length, 1);
+ assert.ok(!JSON.stringify(history).includes('abstractin-source-needed')); assert.equal(p.getReadingEvidenceMode(), 'knowledge');
+});
+
+test("explicit prohibition prevents both current-page reads and automatic verification", async () => {
+ const { plugin: p, prefs, ctx } = await setup(); prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
+ p.currentReadingLocation = () => ({ pageIndex: 2 });
+ p.prepareCurrentReadingPage = p.exportReadingSource = async () => { throw new Error('PDF access forbidden'); };
+ let calls = 0; p.runBackend = async (_, request) => {
+  calls++; assert.equal(request.ctx.reading.evidenceMode, 'knowledge'); assert.match(request.question, /explicitly prohibited document access/);
+  return { text: '<abstractin-source-needed>Unavailable theorem</abstractin-source-needed>' };
+ };
+ const result = await p.ask(ctx, '不要读取pdf，theorem 1.1 在当前页是什么？', { backend: 'codex', progress() {} });
+ assert.equal(result.error, undefined); assert.equal(calls, 1);
+});
+
+test("a current-page question reads only that page in knowledge mode", async () => {
+ const { plugin: p, prefs, ctx } = await setup(); prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
+ p.currentReadingLocation = () => ({ pageIndex: 2 });
+ let reads = 0; p.prepareCurrentReadingPage = async ctx => { reads++; ctx.reading.currentPage = { pageIndex: 2, verified: true, text: 'Current-page statement' }; };
+ p.exportReadingSource = async () => { throw new Error('No full PDF read'); };
+ p.runBackend = async (_, request) => { assert.match(request.question, /Current-page statement/); return { text: 'From the supplied page' }; };
+ const result = await p.ask(ctx, '解释当前页的这个推导', { backend: 'codex', progress() {} });
+ assert.equal(result.error, undefined); assert.equal(reads, 1);
 });

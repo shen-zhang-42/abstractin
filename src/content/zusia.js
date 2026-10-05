@@ -217,6 +217,7 @@ Zusia = {
 	MATH_ENVS: new Set([
 		"equation", "equation*", "align", "align*", "gather", "gather*", "multline", "multline*",
 		"eqnarray", "eqnarray*", "displaymath", "alignat", "alignat*", "flalign", "flalign*",
+		"array", "cases", "matrix", "pmatrix", "bmatrix", "vmatrix", "Vmatrix", "aligned", "gathered",
 	]),
 	BOX_ENVS: {
 		theorem: "Theorem", lemma: "Lemma", proposition: "Proposition", corollary: "Corollary",
@@ -1106,9 +1107,14 @@ Zusia = {
 		this.applyAppearance(root);
 
 		let header = this.el(doc, "div", "zs-header");
+		let identity = this.el(doc, "div", "zs-header-identity");
+		let evidence = this.ghostButton(doc, "zs-reading-evidence-mode", "book", "", () =>
+			this.openReadingEvidenceMenu(root, evidence), { chevron: true });
+		evidence.hidden = true;
+		identity.append(this.el(doc, "span", "zs-header-title", "AbstractIn"), evidence);
 		header.append(
 			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "zs-header-icon"),
-			this.el(doc, "span", "zs-header-title", "AbstractIn"),
+			identity,
 			this.iconButton(doc, "zs-clarifications", "Clarifications of highlighted text", "clarifications",
 				() => this.openClarifications(root).catch(e => this.logError("openClarifications", e))),
 			this.iconButton(doc, "zs-search", "Search all chats", "search", () => this.openSearchMenu(root)),
@@ -1221,25 +1227,16 @@ Zusia = {
 		}
 		readingTools.hidden = true;
 		readingBar.append(readingTools);
-		let evidence = this.el(doc, "select", "zs-reading-evidence-mode");
-		evidence.setAttribute("aria-label", "Reading discussion mode");
-		for (let [value, label] of [["knowledge", "Knowledge discussion"], ["source", "Source verification"]]) {
-			let option = this.el(doc, "option", null, label); option.value = value; evidence.append(option);
-		}
-		evidence.value = this.getReadingEvidenceMode(); evidence.hidden = true;
-		evidence.title = "Knowledge discussion uses existing context without PDF searches. Source verification checks original passages.";
-		evidence.addEventListener("change", () => {
-			this.setPref("readingEvidenceMode", evidence.value);
-			for (let win of new Set([...(Zotero.getMainWindows?.() || [Zotero.getMainWindow()]), ...this._readerPanelWindows.keys()])) {
-				for (let node of win.document.querySelectorAll(".zs-root")) {
-					let view = this._views.get(node); if (view) this.updateReadingControls(view);
-				}
-			}
-		});
-		readingBar.append(evidence);
 		readingBar.append(this.el(doc, "span", "zs-reading-source-status", ""));
 		root.append(header, readingBar, logWrap, quick, composer);
-		root.addEventListener("keydown", event => this.handleShortcut(root, event));
+		root.addEventListener("keydown", event => {
+			if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
+				this.copyAnswerSelection(root, event);
+				if (event.defaultPrevented) return;
+			}
+			this.handleShortcut(root, event);
+		});
+		root.addEventListener("copy", event => this.copyAnswerSelection(root, event));
 		root.addEventListener("click", event => this.handleReadingSourceLink(this._views.get(root), event));
 		body.appendChild(root);
 
@@ -1407,6 +1404,33 @@ Zusia = {
 		panel.append(head, body);
 		root.appendChild(panel);
 		control.querySelector("input").focus();
+	},
+
+	openReadingEvidenceMenu(root, anchor) {
+		let doc = root.ownerDocument;
+		this.openMenu(root, anchor, menu => {
+			this.menuSection(doc, menu, "Reading discussion mode");
+			for (let [value, label, desc] of [
+				["knowledge", "Knowledge discussion", "Use existing context and knowledge without PDF searches."],
+				["source", "Source verification", "Read original passages to verify the answer."],
+			]) {
+				this.menuItem(doc, menu, {
+					label, desc, checked: this.getReadingEvidenceMode() === value,
+					onSelect: () => {
+						this.setPref("readingEvidenceMode", value);
+						this.closeMenu(root);
+						let roots = new Set([root]);
+						for (let win of new Set([...(Zotero.getMainWindows?.() || [Zotero.getMainWindow()]), ...this._readerPanelWindows.keys()])) {
+							for (let node of win.document.querySelectorAll(".zs-root")) roots.add(node);
+						}
+						for (let node of roots) {
+							let view = this._views.get(node); if (view) this.updateReadingControls(view);
+						}
+						anchor.focus();
+					},
+				});
+			}
+		}, { placement: "below" });
 	},
 
 	openEffortMenu(root, anchor) {
@@ -1908,6 +1932,34 @@ Zusia = {
 	},
 
 	// Beaver's answer footer: a text action on the left, quiet icon actions on the right.
+	copyAnswerSelection(root, event) {
+		let selection = root.ownerDocument.defaultView.getSelection();
+		if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+		let node = selection.anchorNode;
+		let element = node?.nodeType === 1 ? node : node?.parentElement;
+		if (!element?.closest(".zs-rich") || !root.contains(selection.focusNode)) return;
+		let fragment = selection.getRangeAt(0).cloneContents();
+		// Native MathML clipboard text can include both glyphs and its TeX
+		// annotation. Replace each formula with a single reusable TeX source.
+		for (let formula of fragment.querySelectorAll(".zs-math, .zs-math-block")) {
+			let tex = formula.dataset.tex || formula.querySelector('annotation[encoding="application/x-tex"]')?.textContent;
+			if (tex) formula.replaceWith(root.ownerDocument.createTextNode(formula.classList.contains("zs-math-block") ? "\n$$" + tex + "$$\n" : "$" + tex + "$"));
+		}
+		for (let math of fragment.querySelectorAll("math")) {
+			let tex = math.querySelector('annotation[encoding="application/x-tex"]')?.textContent;
+			if (tex) math.replaceWith(root.ownerDocument.createTextNode("$" + tex + "$"));
+		}
+		fragment.querySelectorAll("button, annotation").forEach(node => node.remove());
+		fragment.querySelectorAll("br").forEach(node => node.replaceWith(root.ownerDocument.createTextNode("\n")));
+		fragment.querySelectorAll("p, li, h1, h2, h3, h4, tr").forEach(node => node.appendChild(root.ownerDocument.createTextNode("\n")));
+		let text = fragment.textContent;
+		if (!text) return;
+		if (event.clipboardData) event.clipboardData.setData("text/plain", text);
+		else Zotero.Utilities.Internal.copyTextToClipboard(text);
+		event.preventDefault();
+		event.stopPropagation();
+	},
+
 	renderFooter(view, msg, { byline, question, isLast, index }) {
 		let { doc } = view;
 		let footer = this.el(doc, "div", "zs-footer");
@@ -1929,11 +1981,11 @@ Zusia = {
 		if (isLast && question) {
 			footer.appendChild(this.iconButton(doc, "zs-small zs-retry", "Retry", "retry", () => this.retry(view, index)));
 		}
-		let copy = this.iconButton(doc, "zs-small zs-copy", "Copy", "copy", () => {
+		let copy = this.iconButton(doc, "zs-small zs-copy", "Copy answer (Markdown + LaTeX)", "copy", () => {
 			Zotero.Utilities.Internal.copyTextToClipboard(msg.text);
 			copy.title = "Copied";
 			doc.defaultView.setTimeout(() => {
-				copy.title = "Copy";
+				copy.title = "Copy answer (Markdown + LaTeX)";
 			}, 1500);
 		});
 		footer.appendChild(copy);
@@ -3434,9 +3486,14 @@ Zusia = {
 			}
 			if (ctx.reading) {
 				if (backend !== "codex") return { error: "Reading sessions require local Codex." };
-				let evidenceMode = pending.readingAction ? "source" : (this.requestsKnowledgeDiscussion(question) ? "knowledge" : (pending.evidenceMode || this.getReadingEvidenceMode()));
+				let forbidSource = this.requestsKnowledgeDiscussion(question);
+				let preferred = pending.evidenceMode || this.getReadingEvidenceMode();
+				let sourceLookup = !forbidSource && (pending.sourceLookup || (preferred === "knowledge" && this.requestsReadingSource(question)));
+				let evidenceMode = pending.readingAction ? "source" : forbidSource ? "knowledge" : sourceLookup ? "source" : preferred;
 				ctx = { ...ctx, reading: evidenceMode === "knowledge" ? { ...ctx.reading } : await this.prepareReadingSkills(ctx) };
 				ctx.reading.evidenceMode = evidenceMode;
+				ctx.reading.forbidSource = forbidSource;
+				ctx.reading.sourceLookup = sourceLookup;
 				ctx.reading.action = pending.readingAction || "discuss";
 				ctx.reading.currentPage = pending.currentPage !== undefined ? pending.currentPage : this.currentReadingLocation(ctx);
 				try { await this.rememberReadingPosition(ctx); }
@@ -3445,12 +3502,17 @@ Zusia = {
 			let files = await this.exportContext(ctx);
 			let pdfSource, sourceWarning;
 			if (ctx.reading) {
-				pending.progress({ status: "preparing PDF text" });
+				pending.progress({ status: ctx.reading.evidenceMode === "knowledge" ? "using saved discussion context" :
+					ctx.reading.sourceLookup ? "verifying the requested passage" : "preparing PDF text" });
 				pdfSource = ctx.reading.evidenceMode === "knowledge" ? await this.knowledgeReadingSource(ctx) : await this.exportReadingSource(ctx);
 				if (!pending.cancelled && ctx.reading.evidenceMode !== "knowledge") pdfSource = await this.recoverReadingPageMapping(ctx, pdfSource);
 				if (pending.cancelled) return { cancelled: true };
 				ctx = { ...ctx, reading: { ...ctx.reading, pdfSource } };
-				if (pdfSource.status === "ready" || ctx.reading.evidenceMode === "knowledge") await this.prepareCurrentReadingPage(ctx);
+				if (ctx.reading.evidenceMode === "knowledge") {
+					if (!ctx.reading.forbidSource && this.requestsCurrentReadingPage(question)) await this.prepareCurrentReadingPage(ctx);
+					else await this.reuseCurrentReadingPage(ctx);
+				}
+				else if (pdfSource.status === "ready") await this.prepareCurrentReadingPage(ctx);
 				if (pdfSource.status !== "ready" && ctx.reading.evidenceMode !== "knowledge") {
 					if (!pending.selection?.text && !pending.images?.length) return { error: pdfSource.error, pdfSource };
 					sourceWarning = pdfSource.error + " This answer uses only the supplied passage or image.";
@@ -3519,6 +3581,17 @@ Zusia = {
 				this.log(label + ": resume failed (" + result.error + "), retrying as a new session");
 				pending.progress({ text: "", status: "starting a new session" });
 				result = await this.runBackend(backend, Object.assign({}, request, { session: null }));
+			}
+
+			if (ctx.reading?.evidenceMode === "knowledge" && !ctx.reading.forbidSource && !pending.sourceLookup &&
+				!pending.cancelled && /<abstractin-source-needed>[\s\S]*?<\/abstractin-source-needed>/.test(result.text || "")) {
+				pending.progress({ text: "", status: "missing document evidence; verifying the requested passage" });
+				pending.evidenceMode = "source";
+				pending.sourceLookup = true;
+				return await this.ask(ctx, question, pending);
+			}
+			if (/<abstractin-source-needed>/.test(result.text || "")) {
+				result.text = "The supplied context does not establish this document-specific statement. Please provide the passage or allow source verification.";
 			}
 
 			let meta = { backend, model: pending.model || undefined, effort: pending.effort || undefined };
@@ -4293,12 +4366,7 @@ Zusia = {
 				return;
 			}
 			let p = doc.createElementNS("http://www.w3.org/1999/xhtml", "p");
-			paragraph.forEach((line, i) => {
-				if (i > 0) {
-					p.appendChild(doc.createElementNS("http://www.w3.org/1999/xhtml", "br"));
-				}
-				this.renderInline(doc, p, line.trim());
-			});
+			this.renderInline(doc, p, paragraph.map(line => line.trim()).join("\n"));
 			container.appendChild(p);
 			paragraph = [];
 		};
@@ -4325,6 +4393,11 @@ Zusia = {
 			let line = lines[i];
 			let trimmed = line.trim();
 			let indent = line.length - line.trimStart().length;
+			let previous = paragraph.join("\n");
+			let inlineOpen = previous.lastIndexOf("\\(") > previous.lastIndexOf("\\)") ||
+				previous.lastIndexOf("\\[") > previous.lastIndexOf("\\]") ||
+				(previous.replace(/\\\$/g, "").match(/\$/g) || []).length % 2 === 1;
+			if (inlineOpen) { paragraph.push(line); continue; }
 			let continuesList = lists.length && (indent >= 2 || lastLineWasListItem);
 			let wasListItem = lastLineWasListItem;
 			lastLineWasListItem = false;
@@ -4337,6 +4410,13 @@ Zusia = {
 				let node;
 				if (/^(math|katex|latex-display)$/i.test(fence[1])) {
 					node = this.renderMath(doc, body, true);
+				}
+				else if (/^(latex|tex)$/i.test(fence[1]) && /^(?:\\(?:begin\{|\[|\(|frac(?![a-zA-Z])|sum(?![a-zA-Z])|int(?![a-zA-Z]))|\$)/.test(body.trim()) && !/\\(?:documentclass|begin\{document\})/.test(body)) {
+					if (/^(?:\\(?:begin\{|\[|\()|\$)/.test(body.trim())) {
+						node = this.el(doc, "div", "zs-latex-output");
+						this.renderMarkdown(doc, node, body);
+					}
+					else node = this.renderMath(doc, body, true);
 				}
 				else if (/^svg-pending$/i.test(fence[1])) {
 					node = this.renderDrawingPlaceholder(doc);
@@ -5119,10 +5199,10 @@ Zusia = {
 		let pattern = new RegExp([
 			"`[^`]+`",
 			"\\$\\$[^$]+\\$\\$",
-			"\\\\\\(.+?\\\\\\)",
-			"\\\\\\[.+?\\\\\\]",
+			"\\\\\\([\\s\\S]+?\\\\\\)",
+			"\\\\\\[[\\s\\S]+?\\\\\\]",
 			// $…$ that does not open or close on a space, so prices like "$5 and $10" stay text.
-			"\\$(?=[^\\s$])(?:[^$\\\\\\n]|\\\\.)+?(?<=[^\\s\\\\]|\\\\[,;!| ])\\$(?!\\d)",
+			"\\$(?=[^\\s$])(?:[^$\\\\]|\\\\.)+?(?<=[^\\s\\\\]|\\\\[,;!| ])\\$(?!\\d)",
 			"\\*\\*(?:[^*$]|\\$[^$]*\\$)+\\*\\*",
 			"__(?:[^_$]|\\$[^$]*\\$)+__",
 			"\\\\textbf\\{[^{}]*\\}",
@@ -5135,6 +5215,12 @@ Zusia = {
 			"(?<!\\w)_[^_\\s](?:[^_$]|\\$[^$]*\\$)*?(?<!\\s)_(?!\\w)",
 			"\\[[^\\]]+\\]\\([^)\\s]+\\)",
 		].join("|"), "g");
+		let appendText = value => {
+			this.latexText(value).split("\n").forEach((line, i) => {
+				if (i) parent.appendChild(this.el(doc, "br"));
+				parent.appendChild(doc.createTextNode(line));
+			});
+		};
 		let last = 0;
 		let match;
 		let braced = token => token.slice(token.indexOf("{") + 1, -1);
@@ -5145,17 +5231,17 @@ Zusia = {
 		};
 		while ((match = pattern.exec(text))) {
 			if (match.index > last) {
-				parent.appendChild(doc.createTextNode(this.latexText(text.slice(last, match.index))));
+				appendText(text.slice(last, match.index));
 			}
 			let token = match[0];
 			if (token.startsWith("`")) {
 				parent.appendChild(this.el(doc, "code", null, token.slice(1, -1)));
 			}
 			else if (token.startsWith("$$")) {
-				parent.appendChild(this.renderMath(doc, token.slice(2, -2), false));
+				parent.appendChild(this.renderMath(doc, token.slice(2, -2), true));
 			}
 			else if (token.startsWith("\\(") || token.startsWith("\\[")) {
-				parent.appendChild(this.renderMath(doc, token.slice(2, -2), false));
+				parent.appendChild(this.renderMath(doc, token.slice(2, -2), token.startsWith("\\[")));
 			}
 			else if (token.startsWith("$")) {
 				parent.appendChild(this.renderMath(doc, token.slice(1, -1), false));
@@ -5210,7 +5296,7 @@ Zusia = {
 			last = match.index + token.length;
 		}
 		if (last < text.length) {
-			parent.appendChild(doc.createTextNode(this.latexText(text.slice(last))));
+			appendText(text.slice(last));
 		}
 	},
 
@@ -5253,6 +5339,9 @@ Zusia = {
 				throwOnError: true,
 				strict: "ignore",
 				trust: false,
+				// Preserve an undefined named parameter-space symbol as its name,
+				// rather than guessing a mathematical definition for it.
+				macros: { "\\ThetaSpace": "\\mathrm{ThetaSpace}" },
 			});
 			let start = markup.indexOf("<math");
 			let end = markup.lastIndexOf("</math>");
@@ -5267,6 +5356,7 @@ Zusia = {
 			}
 			let math = doc.importNode(parsed.documentElement, true);
 			this.fixMathSpacing(math);
+			if (/\\ThetaSpace\b/.test(tex)) math.setAttribute("title", "\\ThetaSpace has no supplied definition; displayed as the symbol name ThetaSpace.");
 			return math;
 		}
 		catch (e) {
@@ -5335,11 +5425,13 @@ Zusia = {
 		if (!displayMode) {
 			let span = this.el(doc, "span", "zs-math");
 			span.title = tex;
+			span.dataset.tex = tex;
 			span.appendChild(math || fallback());
 			return span;
 		}
 
 		let box = this.el(doc, "div", "zs-math-block");
+		box.dataset.tex = tex;
 		let scroller = this.el(doc, "div", "zs-math-scroll");
 		scroller.appendChild(math || fallback());
 		let copy = this.el(doc, "button", "zs-copy-tex", "Copy TeX");

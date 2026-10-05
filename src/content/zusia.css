@@ -97,9 +97,10 @@
 .zs-reader-panel .zs-reading-bar,
 .zs-reader-panel .zs-composer { flex: 0 0 auto; }
 .zs-reader-panel .zs-header-title { display: block !important; }
-.zs-reader-panel .zs-header > .zs-header-icon { margin-inline-end: 4px; }
+.zs-reader-panel .zs-header > .zs-header-icon,
+.zs-reader-panel .zs-root[data-labels="icons"] .zs-header > .zs-header-icon { margin-inline-end: 4px; }
 .zs-reader-panel .zs-header { flex-wrap: wrap; }
-.zs-reader-panel .zs-header-title { flex: 1 1 auto; }
+.zs-reader-panel .zs-header-title { flex: 0 0 auto; }
 .zs-reader-panel .zs-header .zs-icon { flex: 0 0 auto; }
 .zs-reader-panel .zs-controls { flex-wrap: wrap; }
 .zs-reader-panel .zs-controls .zs-model-btn { min-width: 0; }
@@ -297,8 +298,15 @@
 	gap: 2px;
 	min-height: 26px;
 }
+.zs-header-identity {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
 .zs-header-title {
-	flex: 1;
+	flex: 0 1 auto;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -2492,17 +2500,15 @@
 }
 .zs-reading-tool:hover:not(:disabled) { background: var(--zs-hover); }
 .zs-reading-tool:disabled { opacity: 0.5; cursor: default; }
-.zs-reading-evidence-mode {
-	align-self: flex-start;
-	max-width: 100%;
-	font: inherit;
-	font-size: 12px;
-	padding: 5px 8px;
-	border: 1px solid var(--zs-border);
-	border-radius: var(--zs-radius-control);
-	color: var(--zs-text);
-	background: var(--zs-ground);
+.zs-header .zs-reading-evidence-mode {
+	flex: 0 0 auto;
+	gap: 3px;
+	padding: 3px 5px;
+	color: var(--zs-muted);
 }
+.zs-reading-evidence-mode[hidden] { display: none !important; }
+.zs-reading-evidence-mode .zs-label { display: none; }
+.zs-reading-evidence-mode .zs-chevron { width: 10px; height: 10px; }
 .zs-workspace-recap-entry { margin-block: 10px; }
 .zs-workspace-recap { font-size: 12px; }
 .zs-reading-record {
@@ -2720,3 +2726,9 @@
 .zs-root:has(> .zs-wizard) {
 	min-height: 520px;
 }
+
+/* Keep reader replies selectable and make the source-copy affordance visible. */
+.zs-reader-panel .zs-rich,
+.zs-reader-panel .zs-rich math { -moz-user-select: text; user-select: text; }
+.zs-reader-panel .zs-copy-tex { opacity: 0.65; }
+.zs-reader-panel .zs-copy-tex:hover { opacity: 1; }
