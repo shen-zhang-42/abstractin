@@ -38,7 +38,7 @@ Object.assign(Zusia, {
 		let doc = Zotero.getMainWindow().document;
 		return (ctx.paperItem.getNotes?.() || []).map(id => Zotero.Items.get(id)).filter(note => {
 			if (!note || !note.getTags().some(t => t.tag === "AbstractIn:" + kind)) return false;
-			let template = doc.createElement("template"); template.innerHTML = note.getNote();
+			let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
 			return [...template.content.querySelectorAll("p")].some(p => p.textContent === "Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key);
 		});
 	},
@@ -66,7 +66,7 @@ Object.assign(Zusia, {
 	readingArtifactData(note) {
 		if (!note) return null;
 		let doc = Zotero.getMainWindow().document;
-		let template = doc.createElement("template"); template.innerHTML = note.getNote();
+		let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
 		for (let pre of template.content.querySelectorAll("pre")) {
 			try { let data = JSON.parse(pre.textContent); if (data.format === "abstractin-workspace-v1") return data; }
 			catch (e) { /* Other pre blocks can contain mathematical notation. */ }
@@ -76,7 +76,7 @@ Object.assign(Zusia, {
 
 	readingNoteMarkdown(note) {
 		let doc = Zotero.getMainWindow().document;
-		let template = doc.createElement("template"); template.innerHTML = note.getNote();
+		let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
 		for (let pre of template.content.querySelectorAll("pre")) {
 			try {
 				if (JSON.parse(pre.textContent).format === "abstractin-workspace-v1") {
@@ -136,11 +136,13 @@ Object.assign(Zusia, {
 		let parts = [];
 		for (let kind of ["Contents", "Summary"]) {
 			for (let note of this.readingArtifactNotes(ctx, kind)) {
-				let template = doc.createElement("template"); template.innerHTML = note.getNote();
+				let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
 				parts.push("## " + kind + " — Zotero note " + note.key + "\n\n" + template.content.textContent);
 			}
 		}
-		await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "workspace.md"), "# Reading workspace (derived from current Zotero notes)\n\n" + parts.join("\n\n"));
+		let text = "# Reading workspace (derived from current Zotero notes)\n\n" + parts.join("\n\n");
+		await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "workspace.md"), text);
+		return text;
 	},
 
 	contentsExcerpt(source) {
@@ -498,16 +500,21 @@ Object.assign(Zusia, {
 		recap.append(this.el(doc, "h3", null, "Previous discussions and open questions"));
 		let count = 0;
 		for (let record of records.slice().reverse()) {
-			let template = doc.createElement("template"); template.innerHTML = record.getNote();
+			let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = record.getNote();
 			if (![...template.content.querySelectorAll("p")].some(p => p.textContent === "Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key)) continue;
 			let title = template.content.querySelector("h1")?.textContent || record.key;
 			let questions = [...template.content.querySelectorAll("li")].map(n => n.textContent);
 			let discussion = [...template.content.querySelectorAll("h2")].find(n => n.textContent === "Discussion");
-			let conclusion = discussion?.parentElement.textContent.replace(/^Discussion/, "").trim().slice(0, 450) || "";
-			recap.append(this.el(doc, "p", null, title + (conclusion ? " — " + conclusion : "") + (questions.length ? " — Open: " + questions.join("; ") : "")));
+			let content = discussion?.parentElement.cloneNode(true);
+			content?.querySelector("h2")?.remove();
+			let conclusion = content ? this.readingNoteMarkdown({ getNote: () => content.outerHTML }) : "";
+			let entry = this.el(doc, "div", "zs-workspace-recap-entry");
+			this.renderMarkdown(doc, entry, title + "\n\n" + conclusion + (questions.length ? "\n\nOpen questions:\n" + questions.map(text => "- " + text).join("\n") : ""));
+			recap.append(entry);
 			if (++count >= 5) break;
 		}
 		if (!count) recap.append(this.el(doc, "p", null, "No recorded discussions for this attachment yet."));
 		body.append(recap); panel.append(head, body); root.append(panel);
+		this.fitWideContent(recap);
 	},
 });

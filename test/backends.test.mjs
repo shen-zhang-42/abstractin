@@ -337,3 +337,13 @@ test("clarifications: nothing is saved without a selection or when the request f
 	await p.ask(base.ctx, "Explain", failing);
 	assert.equal(count, 0);
 });
+
+test("knowledge discussion disables command execution and web/app tools, including resumed sessions", () => {
+ const { plugin: p } = loadPlugin();
+ const request = { ctx: { dir: '/tmp/reading', reading: { evidenceMode: 'knowledge' } }, question: 'Explain', history: [], session: { id: 'thread', seen: 0 } };
+ const args = p.codexArgs(request);
+ assert.ok(args.includes('features.shell_tool=false')); assert.ok(args.includes('features.unified_exec=false'));
+ assert.ok(args.includes('web_search="disabled"')); assert.ok(args.includes('features.apps=false')); assert.ok(args.includes('resume'));
+ const sourceArgs = p.codexArgs({ ...request, ctx: { ...request.ctx, reading: { evidenceMode: 'source' } } });
+ assert.ok(!sourceArgs.includes('features.shell_tool=false'));
+});

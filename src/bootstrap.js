@@ -30,6 +30,8 @@ async function startup({ id, version, rootURI }) {
 	Zusia.registerPaneSection();
 	// Zotero removes the reader listeners itself when the plugin shuts down.
 	Zusia.registerReaderHooks();
+	// Installing/enabling while PDFs are open need not rerender their toolbar.
+	Zusia.restoreReaderToolbarEntries();
 	Zusia.watchPrefs();
 	await Zusia.registerPrefsPane();
 

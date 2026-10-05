@@ -393,3 +393,90 @@ test("mapped chapter navigation accepts a wrapped heading, excludes contents row
  await assert.rejects(p.openReadingContentsEntry(view, contents.entries[0]), /unique/);
  assert.equal(navigated, 2);
 });
+
+test("knowledge discussion skips full PDF extraction, supplies corrected notes inline and keeps follow-up context", async () => {
+ const { plugin: p, prefs, ctx, view, notes, response } = await setup();
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
+ await p.saveReadingAction(ctx, 'contents', response);
+ await p.saveReadingRecord(ctx, 'Prior', null, { title: 'Prior', summary: 'Corrected understanding', openQuestions: [] });
+ p.prepareReadingSkills = async () => { throw new Error('Knowledge discussion must not stage skills each turn'); };
+ p.exportReadingSource = async () => { throw new Error('Knowledge discussion must not extract PDF'); };
+ p.runBackend = async (_, request) => {
+  assert.match(request.question, /Knowledge discussion/); assert.match(request.question, /Corrected understanding/);
+  assert.match(request.question, /Do not open or search/); assert.ok(!request.question.includes('Read and follow the original skill'));
+  return { text: 'A supplementary explanation\n<abstractin-record>{"title":"Intuition","summary":"Supplementary explanation","openQuestions":[],"sources":[]}</abstractin-record>', sessionId: 'knowledge-thread' };
+ };
+ let result = await p.ask(ctx, 'Why does this work?', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined); assert.ok(result.recordKey);
+ let calls = 0; p.runBackend = async (_, request) => { calls++; assert.equal(request.session.id, 'knowledge-thread'); return { text: 'Follow-up\n<abstractin-record>{"title":"Follow-up","summary":"More intuition","openQuestions":[]}</abstractin-record>' }; };
+ result = await p.ask(ctx, 'Give an example', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined); assert.equal(calls, 1);
+ p.updateReadingControls(view); const select = view.root.querySelector('.zs-reading-evidence-mode'); assert.equal(select.value, 'knowledge');
+ select.value = 'source'; select.dispatchEvent(new view.doc.defaultView.Event('change')); assert.equal(p.getReadingEvidenceMode(), 'source');
+});
+
+test("switching evidence modes starts a fresh thread while preserving chat history", async () => {
+ const { plugin: p, prefs, ctx } = await setup(); prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
+ await p.saveSessions(ctx.dir, { codex: { id: 'old-source-thread', model: '', sourceSignature: 'source-A', evidenceMode: 'source', seen: 2 } });
+ await p.saveHistory(ctx.dir, [{ role: 'user', text: 'Old question' }, { role: 'assistant', text: 'Old answer' }]);
+ p.runBackend = async (_, request) => { assert.equal(request.session, null); assert.equal(request.history.length, 2); return { text: 'Answer\n<abstractin-record>{"title":"Note","summary":"Conclusion","openQuestions":[]}</abstractin-record>' }; };
+ const result = await p.ask(ctx, 'Continue', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined);
+});
+
+test("workspace recap renders discussion and open-question formulas with KaTeX", async () => {
+ const { plugin: p, ctx, view } = await setup();
+ await p.saveReadingRecord(ctx, 'Question', null, { title: 'Bayes $x$', summary: 'Conclusion $x^2=1$.\n\n$$\\pi(x)=1$$', openQuestions: ['Why $x$?'] });
+ p.openReadingWorkspace(view);
+ assert.ok(view.root.querySelectorAll('.zs-workspace-recap math').length >= 3);
+});
+
+test("New chat and Previous chat preserve reading artifacts/mode while resetting agent sessions", async () => {
+ const { plugin: p, ctx, view, prefs, notes, response, dir, window } = await setup();
+ window.OS.File.remove = async () => {};
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
+ await p.saveReadingAction(ctx, 'contents', response);
+ await p.saveReadingRecord(ctx, 'Prior', null, { title: 'Prior', summary: 'Persistent conclusion $x$', openQuestions: [] });
+ const history = [{ role: 'user', text: 'Previous question', ts: 100 }, { role: 'assistant', text: 'Previous answer', ts: 101 }];
+ await p.saveHistory(dir, history); await p.saveSessions(dir, { codex: { id: 'old-thread' } });
+ let archived; p.archiveHistory = async (_, messages) => { if (messages.length) archived = messages; };
+ await p.newChat(view.root);
+ assert.equal((await p.loadHistory(dir)).length, 0); assert.equal(Object.keys(await p.loadSessions(dir)).length, 0);
+ assert.equal(notes.length, 2); assert.equal(ctx.reading.type, 'book'); assert.equal(p.getReadingEvidenceMode(), 'knowledge');
+ const path = join(dir, 'previous.json'); await writeFile(path, JSON.stringify(archived));
+ await p.restoreChat(view.root, { path });
+ assert.equal((await p.loadHistory(dir))[0].text, 'Previous question'); assert.equal(Object.keys(await p.loadSessions(dir)).length, 0); assert.equal(notes.length, 2);
+});
+
+test("a chat transition blocks a concurrent send or second transition", async () => {
+ const { plugin: p, ctx, view } = await setup();
+ let finish; p.loadHistory = () => new Promise(resolve => { finish = resolve; });
+ p.ask = async () => { throw new Error('A transition cannot start an answer'); };
+ const transition = p.newChat(view.root);
+ assert.equal(p._chatTransitions.has(ctx.dir), true);
+ p.startRequest(view, 'Do not send during transition'); assert.equal(p._pending.has(ctx.dir), false);
+ finish([]); await transition; assert.equal(p._chatTransitions.has(ctx.dir), false);
+});
+
+test("an explicit no-document-search request overrides source mode for that turn", async () => {
+ const { plugin: p, ctx } = await setup();
+ p.exportReadingSource = async () => { throw new Error('Must not extract PDF'); };
+ p.runBackend = async (_, request) => { assert.equal(request.ctx.reading.evidenceMode, 'knowledge'); return { text: 'Intuition\n<abstractin-record>{"title":"Intuition","summary":"Explanation","openQuestions":[]}</abstractin-record>' }; };
+ const result = await p.ask(ctx, '不要搜索文档，根据已有知识解释一下', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined);
+});
+
+test("knowledge notes verify only the supplied page and never reread full PDF text", async () => {
+ const { plugin: p, ctx, notes } = await setup();
+ ctx.reading.evidenceMode = 'knowledge'; ctx.reading.pdfSource = { status: 'context-only' };
+ ctx.reading.currentPage = { pageIndex: 2, verified: true, text: 'Supplied argument' };
+ p.readNativeReadingPage = async () => { throw new Error('Record saving must not retrieve another page'); };
+ const record = { title: 'Knowledge', summary: 'Independent explanation', openQuestions: [], sources: [{ pageIndex: 2, quote: 'Supplied argument' }, { pageIndex: 1, quote: 'Supplied argument' }] };
+ await p.saveReadingRecord(ctx, 'Explain', null, record);
+ assert.match(notes[0].html, /page=3/); assert.ok(!notes[0].html.includes('page=2')); assert.match(record.saveNotice, /omitted/);
+});
+
+test("explicit paper-summary actions still verify the source while knowledge preference remains selected", async () => {
+ const { plugin: p, prefs, window, ctx } = await setup('paper');
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge'; p.prepareReadingSkills = async ctx => ctx.reading;
+ let extractions = 0; window.Zotero.PDFWorker = { getFullText: async () => { extractions++; return { text: 'Title\fMethods\fResults', extractedPages: 3, totalPages: 3 }; } };
+ p.runBackend = async (_, request) => { assert.equal(request.ctx.reading.evidenceMode, 'source'); return { text: 'Summary\n<abstractin-workspace>{"kind":"summary","coverage":"Methods and results"}</abstractin-workspace>' }; };
+ const result = await p.ask(ctx, 'Summarize the paper', { backend: 'codex', readingAction: 'summary', progress() {} });
+ assert.equal(result.error, undefined); assert.equal(extractions, 1); assert.equal(p.getReadingEvidenceMode(), 'knowledge');
+});

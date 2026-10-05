@@ -7,7 +7,7 @@ import { loadPlugin } from "./load-plugin.mjs";
 test("startup registers resources before loading scripts and releases them on shutdown", async () => {
 	const events = [];
 	const rootURI = "jar:file:///C:/Users/User/plugin.xpi!/";
-	const plugin = Object.fromEntries(["init", "getKatex", "addToAllWindows", "registerPaneSection", "registerReaderHooks", "watchPrefs", "registerPrefsPane", "unwatchPrefs", "stopReadingPositionTracking", "removeAllReaderPanels", "unregisterPaneSection", "removeFromAllWindows"].map(name => [name, arg => { events.push({ name, arg }); return true; }]));
+	const plugin = Object.fromEntries(["init", "getKatex", "addToAllWindows", "registerPaneSection", "registerReaderHooks", "restoreReaderToolbarEntries", "watchPrefs", "registerPrefsPane", "unwatchPrefs", "stopReadingPositionTracking", "removeAllReaderPanels", "unregisterPaneSection", "removeFromAllWindows"].map(name => [name, arg => { events.push({ name, arg }); return true; }]));
 	const scope = {
 		Zotero: { debug() {} },
 		Cc: { "@mozilla.org/addons/addon-manager-startup;1": { getService: () => ({ registerChrome: (uri, entries) => {
@@ -24,6 +24,7 @@ test("startup registers resources before loading scripts and releases them on sh
 	assert.equal(events.find(e => e.name === "load").url, "chrome://abstractin/content/content/zusia.js");
 	assert.equal(events.find(e => e.name === "init").arg.resourceURI, "chrome://abstractin/content/");
 	assert.ok(events.findIndex(e => e.name === "getKatex") < events.findIndex(e => e.name === "addToAllWindows"));
+	assert.ok(events.findIndex(e => e.name === "registerReaderHooks") < events.findIndex(e => e.name === "restoreReaderToolbarEntries"));
 	scope.shutdown();
 	assert.equal(events.at(-1).name, "destruct");
 });
@@ -35,4 +36,15 @@ test("registered resources supply KaTeX, styles and icons while preserving the s
 	assert.equal(p.iconBase, "chrome://abstractin/content/content/icons/");
 	assert.ok(p.stylesheetURL.startsWith("chrome://abstractin/content/content/zusia.css"));
 	assert.equal(typeof p.getKatex().renderToString, "function");
+});
+
+test("toolbar and composer icons load through Zotero resources when iframe fetch cannot access chrome URLs", async () => {
+ const { plugin: p, window, document: doc } = loadPlugin();
+ p.iconBase = 'chrome://abstractin/content/content/icons/'; p._iconCache.clear();
+ let reads = 0;
+ window.Zotero.File = { getResourceAsync: async url => { reads++; assert.ok(url.startsWith(p.iconBase)); return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill="context-fill" d="M1 1h18v18H1z"/></svg>'; } };
+ window.fetch = async () => { throw new Error('Reader fetch is blocked'); };
+ const icon = p.svgIcon(doc, 'settings'); doc.body.append(icon);
+ await p.loadIcon(doc, 'settings'); await Promise.resolve();
+ assert.equal(reads, 1); assert.ok(icon.querySelector('svg')); assert.equal(icon.querySelector('path').getAttribute('fill'), 'currentColor');
 });

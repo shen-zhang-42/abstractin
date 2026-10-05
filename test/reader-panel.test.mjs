@@ -181,7 +181,7 @@ test("native splitter widths update the HTML panel without changing the native p
 	assert.equal(win.ZoteroContextPane.collapsed, true);
 });
 
-test("metadata section remains in the library and acts as a fallback for unknown reader layouts", () => {
+test("metadata section remains available even when reader layout supports a dedicated panel", () => {
 	const { plugin: p, document: doc, window: win } = setup();
 	let options;
 	win.Zotero.ItemPaneManager = { registerSection(value) { options = value; return "abstractin-section"; } };
@@ -190,10 +190,80 @@ test("metadata section remains in the library and acts as a fallback for unknown
 	const item = { isRegularItem: () => true };
 	const setEnabled = value => { enabled = value; };
 	options.onItemChange({ item, doc, tabType: "reader", setEnabled });
-	assert.equal(enabled, false);
+	assert.equal(enabled, true);
 	options.onItemChange({ item, doc, tabType: "library", setEnabled });
 	assert.equal(enabled, true);
 	doc.getElementById("layout").remove();
 	options.onItemChange({ item, doc, tabType: "reader", setEnabled });
 	assert.equal(enabled, true);
+});
+
+test("installing into an already loaded PDF restores one visible toolbar entry", async () => {
+ const { plugin: p, document: doc, window: win, a } = setup();
+ const toolbar = doc.createElement('div'); toolbar.className = 'toolbar'; toolbar.innerHTML = '<div class="end"><button id="context-pane-toggle"></button></div>'; doc.body.append(toolbar);
+ a._iframeWindow = { document: doc }; win.Zotero.Reader._readers = [a];
+ await p.restoreReaderToolbarEntries(); await p.restoreReaderToolbarEntries();
+ const buttons = toolbar.querySelectorAll('.zs-reader-toggle'); assert.equal(buttons.length, 1);
+ assert.match(buttons[0].textContent, /AbstractIn/);
+ await p.openReaderPanel(a); assert.equal(doc.querySelector('.zs-reader-panel').hidden, false);
+ p.removeAllReaderPanels(); assert.equal(toolbar.querySelectorAll('.zs-reader-toggle').length, 0);
+});
+
+test("reader item section supplies a panel launcher when the new toolbar entry is absent", async () => {
+ const { plugin: p, document: doc, window: win, a } = setup();
+ let options; win.Zotero.ItemPaneManager = { registerSection(value) { options = value; return 'abstractin-section'; } }; p.registerPaneSection();
+ win.Zotero.Reader._readers = [a];
+ const body = doc.createElement('div'); doc.body.append(body);
+ const item = { id: 11, isRegularItem: () => false, isFileAttachment: () => true };
+ let enabled; options.onItemChange({ item, doc, tabType: 'reader', setEnabled: value => { enabled = value; } }); assert.equal(enabled, true);
+ p.readerFor = () => a;
+ await options.onAsyncRender({ doc, body, item, tabType: 'reader' });
+ const button = body.querySelector('button'); assert.match(button.textContent, /Open AbstractIn/);
+ button.click(); await Promise.resolve(); assert.equal(doc.querySelector('.zs-reader-panel').hidden, false);
+});
+
+test("late toolbar rendering restores an entry and shutdown removes pending observers", async () => {
+ const { plugin: p, document: doc, window: win, a } = setup();
+ a._iframeWindow = { document: doc }; win.Zotero.Reader._readers = [a];
+ await p.restoreReaderToolbarEntries(); assert.equal(p._readerToolbarObservers.size, 1);
+ const toolbar = doc.createElement('div'); toolbar.className = 'toolbar'; toolbar.innerHTML = '<div class="end"></div>'; doc.body.append(toolbar);
+ await new Promise(resolve => win.setTimeout(resolve, 0));
+ assert.equal(toolbar.querySelectorAll('.zs-reader-toggle').length, 1); assert.equal(p._readerToolbarObservers.size, 0);
+ p.removeAllReaderPanels(); toolbar.remove();
+ await p.restoreReaderToolbarEntries(); assert.equal(p._readerToolbarObservers.size, 1);
+ p.removeAllReaderPanels(); assert.equal(p._readerToolbarObservers.size, 0);
+});
+
+test("disabling the plugin while a reader initializes cannot inject an entry afterward", async () => {
+ const { plugin: p, document: doc, window: win, a } = setup();
+ doc.body.insertAdjacentHTML('beforeend', '<div class="toolbar"><div class="end"></div></div>');
+ a._iframeWindow = { document: doc }; win.Zotero.Reader._readers = [a];
+ let finish; a._initPromise = new Promise(resolve => { finish = resolve; });
+ const restore = p.restoreReaderToolbarEntries(); p.removeAllReaderPanels(); finish(); await restore;
+ assert.equal(doc.querySelector('.zs-reader-toggle'), null);
+});
+
+test("reader UI uses HTML controls inside Zotero's XUL document and retains header and composer actions", () => {
+ const { plugin: p, document: doc } = setup();
+ doc.createElement = tag => doc.createElementNS('http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul', tag);
+ const body = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div'); doc.body.append(body);
+ p.renderSkeleton(doc, body);
+ const root = body.querySelector('.zs-root');
+ for (const cls of ['zs-open-settings', 'zs-search', 'zs-history', 'zs-new-chat', 'zs-clarifications', 'zs-attach', 'zs-model-btn', 'zs-effort-btn', 'zs-send']) {
+  const button = root.querySelector('.' + cls); assert.ok(button); assert.equal(button.namespaceURI, 'http://www.w3.org/1999/xhtml');
+ }
+ assert.equal(root.querySelector('.zs-input').localName, 'textarea'); assert.equal(root.querySelector('.zs-input').namespaceURI, 'http://www.w3.org/1999/xhtml');
+ const answer = p.el(doc, 'div'); p.renderMarkdown(doc, answer, '| A | B |\n|---|---|\n| 1 | 2 |');
+ assert.equal(answer.querySelector('table').namespaceURI, 'http://www.w3.org/1999/xhtml');
+});
+
+test("dedicated reading panel uses a plain neutral appearance even with old colorful preferences", async () => {
+ const { plugin: p, prefs, document: doc, a } = setup();
+ prefs['extensions.abstractin.appearance'] = JSON.stringify({ style: 'glass', accent: '#4072e5', pattern: 'math', glow: true });
+ await p.openReaderPanel(a);
+ const root = doc.querySelector('.zs-reader-panel .zs-root');
+ assert.equal(root.dataset.style, 'flat'); assert.equal(root.dataset.pattern, 'none');
+ assert.equal(root.style.getPropertyValue('--zs-glow-strength'), '0%');
+ assert.equal(root.style.getPropertyValue('--zs-accent'), '#666666');
+ p.refreshRoot(root); assert.equal(root.dataset.style, 'flat'); assert.equal(root.dataset.pattern, 'none');
 });

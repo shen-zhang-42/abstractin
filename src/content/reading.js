@@ -5,6 +5,35 @@
 Object.assign(Zusia, {
 	_readingStates: new Map(),
 
+	getReadingEvidenceMode() {
+		return this.getPref("readingEvidenceMode") === "knowledge" ? "knowledge" : "source";
+	},
+
+	requestsKnowledgeDiscussion(question) {
+		return /(?:不要|别|无需|不需要|不用|禁止)(?:再|继续|反复|去|重新|主动|额外|直接|频繁|重复|\s)*(?:读取|阅读|读|搜索|检索|查阅|回看|回到)[^，。；,;]{0,12}(?:pdf|文档|原文|这本书|论文)/i.test(question) ||
+			/(?:do not|don't|dont|stop|without)\s+(?:re-?reading|reading|read|searching|search|opening|open)[^.!?;]{0,40}(?:pdf|document|source|paper|file)/i.test(question);
+	},
+
+	async knowledgeReadingSource(ctx) {
+		// Validate identity without extracting the entire document again.
+		let signature = "knowledge:" + ctx.attachmentItem.key;
+		try {
+			let path = await ctx.attachmentItem.getFilePathAsync();
+			if (path && await OS.File.exists(path)) {
+				let stat = await OS.File.stat(path);
+				signature = JSON.stringify([ctx.paperItem.libraryID, ctx.attachmentItem.key, path, stat.size,
+					new Date(stat.lastModificationDate || stat.mtime).getTime()]);
+				try {
+					let cached = JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-manifest.json")));
+					if (cached.signature === signature && cached.status === "ready") return cached;
+				}
+				catch (e) { /* Knowledge discussion does not require a full-text cache. */ }
+			}
+		}
+		catch (e) { this.logError("knowledge source identity", e); }
+		return { status: "context-only", signature, attachmentKey: ctx.attachmentItem.key };
+	},
+
 	async exportReadingSource(ctx) {
 		let attachment = ctx.attachmentItem;
 		try {
@@ -282,7 +311,7 @@ Object.assign(Zusia, {
 		for (let id of ids) {
 			let note = Zotero.Items.get(id);
 			if (!note || !note.getTags().some(tag => tag.tag === "AbstractIn")) continue;
-			let template = doc.createElement("template");
+			let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template");
 			template.innerHTML = note.getNote();
 			let text = [...template.content.querySelectorAll("h1, h2, h3, p, blockquote, li")].map(node => node.textContent).join("\n");
 			if (!text.includes("attachment: " + ctx.attachmentItem.key)) continue;
@@ -296,6 +325,8 @@ Object.assign(Zusia, {
 
 	updateReadingControls(view) {
 		let reading = view.ctx.reading;
+		let evidence = view.root.querySelector(".zs-reading-evidence-mode");
+		if (evidence) { evidence.hidden = !reading; evidence.value = this.getReadingEvidenceMode(); }
 		let label = view.root.querySelector(".zs-reading-status");
 		if (label) label.textContent = reading ?
 			(reading.type === "book" ? "Book" : "Paper") + " · " + (this.getLanguage() || "Same as my question") + " · Codex" : "";
@@ -311,15 +342,32 @@ Object.assign(Zusia, {
 		let resume = view.root.querySelector(".zs-reading-resume-here");
 		if (resume) resume.hidden = !reading?.referenceNavigation;
 		let sourceStatus = view.root.querySelector(".zs-reading-source-status");
-		if (sourceStatus) sourceStatus.textContent = reading?.pdfSource ? (reading.pdfSource.status === "ready" ?
+		if (sourceStatus) sourceStatus.textContent = reading && this.getReadingEvidenceMode() === "knowledge" ?
+			"Knowledge discussion · existing context · no PDF search" : reading?.pdfSource ? (reading.pdfSource.status === "ready" ?
 			"PDF text ready · " + reading.pdfSource.extractedPages + "/" + reading.pdfSource.totalPages + " pages" +
-			(reading.pdfSource.pageMapping ? "" : " · page links unverified") : "PDF text unavailable — use a selected passage or page image") : "";
+			(reading.pdfSource.pageMapping ? "" : " · page links unverified") : reading.pdfSource.status === "context-only" ?
+			"Discussion context ready · full PDF text not loaded" : "PDF text unavailable — use a selected passage or page image") : "";
 		let quick = view.root.querySelector(".zs-quick");
 		if (quick) quick.hidden = true;
 	},
 
 	readingPrompt(ctx, selection) {
 		let reading = ctx.reading;
+		if (reading.evidenceMode === "knowledge" && (!reading.action || reading.action === "discuss")) {
+			return "AbstractIn Knowledge discussion. " + this.languageInstruction() +
+				" Answer from the supplied current page/selection, saved notes and previous conversation, supplemented by your existing knowledge. " +
+				"Do not open or search the PDF, source-text.md, skills or workspace files for this discussion. No file tools are needed. " +
+				"For a missing exact quotation, author-specific claim, experiment detail or page location, say it needs Source verification mode; do not guess. " +
+				"Label independent explanations and alternative derivations naturally. Do not claim that generic knowledge was verified in this document. " +
+				"Document identity: " + JSON.stringify({ itemKey: ctx.paperItem.key, attachmentKey: ctx.attachmentItem.key }) + ". " +
+				"Supplied passage: " + JSON.stringify(selection || null) + ". Current page: " + JSON.stringify(reading.currentPage || null) + ". " +
+				"Current editable Zotero notes take precedence over older chat: " + JSON.stringify(reading.knowledgeContext || "No saved notes.") + ". " +
+				"Answer, then append exactly one <abstractin-record>JSON</abstractin-record> block with title, summary (concise discussed conclusions), " +
+				"openQuestions (array), topicKey (stable lowercase hyphenated identifier), and scope {level: book|paper|chapter|section, id: verified contents ID or empty, title: scope title or empty}. " +
+				"For follow-ups merge existing valid conclusions on the same topic, noting corrections. Do not infer mastery. " +
+				"Use sources: [] unless quoting the supplied verified current page exactly; then use {pageIndex: supplied zero-based index, quote: exact supplied excerpt}. " +
+				"Escape LaTeX correctly in JSON. Do not write files or perform external research.";
+		}
 		if (reading.action === "contents") return "AbstractIn book contents initialization. Read the original book-reading skill at " + JSON.stringify(reading.skillPath) +
 			" and use only its structure initialization workflow. " + this.languageInstruction() +
 			" Document identity: " + JSON.stringify({ libraryID: ctx.paperItem.libraryID, itemKey: ctx.paperItem.key, attachmentKey: ctx.attachmentItem.key }) + ". " +
@@ -446,7 +494,7 @@ Object.assign(Zusia, {
 		let candidates = Array.isArray(record.sources) ? record.sources.slice(0, 10) : [];
 		let sources = [];
 		let sourceText = "";
-		if (candidates.length && ctx.reading.pdfSource?.status === "ready") {
+		if (candidates.length && ctx.reading.evidenceMode !== "knowledge" && ctx.reading.pdfSource?.status === "ready") {
 			try { sourceText = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md")); }
 			catch (e) { this.logError("record source verification", e); }
 		}
@@ -458,7 +506,10 @@ Object.assign(Zusia, {
 			let source = { ...candidate, printedPageLabel: typeof candidate.printedPageLabel === "string" ? candidate.printedPageLabel : null };
 			let quote = normalize(source.quote), pageVerified = false;
 			if (!quote) { omitted++; continue; }
-			if (ctx.reading.pdfSource?.status === "ready" && Number.isInteger(source.pageIndex) && source.pageIndex >= 0) {
+			if (ctx.reading.evidenceMode === "knowledge" && ctx.reading.currentPage?.verified && source.pageIndex === ctx.reading.currentPage.pageIndex) {
+				pageVerified = normalize(ctx.reading.currentPage.text || "").includes(quote);
+			}
+			if (ctx.reading.evidenceMode !== "knowledge" && ctx.reading.pdfSource?.status === "ready" && Number.isInteger(source.pageIndex) && source.pageIndex >= 0) {
 				if (ctx.reading.pdfSource.pageMapping && source.pageIndex < ctx.reading.pdfSource.totalPages) pageVerified = normalize(this.pdfPageText(sourceText, source.pageIndex)).includes(quote);
 				if (!pageVerified) {
 					try { pageVerified = normalize((await this.readNativeReadingPage(ctx, source.pageIndex)).text).includes(quote); }
@@ -483,7 +534,7 @@ Object.assign(Zusia, {
 		let doc = Zotero.getMainWindow().document;
 		let existing = (ctx.paperItem.getNotes?.() || []).map(id => Zotero.Items.get(id)).find(note => {
 			if (!note || !note.getTags().some(t => t.tag === "AbstractIn") || note.getTags().some(t => t.tag.startsWith("AbstractIn:"))) return false;
-			let template = doc.createElement("template"); template.innerHTML = note.getNote();
+			let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
 			let paragraphs = [...template.content.querySelectorAll("p")].map(n => n.textContent);
 			return paragraphs.includes("Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key) &&
 				paragraphs.includes("Scope: " + scope.level + "; id: " + scope.id) &&
@@ -492,10 +543,11 @@ Object.assign(Zusia, {
 		let note = existing || new Zotero.Item("note");
 		note.libraryID = ctx.paperItem.libraryID;
 		note.parentID = ctx.paperItem.id;
-		let wrapper = doc.createElement("div");
+		let wrapper = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
 		wrapper.appendChild(this.el(doc, "h1", null, "AbstractIn — " + record.title));
 		let add = text => wrapper.appendChild(this.el(doc, "p", null, text));
 		add("Material: " + ctx.reading.type + " · " + new Date().toISOString());
+		if (ctx.reading.evidenceMode === "knowledge") add("Discussion mode: Knowledge discussion — supplementary reasoning; original PDF not searched for this answer.");
 		add("Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key);
 		add("Scope: " + scope.level + "; id: " + scope.id);
 		if (scope.title) add("Scope title: " + scope.title);

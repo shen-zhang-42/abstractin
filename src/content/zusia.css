@@ -67,6 +67,8 @@
 	min-width: 280px;
 	max-width: min(720px, 65vw);
 	min-height: 0;
+	height: 100%;
+	max-height: 100%;
 	overflow: hidden;
 	background: var(--material-sidepane, #f2f2f2);
 	border-inline-start: 1px solid var(--fill-quarternary, #ddd);
@@ -95,6 +97,32 @@
 .zs-reader-panel .zs-reading-bar,
 .zs-reader-panel .zs-composer { flex: 0 0 auto; }
 .zs-reader-panel .zs-header-title { display: block !important; }
+.zs-reader-panel .zs-header > .zs-header-icon { margin-inline-end: 4px; }
+.zs-reader-panel .zs-header { flex-wrap: wrap; }
+.zs-reader-panel .zs-header-title { flex: 1 1 auto; }
+.zs-reader-panel .zs-header .zs-icon { flex: 0 0 auto; }
+.zs-reader-panel .zs-controls { flex-wrap: wrap; }
+.zs-reader-panel .zs-controls .zs-model-btn { min-width: 0; }
+.zs-root[data-reading-theme="neutral"] > .zs-backdrop { display: none !important; }
+.zs-root[data-reading-theme="neutral"] { background: transparent; }
+.zs-root[data-reading-theme="neutral"] .zs-composer {
+	background: var(--zs-ground);
+	box-shadow: none;
+}
+.zs-root[data-reading-theme="neutral"] .zs-reading-primary {
+	width: auto;
+	align-self: flex-start;
+	min-height: 30px;
+	padding: 5px 10px;
+	gap: 6px;
+	font-size: 12px;
+	border-color: var(--zs-border-strong);
+	background: var(--zs-raised);
+	color: var(--zs-text);
+}
+.zs-root[data-reading-theme="neutral"] .zs-reading-primary:hover:not(:disabled) { background: var(--zs-hover); }
+.zs-root[data-reading-theme="neutral"] .zs-reading-primary .zs-i { width: 16px; height: 16px; }
+.zs-root[data-reading-theme="neutral"] .zs-reading-status { text-align: start; }
 .zs-reader-splitter { min-width: 4px; cursor: col-resize; }
 /* Component display rules must never un-hide an element hidden by the script. */
 .zs-root [hidden],
@@ -2464,6 +2492,18 @@
 }
 .zs-reading-tool:hover:not(:disabled) { background: var(--zs-hover); }
 .zs-reading-tool:disabled { opacity: 0.5; cursor: default; }
+.zs-reading-evidence-mode {
+	align-self: flex-start;
+	max-width: 100%;
+	font: inherit;
+	font-size: 12px;
+	padding: 5px 8px;
+	border: 1px solid var(--zs-border);
+	border-radius: var(--zs-radius-control);
+	color: var(--zs-text);
+	background: var(--zs-ground);
+}
+.zs-workspace-recap-entry { margin-block: 10px; }
 .zs-workspace-recap { font-size: 12px; }
 .zs-reading-record {
 	font-size: 10px;

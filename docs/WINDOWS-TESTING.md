@@ -50,7 +50,7 @@ If a chosen Codex model is explicitly rejected as unsupported or unavailable, Ab
 
 Extraction uses Zotero's native PDF worker. No separate Python/PDF dependency is required. Scanned pages need OCR or an explicitly attached page image. This build does not automatically read book chapters, perform external literature research or export QMD/HTML reports. Unit tests simulate Zotero APIs; Windows reader behavior and note synchronization still require these manual checks.
 
-## Verify resilient saving and contents initialization (0.2.3)
+## Verify resilient saving and contents initialization (0.2.6)
 
 1. Use a PDF whose source status says **page links unverified**. Ask a question: the concise discussion must still save as a Zotero child note. A verified excerpt may be retained without a page link; an excerpt absent from the actual text is omitted with an informational notice. The reader's own selected-passage page location remains usable independently.
 2. Initialize a book whose model output reformats dot leaders or omits an identifier. The plugin should recover an exact contents excerpt, assign a safe identifier and save the verified entries. An unverified entry must be omitted and the saved directory clearly marked incomplete. Unknown chapter locations must remain null; no guessed links are generated.
@@ -60,7 +60,7 @@ Extraction uses Zotero's native PDF worker. No separate Python/PDF dependency is
 
 Previous failed answers remain in chat history. **More → Save as note** saves an existing full answer without another model request. These fixes avoid unnecessary repeated work, but response time still depends on local PDF extraction and Codex.
 
-## Verify current-page discussion and chapter navigation (0.2.3)
+## Verify current-page discussion and chapter navigation (0.2.6)
 
 1. Open a book with a blank cover or unverified global page boundaries. Go to a text page and ask “Explain this equation on the current page.” Inspect `<Zotero data directory>/abstractin/<library>-<item>/reading-<attachment>/current-page.md`: it must show that physical page's text and zero-based index. Change the displayed page while the request prepares; the answer must use the send-time page. Repeat on another page. Current-page questions should use the supplied text before searching the full book; model latency still varies.
 2. Ask for an exact quotation from that page. A matching record source must generate a physical PDF page link even if global boundaries remain unverified. A quotation assigned to the wrong physical page must not generate a link. Discussion saving remains available.
@@ -80,7 +80,7 @@ Record the Zotero version, Codex version, executable path and exact sidebar erro
 
 ## Verify formula resources after upgrading
 
-Version 0.1.4 registers plugin resources through Zotero's runtime chrome registration and loads the bundled KaTeX renderer at startup. Install the new XPI, fully exit Zotero, and reopen it before checking formulas. In `<Zotero data directory>/abstractin/debug.log`, confirm `init() version 0.2.3` and `KaTeX 0.16.22 loaded`. Reopen a previous answer to check inline math and numbered equations; no new model request is needed. A `getKatex` input-stream error means the renderer file could not be read, before TeX parsing. No separate LaTeX installation is required. If the error remains, provide the new startup log and Zotero version.
+Version 0.1.4 registers plugin resources through Zotero's runtime chrome registration and loads the bundled KaTeX renderer at startup. Install the new XPI, fully exit Zotero, and reopen it before checking formulas. In `<Zotero data directory>/abstractin/debug.log`, confirm `init() version 0.2.6` and `KaTeX 0.16.22 loaded`. Reopen a previous answer to check inline math and numbered equations; no new model request is needed. A `getKatex` input-stream error means the renderer file could not be read, before TeX parsing. No separate LaTeX installation is required. If the error remains, provide the new startup log and Zotero version.
 
 ## Source directory and development loading
 
@@ -100,3 +100,19 @@ Normal installation from the XPI requires no extension pointer, Node, source che
 Zotero child notes are the authoritative editable reading records. The local `abstractin/<libraryID>-<itemKey>/reading-<attachmentKey>/` directory contains chat/session caches, reading preferences, `source.pdf`, `source-text.md`, `source-manifest.json`, a derived `workspace.md`, and structural chapter folders. The source PDF is copied; the original attachment is unchanged. Contents, summaries, genuine reading positions and concise discussions are stored in Zotero child notes. These local files do not synchronize automatically. Later questions reuse a derived snapshot of the current Zotero reading notes; users may edit those notes in Zotero.
 
 If Codex omits or returns an invalid record block, or Zotero cannot save the note, the answer remains available and the sidebar reports the save failure. **More → Save as note** is a manual fallback that saves the full answer rather than a concise reading record.
+
+## Verify entry visibility (0.2.6)
+
+Install with a PDF already open, and test again after restarting Zotero. Look for **AbstractIn** in the PDF top toolbar near the context-pane controls. The right-side item navigation must retain its AbstractIn entry; opening that section in a supported reader shows **Open AbstractIn panel**. Both buttons should open the independent chat panel. Test closing/reopening a PDF and enabling/disabling the plugin while a PDF loads; entries must not duplicate or reappear after disabling. Zotero 10.0.3 entry visibility requires a real Windows check; the automated tests simulate these lifecycle events.
+
+## Verify panel controls and neutral theme (0.2.6)
+
+In the dedicated panel, confirm the header has clarifications, search, history, new chat, settings and close controls. At the bottom, confirm attachment, mode, model, reasoning and send controls, plus the input area; resize the panel and scroll a long answer to verify the composer remains visible. Test opening settings, choosing a model and sending a question. The panel should stay plain gray without decorative patterns, a glow or a background image, even with old colorful appearance preferences. Start Reading should be compact and aligned to the left. Verify the toolbar AbstractIn button is centered with and without its book icon. These changes require a real Zotero visual check; the automated tests cover HTML namespaces, resource loading and control presence.
+
+## Verify knowledge discussion, chat switching and recap math (0.2.6)
+
+Choose **Knowledge discussion** in the reading-mode selector. Ask follow-ups: there should be no full PDF extraction or command-based PDF searches. The question includes saved notes and the send-time page directly; page extraction is cached and does not scan the book. The Codex command should include `features.shell_tool=false` and `features.unified_exec=false`, with apps and web search disabled. CLI response latency still varies; real installed-Codex enforcement needs verification. A specific unknown quote/page should request Source verification rather than inventing evidence. Explicitly asking not to search a document uses knowledge discussion for that turn, even if Source verification is selected.
+
+Switch to **Source verification** to check exact source details; contents initialization and explicit paper summaries must still inspect their sources, regardless of the discussion preference. Save a note containing inline and display math and open the reading workspace: recap formulas and open questions should render with KaTeX.
+
+Use **New chat**, then **Previous chats**: the selected attachment, contents, summary, saved notes and mode remain available. Agent sessions reset and the chosen transcript is replayed on the next request. Sending or switching chats during a pending answer/transition must not mix histories. Opening the same attachment in another window should display the same changed chat after a transition.

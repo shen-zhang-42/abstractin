@@ -5,6 +5,53 @@
 Object.assign(Zusia, {
 	_readerPanelWindows: new Map(),
 	_readerToolbarButtons: new Map(),
+	_readerToolbarObservers: new Map(),
+	_readerToolbarGeneration: 0,
+
+	async restoreReaderToolbarEntries() {
+		let generation = this._readerToolbarGeneration;
+		await Promise.all((Zotero.Reader?._readers || []).map(async reader => {
+			try {
+				if (reader._initPromise) await reader._initPromise;
+				if (generation !== this._readerToolbarGeneration) return;
+				if (reader.type !== "pdf") return;
+				let doc = reader._iframeWindow?.document;
+				if (!doc) return;
+				let restore = () => {
+					let button = this._readerToolbarButtons.get(this.readerPanelWindow(reader))?.get(reader);
+					if (button?.isConnected) return true;
+					let end = doc.querySelector(".toolbar .end");
+					if (!end) return false;
+					this.renderReaderToolbar({ reader, doc, append: node => end.insertBefore(node, end.firstChild) });
+					this.log("Restored AbstractIn toolbar entry for attachment " + reader.itemID);
+					return true;
+				};
+				if (!restore() && !this._readerToolbarObservers.has(reader)) {
+					let observer = new doc.defaultView.MutationObserver(() => {
+						if (restore()) { observer.disconnect(); this._readerToolbarObservers.delete(reader); }
+					});
+					observer.observe(doc.documentElement, { childList: true, subtree: true });
+					this._readerToolbarObservers.set(reader, observer);
+				}
+			}
+			catch (e) { this.logError("restore reader toolbar", e); }
+		}));
+	},
+
+	renderReaderPanelLauncher(doc, body, item) {
+		let ctx = { paperItem: item?.parentItem || item, attachmentItem: item };
+		let reader = this.readerFor(ctx, doc.defaultView);
+		if (!reader || !this.readerPanelMount(doc)) return false;
+		body.textContent = "";
+		let button = this.el(doc, "button", "zs-reading-tool", "Open AbstractIn panel");
+		button.type = "button";
+		button.addEventListener("click", () => this.openReaderPanel(reader).catch(e => {
+			this.logError("reader panel launcher", e);
+			body.append(this.el(doc, "p", "zs-notice", e.message || String(e)));
+		}));
+		body.append(button);
+		return true;
+	},
 
 	readerPanelWindow(reader) {
 		return reader._window || Zotero.getMainWindow();
@@ -38,17 +85,19 @@ Object.assign(Zusia, {
 		button.setAttribute("aria-controls", "abstractin-reader-panel");
 		button.setAttribute("data-tabstop", "1");
 		button.tabIndex = -1;
+		button.style.cssText = "display:inline-flex;align-items:center;justify-content:center;align-self:center;line-height:normal;gap:4px;width:auto;min-width:32px;min-height:28px;padding:4px 6px;color:inherit;";
 		let icon = this.svgIcon(doc, "book");
 		icon.style.cssText = "display:block;width:20px;height:20px;";
 		// The reader toolbar is in its own document without the chat stylesheet.
 		this.loadIcon(doc, "book").then(() => {
 			let svg = icon.querySelector("svg");
+			if (!svg) icon.style.display = "none";
 			if (svg) {
 				svg.style.cssText = "display:block;width:20px;height:20px;";
 				for (let layer of svg.querySelectorAll(".zs-duo")) layer.style.opacity = "0.2";
 			}
-		});
-		button.append(icon);
+		}).catch(e => this.logError("reader toolbar icon", e));
+		button.append(icon, this.el(doc, "span", null, "AbstractIn"));
 		button.addEventListener("click", () => {
 			this.openReaderPanel(reader, { toggle: true }).catch(e => {
 				this.logError("openReaderPanel", e);
@@ -206,6 +255,9 @@ Object.assign(Zusia, {
 	},
 
 	removeReaderPanel(win) {
+		for (let [reader, observer] of this._readerToolbarObservers) {
+			if (this.readerPanelWindow(reader) === win) { observer.disconnect(); this._readerToolbarObservers.delete(reader); }
+		}
 		let state = this._readerPanelWindows.get(win);
 		if (state) {
 			this.closeReaderPanel(win);
@@ -225,6 +277,9 @@ Object.assign(Zusia, {
 	},
 
 	removeAllReaderPanels() {
+		this._readerToolbarGeneration++;
+		for (let observer of this._readerToolbarObservers.values()) observer.disconnect();
+		this._readerToolbarObservers.clear();
 		for (let win of new Set([...this._readerPanelWindows.keys(), ...this._readerToolbarButtons.keys()])) this.removeReaderPanel(win);
 	},
 });
