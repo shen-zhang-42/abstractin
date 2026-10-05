@@ -19,6 +19,7 @@ async function startup({ id, version, rootURI }) {
 	let resourceURI = "chrome://abstractin/content/";
 	Services.scriptloader.loadSubScript(resourceURI + "content/zusia.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/reading-workflow.js");
 	Zusia.init({ id, version, rootURI, resourceURI });
 	// Load the bundled renderer immediately, before any answer needs it.
 	Zusia.getKatex();
@@ -50,6 +51,7 @@ function shutdown() {
 		return;
 	}
 	Zusia.unwatchPrefs();
+	Zusia.stopReadingPositionTracking();
 	Zusia.unregisterPaneSection();
 	Zusia.removeFromAllWindows();
 	delete Zotero.AbstractIn;

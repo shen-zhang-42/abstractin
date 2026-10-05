@@ -35,7 +35,7 @@ test("reading prompts name the original skill and exact attachment, without whol
 	assert.match(prompt, /xiv/);
 	assert.match(prompt, /17/);
 	assert.match(prompt, /中文/);
-	assert.match(prompt, /Do not automatically/);
+	assert.match(prompt, /not by reading the whole book by default/);
 });
 
 test("record envelopes keep mathematical answers separate from concise saved records", () => {
@@ -79,6 +79,7 @@ for (const fallback of [false, true]) test("selected-passage flow saves exactly 
 	const history = [];
 	p.exportContext = async () => ({ metadata: "# Book", annotations: "" });
 	p.exportReadingRecords = async () => "# Existing records";
+	p.exportReadingWorkspace = async () => {};
 	p.loadHistory = async () => history;
 	p.loadSessions = async () => ({});
 	p.appendHistory = async (dir, messages) => history.push(...messages);
@@ -119,6 +120,7 @@ function filesystem(window) {
 	window.OS.File = {
 		exists: async path => { try { await stat(path); return true; } catch { return false; } },
 		copy: copyFile,
+		stat,
 		DirectoryIterator: class {
 			constructor(path) { this.path = path; }
 			async forEach(callback) {
@@ -151,6 +153,10 @@ for (const type of ["book", "paper"]) {
 			getCreators: () => [], getNotes: () => notes.map(note => note.id) };
 		const attachment = { id: 7, key: "PDF00001", parentItem: parent, isAttachment: () => true,
 			isPDFAttachment: () => true, isFileAttachment: () => true, getAnnotations: () => [] };
+		const pdfPath = join(window.Zotero.DataDirectory.dir, "test.pdf");
+		await writeFile(pdfPath, "%PDF-1.7 test transport");
+		attachment.getFilePathAsync = async () => pdfPath;
+		window.Zotero.PDFWorker = { getFullText: async () => ({ text: "Title\fContents\fOriginal proof", totalPages: 3, extractedPages: 3 }) };
 		parent.getBestAttachment = async () => attachment;
 		window.Zotero.Items = { get: id => notes.find(note => note.id === id) };
 		window.Zotero.Libraries = { get: () => ({ libraryType: "user" }) };
@@ -194,6 +200,8 @@ for (const type of ["book", "paper"]) {
 		assert.match(submittedPrompt, /Always reply in English/);
 		assert.doesNotMatch(submittedPrompt, /Reply in 中文/);
 		assert.match(submittedPrompt, type === "book" ? /book-reading/ : /scientific-information-extraction/);
+		assert.match(submittedPrompt, /source-text.md/);
+		assert.match(await readFile(join(view.ctx.dir, "source-text.md"), "utf8"), /Original proof/);
 		assert.equal(notes.length, 1);
 		assert.equal(notes[0].parentID, 9);
 		assert.match(notes[0].html, /PDF00001\?page=9/);
@@ -291,6 +299,8 @@ test("a failed Zotero save keeps the answer and reports the failure instead of c
 	p.prepareReadingSkills = async ctx => ctx.reading;
 	p.exportContext = async () => ({});
 	p.exportReadingRecords = async () => "";
+	p.exportReadingWorkspace = async () => {};
+	p.exportReadingSource = async () => ({ status: "ready" });
 	p.loadHistory = async () => history;
 	p.loadSessions = async () => ({});
 	p.appendHistory = async (dir, messages) => history.push(...messages);

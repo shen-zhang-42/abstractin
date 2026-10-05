@@ -2411,6 +2411,23 @@
 	text-align: center;
 }
 .zs-reading-status:empty { display: none; }
+.zs-reading-source-status { font-size: 11px; color: var(--zs-muted); }
+.zs-reading-source-status:empty { display: none; }
+.zs-reading-tools, .zs-workspace-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.zs-reading-tools[hidden] { display: none; }
+.zs-reading-tool {
+	font: inherit;
+	font-size: 11px;
+	padding: 5px 8px;
+	border: 1px solid var(--zs-border);
+	border-radius: var(--zs-radius-control);
+	color: var(--zs-text);
+	background: var(--zs-ground);
+	cursor: pointer;
+}
+.zs-reading-tool:hover:not(:disabled) { background: var(--zs-hover); }
+.zs-reading-tool:disabled { opacity: 0.5; cursor: default; }
+.zs-workspace-recap { font-size: 12px; }
 .zs-reading-record {
 	font-size: 10px;
 	color: var(--zs-muted);

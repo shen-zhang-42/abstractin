@@ -19,13 +19,15 @@
 
 AbstractIn is a Zotero reading assistant built from [Zusia](https://github.com/firekern/zusia).
 
-The first integration supports **Start Reading → choose the exact PDF, book/paper type and language → select a passage → local Codex → rendered answer → concise Zotero child note**.
+Version 0.2.0 supports **Start Reading → choose the exact PDF and book/paper type → verified source access → local Codex → rendered answer → editable Zotero child notes**. Answers follow the existing plugin language setting.
 
 The original `book-reading`, `scientific-paper-reading` and the paper skill's local extraction dependency are bundled without modification. Local skills may be used from your `.codex/skills` directory; `scientific-book-reading` is recognized as the folder alias for `book-reading`.
 
 See [Windows installation and verification](docs/WINDOWS-TESTING.md). No running Codespace is needed. Source development uses this checkout's `src/` directory; run `npm run source:path` to print its absolute location.
 
-This milestone starts directly with questions. Table-of-contents initialization, reading-position restoration, full-paper summary choices and report export are subsequent milestones. The demos below show the inherited Zusia interface, not completion of those workflows.
+Books initialize their actual table of contents without generating chapter summaries. Papers offer summary creation, viewing, updating, or immediate questions. Returning readers restore their saved reading position and see prior discussions and open questions. Verified source links preserve the original reading position for **Return to reading**; **Resume here** makes a reference page the new reading position. Follow-up questions can update the same scoped discussion note.
+
+The local workspace contains a PDF copy and text extracted by Zotero, with physical page boundaries when verified. Codex reads relevant portions as needed; the full text is not inserted into every prompt. Missing files and image-only PDFs produce explicit errors; OCR and QMD/HTML report export are not included. The demos below show the inherited Zusia interface.
 
 **Inherited interface**
 
@@ -101,15 +103,15 @@ This milestone starts directly with questions. Table-of-contents initialization,
 1. **Install local Codex CLI** and sign in. Start Reading uses Codex; see the [Windows instructions](docs/WINDOWS-TESTING.md).
 2. **Download `abstractin.xpi`** from the [latest release](https://github.com/shen-zhang-42/abstractin/releases/latest).
 3. **In Zotero:** Tools → Plugins → ⚙ → *Install Plugin From File…* → pick the `.xpi`. Restart if asked.
-4. **Open a book or paper PDF.** AbstractIn appears in the side pane. Click **Start Reading**, confirm the attachment, material type and conversation language, then select text and ask.
+4. **Open a book or paper PDF.** AbstractIn appears in the side pane. Click **Start Reading**, confirm the attachment and material type, then initialize the book contents or choose a paper summary or immediate questions.
 
 The plugin update feed points at this AbstractIn repository. In-place updates become available after an AbstractIn release is published.
 
 ## Privacy
 
 - 🖥️ The assistants run **on your computer** with your own login. No server, no API keys.
-- 📄 Codex receives document metadata, annotations, the selected passage, the explicitly named reading skill, derived copies of saved reading notes, and any page image you attach. The plugin does not export the complete PDF text.
-- 📁 Chat caches and images stay in `abstractin/` inside Zotero's data folder. Concise reading records are Zotero child notes, the authoritative editable representation. Their synchronization still needs local verification.
+- 📄 Codex receives document metadata, annotations, the selected passage, the explicitly named reading skill, derived copies of saved reading notes, and any page image you attach. The reading workspace includes a local PDF copy and extracted text that Codex can inspect. Document content read by Codex is sent to the model through your signed-in account.
+- 📁 PDF/text copies, chat caches and images stay in `abstractin/` inside Zotero's data folder. Concise reading records are Zotero child notes, the authoritative editable representation. Their synchronization still needs local verification.
 
 <p align="center"><img src="docs/rule.svg" alt="" width="100%"></p>
 

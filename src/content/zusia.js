@@ -1180,8 +1180,30 @@ Zusia = {
 		readingBar.append(this.readingButton(doc, "zs-start-reading", () =>
 			this.openReadingSetup(root).catch(e => this.logError("Start Reading", e))),
 			this.el(doc, "span", "zs-reading-status", ""));
+		let readingTools = this.el(doc, "div", "zs-reading-tools");
+		for (let [className, label, action] of [
+			["zs-reading-workspace", "Reading workspace", view => this.openReadingWorkspace(view)],
+			["zs-reading-return", "Return to reading", view => this.returnToReading(view)],
+			["zs-reading-resume-here", "Resume here", async view => {
+				view.ctx.reading.referenceNavigation = false;
+				await this.rememberReadingPosition(view.ctx);
+				this.updateReadingControls(view);
+			}],
+		]) {
+			let button = this.el(doc, "button", "zs-reading-tool " + className, label);
+			button.type = "button";
+			button.addEventListener("click", () => {
+				let view = this._views.get(root);
+				if (view?.ctx.reading) Promise.resolve(action(view)).catch(e => this.appendError(view, e.message || String(e)));
+			});
+			readingTools.append(button);
+		}
+		readingTools.hidden = true;
+		readingBar.append(readingTools);
+		readingBar.append(this.el(doc, "span", "zs-reading-source-status", ""));
 		root.append(header, readingBar, logWrap, quick, composer);
 		root.addEventListener("keydown", event => this.handleShortcut(root, event));
+		root.addEventListener("click", event => this.handleReadingSourceLink(this._views.get(root), event));
 		body.appendChild(root);
 
 		this.updateControls(root);
@@ -2158,7 +2180,7 @@ Zusia = {
 		}
 	},
 
-	startRequest(view, text, images = [], modes = this.activeModes(), { selection = null } = {}) {
+	startRequest(view, text, images = [], modes = this.activeModes(), { selection = null, readingAction = null } = {}) {
 		let question = (text || "").trim();
 		if ((!question && !images.length) || this._pending.has(view.ctx.dir)) {
 			return;
@@ -2184,6 +2206,7 @@ Zusia = {
 			images,
 			modes,
 			selection,
+			readingAction,
 			backend,
 			model: this.getModel(backend),
 			effort: this.getEffort(backend),
@@ -3220,7 +3243,7 @@ Zusia = {
 		}
 		await this.saveSessions(view.ctx.dir, sessions);
 		this.renderMessages(view, kept);
-		this.startRequest(view, question, images, asked.modes || [], { selection: asked.selection || null });
+		this.startRequest(view, question, images, asked.modes || [], { selection: asked.selection || null, readingAction: asked.readingAction || null });
 	},
 
 	async showPending(view, pending) {
@@ -3317,7 +3340,9 @@ Zusia = {
 
 		let history = await this.loadHistory(view.ctx.dir);
 		this.renderMessages(view, history);
+		if (result.pdfSource && view.ctx.reading) view.ctx.reading.pdfSource = result.pdfSource;
 		this.updateControls(view.root);
+		if (result.sourceWarning) this.appendError(view, result.sourceWarning, { title: "PDF text unavailable" });
 		if (result.modelFallback) {
 			logEl.appendChild(this.el(doc, "div", "zs-notice", "Selected model unavailable. Answered using your local Codex defaults."));
 		}
@@ -3339,7 +3364,7 @@ Zusia = {
 				retry: () => {
 					logEl.querySelectorAll(".zs-error").forEach(n => n.remove());
 					this.renderMessages(view, history);
-					this.startRequest(view, pending.question, pending.images, pending.modes);
+					this.startRequest(view, pending.question, pending.images, pending.modes, { selection: pending.selection || null, readingAction: pending.readingAction || null });
 				},
 			});
 		}
@@ -3357,14 +3382,35 @@ Zusia = {
 			if (ctx.reading) {
 				if (backend !== "codex") return { error: "Reading sessions require local Codex." };
 				ctx = { ...ctx, reading: await this.prepareReadingSkills(ctx) };
+				ctx.reading.action = pending.readingAction || "discuss";
+				ctx.reading.currentPage = this.currentReadingLocation(ctx);
+				try { await this.rememberReadingPosition(ctx); }
+				catch (e) { this.logError("rememberReadingPosition", e); }
 			}
 			let files = await this.exportContext(ctx);
+			let pdfSource, sourceWarning;
+			if (ctx.reading) {
+				pending.progress({ status: "preparing PDF text" });
+				pdfSource = await this.exportReadingSource(ctx);
+				if (pending.cancelled) return { cancelled: true };
+				ctx = { ...ctx, reading: { ...ctx.reading, pdfSource } };
+				if (pdfSource.status === "ready" && pdfSource.pageMapping && ctx.reading.currentPage) {
+					let text = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
+					ctx.reading.currentPage.text = this.pdfPageText(text, ctx.reading.currentPage.pageIndex).slice(0, 6000);
+				}
+				if (pdfSource.status !== "ready") {
+					if (!pending.selection?.text && !pending.images?.length) return { error: pdfSource.error, pdfSource };
+					sourceWarning = pdfSource.error + " This answer uses only the supplied passage or image.";
+				}
+			}
 			if (ctx.reading) await this.exportReadingRecords(ctx);
+			if (ctx.reading) await this.exportReadingWorkspace(ctx);
 			let history = await this.loadHistory(ctx.dir);
 			let sessions = await this.loadSessions(ctx.dir);
 			let session = sessions[backend] || null;
 			// A model change starts a fresh thread, preserving history in the prompt.
 			if (backend === "codex" && session && session.model !== (pending.model || "")) session = null;
+			if (ctx.reading && session && session.sourceSignature !== pdfSource.signature) session = null;
 
 			let images = pending.images || [];
 			if (images.length && !this.BACKENDS[backend].images) {
@@ -3373,7 +3419,8 @@ Zusia = {
 			let request = {
 				ctx, files, history, session, images,
 				question: (question || "Look at the attached image.") + this.imageNote(backend, images) +
-					this.modeInstructions(pending.modes) + (ctx.reading ? "\n\n" + this.readingPrompt(ctx, pending.selection) : ""),
+					this.modeInstructions(pending.modes) + (ctx.reading ? "\n\n" + this.readingPrompt(ctx, pending.selection) +
+						(pending.readingAction ? "\n\n" + this.readingActionPrompt(ctx, pending.readingAction) : "") : ""),
 				model: pending.model,
 				effort: pending.effort,
 				onProgress: ctx.reading ? event => pending.progress({ ...event,
@@ -3429,7 +3476,17 @@ Zusia = {
 				return { error: result.error || label + " returned no text." };
 			}
 			let recordKey, recordWarning;
-			if (ctx.reading && !result.stopped) {
+			if (ctx.reading && !result.stopped && pending.readingAction) {
+				try {
+					let saved = await this.saveReadingAction(ctx, pending.readingAction, result.text);
+					result.text = saved.answer; recordKey = saved.key;
+				}
+				catch (e) { result.text = this.readingVisibleText(result.text); recordWarning = e.message || String(e); }
+				if (recordKey) meta.recordKey = recordKey;
+				if (recordWarning) meta.recordWarning = recordWarning;
+				meta.readingAction = pending.readingAction;
+			}
+			else if (ctx.reading && !result.stopped) {
 				let parsed = this.parseReadingAnswer(result.text);
 				result.text = parsed.answer;
 				if (!result.text) return { error: "Codex returned no reading answer." };
@@ -3447,7 +3504,8 @@ Zusia = {
 				Object.assign({ role: "user", text: question, ts: Date.now() },
 					pending.selection ? { selection: pending.selection } : {},
 					images.length ? { images: images.map(p => p.startsWith(ctx.dir) ? p.slice(ctx.dir.length).replace(/^[\/\\]+/, "") : p) } : {},
-					pending.modes && pending.modes.length ? { modes: pending.modes } : {}),
+					pending.modes && pending.modes.length ? { modes: pending.modes } : {},
+					pending.readingAction ? { readingAction: pending.readingAction } : {}),
 				Object.assign({ role: "assistant", text: result.text, ts: Date.now() }, meta, result.stopped ? { stopped: true } : {}),
 			]);
 			if (pending.selection) {
@@ -3477,9 +3535,10 @@ Zusia = {
 			if (result.sessionId) {
 				sessions[backend] = { id: result.sessionId, seen: history.length + 2,
 					...(backend === "codex" ? { model: pending.model || "" } : {}) };
+				if (ctx.reading) sessions[backend].sourceSignature = pdfSource.signature;
 				await this.saveSessions(ctx.dir, sessions);
 			}
-			return { ...(ctx.reading ? { recordKey, recordWarning } : {}), ...(modelFallback ? { modelFallback: true } : {}) };
+			return { ...(ctx.reading ? { recordKey, recordWarning, pdfSource, sourceWarning } : {}), ...(modelFallback ? { modelFallback: true } : {}) };
 		}
 		catch (e) {
 			this.logError("ask", e);
