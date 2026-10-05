@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Claude Sidebar harness</title>
+<title>AbstractIn harness</title>
 <link rel="stylesheet" href="zotero-tokens.css">
 <link rel="stylesheet" href="../src/content/zusia.css">
 <style>
@@ -44,6 +44,7 @@
 	var Zusia;
 </script>
 <script src="../src/content/zusia.js"></script>
+<script src="../src/content/reading.js"></script>
 </head>
 <body class="no-anim">
 <script>
@@ -53,11 +54,11 @@
 	CS.rootURI = "../src/";
 	CS.iconBase = "../src/content/icons/";
 	CS.findBinary = async key => { if (key === "codex") throw new Error("missing"); return "/bin/" + key; };
-	if (params.get("theme")) prefs["extensions.zusia.theme"] = params.get("theme");
+	if (params.get("theme")) prefs["extensions.abstractin.theme"] = params.get("theme");
 	// &appearance=<json> sets the Appearance pref; &bg=<url> stands in for the copied background image.
-	if (params.get("appearance")) prefs["extensions.zusia.appearance"] = params.get("appearance");
+	if (params.get("appearance")) prefs["extensions.abstractin.appearance"] = params.get("appearance");
 	// Setup is done unless the scenario is the wizard (&step=<n> opens that step).
-	prefs["extensions.zusia.onboarded"] = params.get("scenario") !== "wizard";
+	prefs["extensions.abstractin.onboarded"] = params.get("scenario") !== "wizard";
 	if (params.get("bg")) CS.backgroundURL = () => params.get("bg");
 	if (params.get("width")) document.documentElement.style.setProperty("--pane-width", params.get("width") + "px");
 	if (params.get("zoom")) document.documentElement.style.zoom = params.get("zoom");
@@ -91,9 +92,9 @@
 		{ id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)", desc: "gemini-3.8-flash-high" },
 		{ id: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)", desc: "gemini-3.1-pro-high" },
 	];
-	if (params.get("backend")) prefs["extensions.zusia.backend"] = params.get("backend");
-	if (params.get("model")) prefs["extensions.zusia." + (params.get("backend") || "claude") + ".model"] = params.get("model");
-	if (params.get("effort")) prefs["extensions.zusia." + (params.get("backend") || "claude") + ".effort"] = params.get("effort");
+	if (params.get("backend")) prefs["extensions.abstractin.backend"] = params.get("backend");
+	if (params.get("model")) prefs["extensions.abstractin." + (params.get("backend") || "claude") + ".model"] = params.get("model");
+	if (params.get("effort")) prefs["extensions.abstractin." + (params.get("backend") || "claude") + ".effort"] = params.get("effort");
 
 	const conversation = [
 		{ role: "user", text: "Explain this with $\\LaTeX$ please" },
@@ -157,7 +158,7 @@
 		else if (scenario === "error") {
 			CS.renderMessages(view, conversation);
 			CS.appendUser(view, "And the inverse transform?");
-			CS.appendError(view, "Could not find the 'claude' command. Make sure the Claude CLI is installed and on your PATH, or set extensions.zusia.claudePath (Zotero Settings → Advanced → Config Editor) to its full path.",
+			CS.appendError(view, "Could not find the 'claude' command. Make sure the Claude CLI is installed and on your PATH, or set extensions.abstractin.claudePath (Zotero Settings → Advanced → Config Editor) to its full path.",
 				{ title: "Claude could not answer", retry() {} });
 			CS.setBusy(view, false);
 		}

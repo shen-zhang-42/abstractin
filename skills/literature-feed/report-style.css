@@ -1,0 +1,222 @@
+:root {
+  --science-red: #c9252d;
+  --ink: #151515;
+  --body: #303030;
+  --muted: #686868;
+  --rule: #d7d7d7;
+  --soft: #f5f4f1;
+  --paper: #ffffff;
+  --canvas: #efefec;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--canvas); }
+
+body {
+  width: min(1280px, calc(100% - clamp(24px, 8vw, 160px)));
+  margin: clamp(12px, 3vw, 40px) auto;
+  padding: clamp(32px, 4.5vw, 64px);
+  background: var(--paper);
+  color: var(--body);
+  font-family: Arial, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font-size: 16px;
+  line-height: 1.62;
+}
+
+body > main,
+.literature-report,
+.review-report,
+.paper-report,
+.feed-report {
+  display: block;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+h1, h2, h3 {
+  color: var(--ink);
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  max-width: 920px;
+  margin: 10px 0 18px;
+  font: 700 clamp(38px, 5vw, 62px)/1.02 Georgia, serif;
+}
+
+h2 {
+  margin: 0 0 28px;
+  font: 700 clamp(28px, 3vw, 38px)/1.12 Georgia, serif;
+}
+
+h3 {
+  margin: 8px 0 14px;
+  font: 700 clamp(24px, 3vw, 33px)/1.12 Georgia, serif;
+}
+
+.kicker,
+.eyebrow {
+  color: var(--science-red);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+
+.report-subtitle {
+  max-width: 900px;
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.deck {
+  max-width: 900px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 19px;
+}
+
+.major {
+  margin: 58px 0 42px;
+  border: 0;
+  border-top: 8px solid var(--ink);
+}
+
+.conclusion-rule,
+.paper-rule {
+  width: 34%;
+  min-width: 190px;
+  margin: 58px 0 22px;
+  border: 0;
+  border-top: 6px solid var(--science-red);
+}
+
+.table-wrap,
+.table-responsive {
+  width: 100%;
+  margin: 16px 0 30px;
+  overflow-x: visible !important;
+}
+
+table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  border-top: 2px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+th,
+td {
+  min-width: 0 !important;
+  padding: 12px 14px;
+  vertical-align: top;
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
+}
+
+th {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .035em;
+}
+
+tr:last-child td { border-bottom: 0; }
+
+.key-value th { width: 24%; background: var(--soft); }
+.evidence th { width: 25%; background: var(--soft); }
+.synthesis th:first-child { width: 20%; }
+.synthesis td:first-child { color: var(--ink); font-weight: 800; }
+.score { color: var(--ink); font-weight: 800; }
+.section-label { margin: 34px 0 8px; color: var(--ink); font-size: 18px; font-weight: 800; }
+
+.experiment-map th:nth-child(1),
+.experiment-map td:nth-child(1) { width: 13%; }
+.experiment-map th:nth-child(2),
+.experiment-map td:nth-child(2) { width: 14%; }
+.experiment-map th:nth-child(3),
+.experiment-map td:nth-child(3) { width: 21%; }
+.experiment-map th:nth-child(4),
+.experiment-map td:nth-child(4) { width: 17%; }
+.experiment-map th:nth-child(5),
+.experiment-map td:nth-child(5) { width: 17%; }
+.experiment-map th:nth-child(6),
+.experiment-map td:nth-child(6) { width: 18%; }
+
+a {
+  color: #8f1017;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+footer {
+  margin-top: 56px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  body {
+    width: calc(100% - 16px);
+    margin: 8px auto;
+    padding: 28px 12px 48px;
+  }
+
+  .major {
+    margin: 44px 0 30px;
+    border-top-width: 6px;
+  }
+
+  .conclusion-rule,
+  .paper-rule {
+    width: 44%;
+    min-width: 120px;
+    margin-top: 42px;
+  }
+
+  table { font-size: 12px; }
+
+  .experiment-map th,
+  .experiment-map td {
+    width: auto !important;
+  }
+
+  th,
+  td {
+    padding: 7px 5px;
+    letter-spacing: 0;
+  }
+}
+
+@media print {
+  html,
+  body { background: #ffffff; }
+
+  body {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  a {
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  .major { margin: 36px 0 28px; }
+}

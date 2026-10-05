@@ -49,7 +49,7 @@ async function testSidebar(win, CS) {
 	item.setField("title", "Integration test paper");
 	await item.saveTx();
 
-	let dir = PathUtils.join(Zotero.DataDirectory.dir, "zusia", item.libraryID + "-" + item.key);
+	let dir = PathUtils.join(Zotero.DataDirectory.dir, "abstractin", item.libraryID + "-" + item.key);
 	await IOUtils.makeDirectory(dir, { createAncestors: true });
 	let history = [
 		{ role: "user", text: "Explain the FFT with $\\LaTeX$" },
@@ -70,7 +70,7 @@ async function testSidebar(win, CS) {
 	await itemPane.renderItemPane(item);
 	// Sections render lazily once scrolled into view.
 	let details = win.document.querySelector("item-details");
-	let sectionEl = await waitFor(() => win.document.querySelector('[data-pane$="zusia-section"]'), 20000, "sidebar section element");
+	let sectionEl = await waitFor(() => win.document.querySelector('[data-pane$="abstractin-section"]'), 20000, "sidebar section element");
 	details.scrollToPane?.(sectionEl.dataset.pane, "instant");
 	sectionEl.scrollIntoView({ block: "start" });
 	sectionEl.open = true;
@@ -223,7 +223,7 @@ async function testReaderWidth(win, CS) {
 	let attachment = await Zotero.Attachments.importFromFile({ file: pdf, parentItemID: parent.id });
 	check("pdf: attachment imported", attachment && attachment.isPDFAttachment());
 
-	let dir = PathUtils.join(Zotero.DataDirectory.dir, "zusia", parent.libraryID + "-" + parent.key);
+	let dir = PathUtils.join(Zotero.DataDirectory.dir, "abstractin", parent.libraryID + "-" + parent.key);
 	await IOUtils.makeDirectory(dir, { createAncestors: true });
 	await IOUtils.writeUTF8(PathUtils.join(dir, "chat.json"), JSON.stringify([
 		{ role: "user", text: "What does the convolution theorem say?" },
@@ -235,7 +235,7 @@ async function testReaderWidth(win, CS) {
 	let paneEl = win.document.getElementById("zotero-item-pane");
 	itemPane.data = [parent];
 	await itemPane.renderItemPane(parent);
-	let sectionEl = await waitFor(() => win.document.querySelector('#zotero-item-pane [data-pane$="zusia-section"]'), 20000, "section element");
+	let sectionEl = await waitFor(() => win.document.querySelector('#zotero-item-pane [data-pane$="abstractin-section"]'), 20000, "section element");
 	win.document.querySelector("#zotero-item-pane item-details")?.scrollToPane?.(sectionEl.dataset.pane, "instant");
 	sectionEl.scrollIntoView({ block: "start" });
 	sectionEl.open = true;
@@ -376,9 +376,9 @@ async function run() {
 	repo = Zotero.Prefs.get("extensions.zusia-tester.repo", true);
 	try {
 		await Zotero.uiReadyPromise;
-		let CS = await waitFor(() => Zotero.Zusia, 30000, "Claude Sidebar startup");
+		let CS = await waitFor(() => Zotero.AbstractIn, 30000, "Claude Sidebar startup");
 		check("plugin started", true, CS.version);
-		let links = [...Zotero.getMainWindow().document.querySelectorAll("#zusia-stylesheet")];
+		let links = [...Zotero.getMainWindow().document.querySelectorAll("#abstractin-stylesheet")];
 		check("one stylesheet link, versioned so updates never reuse a cached copy",
 			links.length === 1 && /zusia\.css\?v=/.test(links[0].href), links.map(l => l.href));
 		let win = await waitFor(() => Zotero.getMainWindow() && Zotero.getMainWindow().ZoteroPane && Zotero.getMainWindow(), 30000, "main window");

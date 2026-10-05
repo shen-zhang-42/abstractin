@@ -18,15 +18,15 @@ const LOG = `doc.querySelector('${ACTIVE} .zs-log')`;
 
 async function setUp(s, { paper, page = 0, modes = {}, look = LOOK, onboarded = true, effort = "medium" } = {}) {
 	await s.run(`
-		let CS = Zotero.Zusia;
-		Zotero.Prefs.set("extensions.zusia.appearance", ${JSON.stringify(JSON.stringify(look))}, true);
-		Zotero.Prefs.set("extensions.zusia.onboarded", ${onboarded}, true);
-		Zotero.Prefs.set("extensions.zusia.backend", "claude", true);
-		Zotero.Prefs.set("extensions.zusia.claude.model", "opus", true);
-		Zotero.Prefs.set("extensions.zusia.claude.effort", ${JSON.stringify(effort)}, true);
-		Zotero.Prefs.set("extensions.zusia.mode.drawing", ${!!modes.drawing}, true);
-		Zotero.Prefs.set("extensions.zusia.behaviour", JSON.stringify({ length: "short", level: "student", tone: "neutral" }), true);
-		Zotero.Prefs.set("extensions.zusia.mode.latex", ${!!modes.latex}, true);
+		let CS = Zotero.AbstractIn;
+		Zotero.Prefs.set("extensions.abstractin.appearance", ${JSON.stringify(JSON.stringify(look))}, true);
+		Zotero.Prefs.set("extensions.abstractin.onboarded", ${onboarded}, true);
+		Zotero.Prefs.set("extensions.abstractin.backend", "claude", true);
+		Zotero.Prefs.set("extensions.abstractin.claude.model", "opus", true);
+		Zotero.Prefs.set("extensions.abstractin.claude.effort", ${JSON.stringify(effort)}, true);
+		Zotero.Prefs.set("extensions.abstractin.mode.drawing", ${!!modes.drawing}, true);
+		Zotero.Prefs.set("extensions.abstractin.behaviour", JSON.stringify({ length: "short", level: "student", tone: "neutral" }), true);
+		Zotero.Prefs.set("extensions.abstractin.mode.latex", ${!!modes.latex}, true);
 		Services.wm.getMostRecentWindow("zotero:pref")?.close();
 		for (let id of ["post-upgrade-container", "sync-reminder-container", "file-renaming-banner-container"]) {
 			let banner = doc.getElementById(id);
@@ -50,13 +50,13 @@ async function setUp(s, { paper, page = 0, modes = {}, look = LOOK, onboarded = 
 		await Zotero.Promise.delay(900);
 		return true;`);
 	s.front();
-	await s.click(`${PANE} item-pane-sidenav [data-pane$="zusia-section"]`, { after: 1200 });
+	await s.click(`${PANE} item-pane-sidenav [data-pane$="abstractin-section"]`, { after: 1200 });
 	await s.run(`
 		let reader = Zotero.Reader._readers.find(r => r.tabID === win.Zotero_Tabs.selectedID);
 		let item = Zotero.Items.get(reader.itemID);
-		let dir = Zotero.Zusia.contextDirFor(item);
+		let dir = Zotero.AbstractIn.contextDirFor(item);
 		for (let root of doc.querySelectorAll(".zs-root")) {
-			let view = Zotero.Zusia._views.get(root);
+			let view = Zotero.AbstractIn._views.get(root);
 			if (view && view.ctx.dir === dir && root.getBoundingClientRect().width > 100) root.dataset.zusiaActive = "1";
 			else delete root.dataset.zusiaActive;
 		}
@@ -64,12 +64,12 @@ async function setUp(s, { paper, page = 0, modes = {}, look = LOOK, onboarded = 
 	await s.moveTo({ x: 700, y: 620 }, { ms: 300 });
 }
 
-const dirOf = paper => `PathUtils.join(Zotero.Zusia.getDataDir(), "1-" + Zotero.Items.get(${paper}).key)`;
+const dirOf = paper => `PathUtils.join(Zotero.AbstractIn.getDataDir(), "1-" + Zotero.Items.get(${paper}).key)`;
 
 // Asks in the background (no camera time) so a scene can start from an existing answer.
 async function askOffCamera(s, paper, question, { modes = [], selection = null } = {}) {
 	await s.run(`
-		let CS = Zotero.Zusia;
+		let CS = Zotero.AbstractIn;
 		let item = Zotero.Items.get(${paper});
 		let ctx = await CS.getContext(item);
 		let view = { doc, root: null, ctx, logEl: doc.createElement("div"), input: doc.createElement("textarea"), send() {} };
@@ -84,7 +84,7 @@ async function askOffCamera(s, paper, question, { modes = [], selection = null }
 async function waitForAnswer(s, mark) {
 	let sawText = false;
 	for (;;) {
-		let state = await s.run(`let p = [...Zotero.Zusia._pending.values()][0];
+		let state = await s.run(`let p = [...Zotero.AbstractIn._pending.values()][0];
 			return p ? { partial: p.partial.length } : null`);
 		if (!state) {
 			break;
@@ -124,10 +124,10 @@ const SCENES = {
 	explain: {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.resnet, page: 0 });
-			await s.run(`await Zotero.Zusia.saveHistory(${dirOf(PAPERS.resnet)}, []);
-				await Zotero.Zusia.saveClarifications(${dirOf(PAPERS.resnet)}, []);
-				let view = Zotero.Zusia._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
-				Zotero.Zusia.renderMessages(view, []);`);
+			await s.run(`await Zotero.AbstractIn.saveHistory(${dirOf(PAPERS.resnet)}, []);
+				await Zotero.AbstractIn.saveClarifications(${dirOf(PAPERS.resnet)}, []);
+				let view = Zotero.AbstractIn._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
+				Zotero.AbstractIn.renderMessages(view, []);`);
 		},
 		async run(s) {
 			s.mark("start");
@@ -147,9 +147,9 @@ const SCENES = {
 	figure: {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.vit, page: 2 });
-			await s.run(`await Zotero.Zusia.saveHistory(${dirOf(PAPERS.vit)}, []);
-				let view = Zotero.Zusia._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
-				Zotero.Zusia.renderMessages(view, []);`);
+			await s.run(`await Zotero.AbstractIn.saveHistory(${dirOf(PAPERS.vit)}, []);
+				let view = Zotero.AbstractIn._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
+				Zotero.AbstractIn.renderMessages(view, []);`);
 		},
 		async run(s) {
 			s.mark("start");
@@ -173,7 +173,7 @@ const SCENES = {
 	clarifications: {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.resnet, page: 0 });
-			let count = await s.run(`return (await Zotero.Zusia.loadClarifications(${dirOf(PAPERS.resnet)})).length`);
+			let count = await s.run(`return (await Zotero.AbstractIn.loadClarifications(${dirOf(PAPERS.resnet)})).length`);
 			if (count < 2) {
 				await askOffCamera(s, PAPERS.resnet, "About this passage (p. 1):\n\n> Deeper neural networks are more difficult to train.\n\nWhy exactly are deeper networks harder to train?", {
 					selection: { text: "Residual nets with a depth of up to 152 layers are 8x deeper than VGG nets.", pageLabel: "1", position: null },
@@ -228,9 +228,9 @@ const SCENES = {
 	theorems: {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.adam, page: 3, modes: { latex: true }, effort: "high" });
-			await s.run(`await Zotero.Zusia.saveHistory(${dirOf(PAPERS.adam)}, []);
-				let view = Zotero.Zusia._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
-				Zotero.Zusia.renderMessages(view, []);`);
+			await s.run(`await Zotero.AbstractIn.saveHistory(${dirOf(PAPERS.adam)}, []);
+				let view = Zotero.AbstractIn._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
+				Zotero.AbstractIn.renderMessages(view, []);`);
 		},
 		async run(s) {
 			s.mark("start");
@@ -258,12 +258,12 @@ const SCENES = {
 	explainBetter: {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.bert, page: 3 });
-			let history = await s.run(`return (await Zotero.Zusia.loadHistory(${dirOf(PAPERS.bert)})).length`);
+			let history = await s.run(`return (await Zotero.AbstractIn.loadHistory(${dirOf(PAPERS.bert)})).length`);
 			if (!history) {
 				await askOffCamera(s, PAPERS.bert, "What is the masked language model objective? Answer in one dense sentence.");
 			}
-			await s.run(`let view = Zotero.Zusia._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
-				Zotero.Zusia.renderMessages(view, await Zotero.Zusia.loadHistory(${dirOf(PAPERS.bert)}));`);
+			await s.run(`let view = Zotero.AbstractIn._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
+				Zotero.AbstractIn.renderMessages(view, await Zotero.AbstractIn.loadHistory(${dirOf(PAPERS.bert)}));`);
 		},
 		async run(s) {
 			s.mark("start");
@@ -281,7 +281,7 @@ const SCENES = {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.attention, page: 3 });
 			// Make the chat holding the drawing the current one again.
-			await s.run(`let CS = Zotero.Zusia; let dir = ${dirOf(PAPERS.attention)};
+			await s.run(`let CS = Zotero.AbstractIn; let dir = ${dirOf(PAPERS.attention)};
 				let current = await CS.loadHistory(dir);
 				if (!current.some(m => String(m.text).includes("\`\`\`svg"))) {
 					for (let entry of await CS.listArchives(dir)) {
@@ -332,7 +332,7 @@ const SCENES = {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.gpt3, page: 0, onboarded: false, look: {} });
 			await s.run(`for (let root of doc.querySelectorAll('${ACTIVE}')) {
-				if (!root.querySelector(".zs-wizard")) Zotero.Zusia.showWizard(root);
+				if (!root.querySelector(".zs-wizard")) Zotero.AbstractIn.showWizard(root);
 			}`);
 		},
 		async run(s) {
@@ -367,7 +367,7 @@ const SCENES = {
 	introChat: {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.attention, page: 3, modes: {}, effort: "medium" });
-			await s.run(`let CS = Zotero.Zusia;
+			await s.run(`let CS = Zotero.AbstractIn;
 				await CS.saveHistory(${dirOf(PAPERS.attention)}, []);
 				await CS.saveSessions(${dirOf(PAPERS.attention)}, {});
 				let view = CS._views.get(doc.querySelector('${ACTIVE}'));
@@ -387,11 +387,11 @@ const SCENES = {
 				return { x: w.mozInnerScreenX + rect.left, y: w.mozInnerScreenY + rect.top, w: rect.width, h: rect.height };`);
 			await s.click(toggle, { after: 900 });
 			s.mark("pane");
-			await s.click(`${PANE} item-pane-sidenav [data-pane$="zusia-section"]`, { after: 900 });
+			await s.click(`${PANE} item-pane-sidenav [data-pane$="abstractin-section"]`, { after: 900 });
 			await s.run(`let reader = Zotero.Reader._readers.find(r => r.tabID === win.Zotero_Tabs.selectedID);
-				let dir = Zotero.Zusia.contextDirFor(Zotero.Items.get(reader.itemID));
+				let dir = Zotero.AbstractIn.contextDirFor(Zotero.Items.get(reader.itemID));
 				for (let root of doc.querySelectorAll(".zs-root")) {
-					let view = Zotero.Zusia._views.get(root);
+					let view = Zotero.AbstractIn._views.get(root);
 					if (view && view.ctx.dir === dir && root.getBoundingClientRect().width > 100) root.dataset.zusiaActive = "1";
 					else delete root.dataset.zusiaActive;
 				}`);
@@ -420,7 +420,7 @@ const SCENES = {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.attention, page: 3, look: {} });
 			await s.run(`
-				let CS = Zotero.Zusia;
+				let CS = Zotero.AbstractIn;
 				CS._pickBackground = CS._pickBackground || CS.pickBackground;
 				CS.pickBackground = async () => {
 					let name = "background-" + Date.now() + ".jpg";
@@ -429,7 +429,7 @@ const SCENES = {
 				};
 				let log = ${LOG}; let fig = log.querySelector(".zs-figure");
 				if (fig) log.scrollTop = fig.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 80;
-				Zotero.Utilities.Internal.openPreferences("zusia-prefs");
+				Zotero.Utilities.Internal.openPreferences("abstractin-prefs");
 				for (let i = 0; i < 40 && !Services.wm.getMostRecentWindow("zotero:pref")?.document.querySelector(".zs-prefs"); i++) await Zotero.Promise.delay(150);
 				let pw = Services.wm.getMostRecentWindow("zotero:pref");
 				pw.resizeTo(760, 820); pw.moveTo(200, 170);
@@ -468,7 +468,7 @@ const SCENES = {
 			await pick("Button labels", "Icons + text", 1100);
 			await pick("Button labels", "Icons only", 900);
 			s.mark("labels");
-			await s.run(`${PREFS}.close(); let CS = Zotero.Zusia; if (CS._pickBackground) CS.pickBackground = CS._pickBackground;`);
+			await s.run(`${PREFS}.close(); let CS = Zotero.AbstractIn; if (CS._pickBackground) CS.pickBackground = CS._pickBackground;`);
 			await sleep(900);
 			s.front();
 			await s.moveTo(await s.rect(`${ACTIVE} .zs-log`), { ms: 500, dx: 150 });
@@ -483,9 +483,9 @@ const SCENES = {
 	assistants: {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.gpt3, page: 5 });
-			await s.run(`await Zotero.Zusia.saveHistory(${dirOf(PAPERS.gpt3)}, []);
-				let view = Zotero.Zusia._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
-				Zotero.Zusia.renderMessages(view, []);`);
+			await s.run(`await Zotero.AbstractIn.saveHistory(${dirOf(PAPERS.gpt3)}, []);
+				let view = Zotero.AbstractIn._views.get([...doc.querySelectorAll('${ACTIVE}')].find(r => r.getBoundingClientRect().width));
+				Zotero.AbstractIn.renderMessages(view, []);`);
 		},
 		async run(s) {
 			s.mark("start");

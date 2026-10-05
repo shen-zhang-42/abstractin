@@ -12,7 +12,7 @@ out="$here/out"
 
 rm -rf "$base" "$out"
 mkdir -p "$base/profile/extensions" "$base/data" "$out"
-echo "$repo/src" > "$base/profile/extensions/zusia@firekern.github.io"
+echo "$repo/src" > "$base/profile/extensions/abstractin@shen-zhang-42.github.io"
 echo "$here/tester" > "$base/profile/extensions/zusia-tester@firekern.github.io"
 cat > "$base/profile/user.js" <<PREFS
 user_pref("extensions.zotero.dataDir", "$base/data");

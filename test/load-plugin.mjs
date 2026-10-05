@@ -2,6 +2,7 @@
 // so rendering can be tested outside Zotero.
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
+import { runInNewContext } from "node:vm";
 
 const root = new URL("../", import.meta.url);
 const read = path => readFileSync(new URL(path, root), "utf8");
@@ -19,8 +20,12 @@ export function loadPlugin({ prefs = {} } = {}) {
 		getMainWindow: () => window,
 	};
 	window.eval(read("src/content/lib/katex.min.js").replace(/^!function\(e,t\)\{/, "!function(e,t){var exports,module,define;"));
-	window.Services = { scriptloader: { loadSubScript: (url, scope) => { scope.module.exports = window.katex; } } };
+	window.Services = { scriptloader: { loadSubScript: (url, scope) => {
+		if (!url.endsWith("content/lib/katex.min.js")) throw new Error("Unexpected script: " + url);
+		runInNewContext(read("src/content/lib/katex.min.js"), scope);
+	} } };
 	window.eval("var Zusia;\n" + read("src/content/zusia.js") + "\nwindow.Zusia = Zusia;");
+	window.eval(read("src/content/reading.js"));
 	const plugin = window.Zusia;
 	plugin.rootURI = "./";
 	return { window, document: window.document, plugin, prefs };

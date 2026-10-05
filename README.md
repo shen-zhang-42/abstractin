@@ -1,12 +1,12 @@
 <p align="center"><img src="docs/zusia-hero.jpg" alt="Zusia: a girl in a red hoodie studying the ResNet paper at night" width="100%"></p>
 
-<h1 align="center">Zusia</h1>
+<h1 align="center">AbstractIn</h1>
 
 <p align="center"><b>Your study buddy inside Zotero.</b><br>Ask about the paper you're reading. Get maths, drawings and proofs back.</p>
 
 <p align="center">
-  <a href="https://github.com/firekern/zusia/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/firekern/zusia/ci.yml?branch=main&label=tests&color=d42a3c&labelColor=111111" alt="Tests"></a>
-  <a href="https://github.com/firekern/zusia/releases/latest"><img src="https://img.shields.io/github/v/release/firekern/zusia?label=release&color=b85a38&labelColor=111111" alt="Latest release"></a>
+  <a href="https://github.com/shen-zhang-42/abstractin/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/shen-zhang-42/abstractin/ci.yml?branch=main&label=tests&color=d42a3c&labelColor=111111" alt="Tests"></a>
+  <a href="https://github.com/shen-zhang-42/abstractin/releases/latest"><img src="https://img.shields.io/github/v/release/shen-zhang-42/abstractin?label=release&color=b85a38&labelColor=111111" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/Zotero-7%20%E2%80%93%2010-c03a64?labelColor=111111" alt="Zotero 7 to 10">
   <img src="https://img.shields.io/badge/Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Antigravity-6d4fd6?labelColor=111111" alt="Works with Claude Code, Codex and Antigravity">
   <img src="https://img.shields.io/badge/no%20API%20keys-0d7f78?labelColor=111111" alt="No API keys">
@@ -15,7 +15,19 @@
 
 <p align="center"><img src="docs/rule.svg" alt="" width="100%"></p>
 
-**TL;DR**
+**Current AbstractIn milestone**
+
+AbstractIn is a Zotero reading assistant built from [Zusia](https://github.com/firekern/zusia).
+
+The first integration supports **Start Reading → choose the exact PDF, book/paper type and language → select a passage → local Codex → rendered answer → concise Zotero child note**.
+
+The original `book-reading`, `scientific-paper-reading` and the paper skill's local extraction dependency are bundled without modification. Local skills may be used from your `.codex/skills` directory; `scientific-book-reading` is recognized as the folder alias for `book-reading`.
+
+See [Windows installation and verification](docs/WINDOWS-TESTING.md). No running Codespace is needed. Source development uses this checkout's `src/` directory; run `npm run source:path` to print its absolute location.
+
+This milestone starts directly with questions. Table-of-contents initialization, reading-position restoration, full-paper summary choices and report export are subsequent milestones. The demos below show the inherited Zusia interface, not completion of those workflows.
+
+**Inherited interface**
 
 - 💬 A chat **next to the PDF**, in Zotero's side pane.
 - ✏️ Answers with **LaTeX**, **drawings** and numbered **theorem boxes**.
@@ -86,18 +98,18 @@
 
 ## Install
 
-1. **Install one assistant CLI** and sign in: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex) or Antigravity (`agy`).
-2. **Download `zusia.xpi`** from the [latest release](https://github.com/firekern/zusia/releases/latest).
+1. **Install local Codex CLI** and sign in. Start Reading uses Codex; see the [Windows instructions](docs/WINDOWS-TESTING.md).
+2. **Download `abstractin.xpi`** from the [latest release](https://github.com/shen-zhang-42/abstractin/releases/latest).
 3. **In Zotero:** Tools → Plugins → ⚙ → *Install Plugin From File…* → pick the `.xpi`. Restart if asked.
-4. **Open a paper.** Zusia appears in the side pane and starts the setup wizard.
+4. **Open a book or paper PDF.** AbstractIn appears in the side pane. Click **Start Reading**, confirm the attachment, material type and conversation language, then select text and ask.
 
-Updates arrive on their own after that: Zotero checks the release feed.
+The plugin update feed points at this AbstractIn repository. In-place updates become available after an AbstractIn release is published.
 
 ## Privacy
 
 - 🖥️ The assistants run **on your computer** with your own login. No server, no API keys.
-- 📄 They get the paper's **metadata and your annotations**, never the PDF's full text. Plus any image you attach.
-- 📁 Chats, clarifications and images stay in `zusia/` inside Zotero's data folder.
+- 📄 Codex receives document metadata, annotations, the selected passage, the explicitly named reading skill, derived copies of saved reading notes, and any page image you attach. The plugin does not export the complete PDF text.
+- 📁 Chat caches and images stay in `abstractin/` inside Zotero's data folder. Concise reading records are Zotero child notes, the authoritative editable representation. Their synchronization still needs local verification.
 
 <p align="center"><img src="docs/rule.svg" alt="" width="100%"></p>
 
@@ -108,7 +120,7 @@ Updates arrive on their own after that: Zotero checks the release feed.
 
 ```sh
 npm ci
-npm run build        # writes zusia.xpi
+npm run build        # writes abstractin.xpi
 ```
 
 ## Test
@@ -140,4 +152,4 @@ New behaviour starts with a failing test; see [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Icons: [Phosphor Icons](https://phosphoricons.com) (MIT). Maths: [KaTeX](https://katex.org) (MIT) and Latin Modern Math (GUST Font License). The study buddies are original to this project; the illustrations were made for Zusia with Google Gemini. Papers in the videos: arXiv 1706.03762, 1512.03385, 1810.04805, 2010.11929, 2005.14165, 1412.6980. Details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Zusia is MIT licensed. See [LICENSE](LICENSE).
+AbstractIn preserves Zusia’s MIT license and Andrea Porcelli’s copyright. See [LICENSE](LICENSE).

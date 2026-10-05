@@ -20,7 +20,7 @@ cp "${ZUSIA_BACKGROUND:?set ZUSIA_BACKGROUND to the tall illustration}" /Users/S
 
 if ! nc -z 127.0.0.1 6200 2>/dev/null; then
 	mkdir -p "$base/profile/extensions" "$base/data/zusia"
-	echo "$repo/src" > "$base/profile/extensions/zusia@firekern.github.io"
+	echo "$repo/src" > "$base/profile/extensions/abstractin@shen-zhang-42.github.io"
 	cat > "$base/profile/user.js" <<PREFS
 user_pref("extensions.zotero.dataDir", "$base/data");
 user_pref("extensions.zotero.useDataDir", true);

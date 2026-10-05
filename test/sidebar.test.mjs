@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { loadPlugin } from "./load-plugin.mjs";
 
-const PREFIX = "extensions.zusia.";
+const PREFIX = "extensions.abstractin.";
 
 function sidebar(prefs = {}) {
 	// The setup wizard is tested on its own; everywhere else setup is already done.
@@ -28,6 +28,44 @@ function sidebar(prefs = {}) {
 	return { ...env, root, view, sent, removed };
 }
 const menuLabels = root => [...root.querySelectorAll(".zs-menu .zs-menu-label")].map(n => n.textContent);
+
+test("reading model menu offers GPT-6 and saves a custom model ID", () => {
+	const { root, view, plugin, prefs } = sidebar();
+	view.ctx.reading = { type: "book", language: "English" };
+	root._installed.codex = "/bin/codex";
+	root.querySelector(".zs-model-btn").click();
+	assert.ok(menuLabels(root).includes("GPT-6 Sol"));
+	const sol = [...root.querySelectorAll(".zs-menu-item")].find(n => n.textContent.includes("GPT-6 Sol"));
+	sol.click();
+	assert.equal(prefs[PREFIX + "codex.model"], "gpt-6-sol");
+	root.querySelector(".zs-model-btn").click();
+	[...root.querySelectorAll(".zs-menu-item")].find(n => n.textContent.includes("Choose another model")).click();
+	const input = root.querySelector(".zs-codex-model-input");
+	input.value = "account-model";
+	root.querySelector(".zs-model-save").click();
+	assert.equal(prefs[PREFIX + "codex.model"], "account-model");
+	assert.ok(plugin.getModels("codex").some(n => n.id === "account-model"));
+	assert.equal(root.querySelector(".zs-panel"), null);
+});
+
+test("empty chat no longer repeats the Start Reading prompt", () => {
+	const { plugin, view } = sidebar();
+	plugin.renderEmptyState(view);
+	assert.ok(!view.logEl.textContent.includes("Start Reading"));
+});
+
+test("Start Reading remains a primary text button during an active reading session", () => {
+	const { root, view, plugin } = sidebar({ [PREFIX + "language"]: "English" });
+	root.dataset.labels = "icons";
+	view.ctx.reading = { type: "paper", language: "English" };
+	plugin.updateReadingControls(view);
+	const button = root.querySelector(".zs-start-reading");
+	assert.equal(button.textContent, "Start Reading");
+	assert.ok(button.classList.contains("zs-reading-primary"));
+	assert.ok(!button.classList.contains("zs-ghost"));
+	assert.equal(button.getAttribute("aria-label"), "Start Reading");
+	assert.equal(root.querySelector(".zs-reading-status").textContent, "Paper · English · Codex");
+});
 
 test("composer shows the assistant, model and effort from prefs", () => {
 	const { root } = sidebar({ [PREFIX + "claude.model"]: "opus", [PREFIX + "claude.effort"]: "high" });
@@ -236,7 +274,7 @@ test("answers show a collapsed activity line that expands to the steps", () => {
 });
 
 test("menus: arrow keys move focus, Home/End jump, Escape closes back to the button", async () => {
-	const { root, window } = sidebar({ "extensions.zusia.claude.effort": "high" });
+	const { root, window } = sidebar({ "extensions.abstractin.claude.effort": "high" });
 	const button = root.querySelector(".zs-effort-btn");
 	button.click();
 	await new Promise(r => setTimeout(r, 0));
@@ -260,13 +298,13 @@ test("menus: arrow keys move focus, Home/End jump, Escape closes back to the but
 });
 
 test("long model names drop the assistant prefix; the tooltip keeps both", () => {
-	const { root, plugin } = sidebar({ "extensions.zusia.backend": "agy", "extensions.zusia.agy.model": "gemini-3.8-flash-high" });
+	const { root, plugin } = sidebar({ "extensions.abstractin.backend": "agy", "extensions.abstractin.agy.model": "gemini-3.8-flash-high" });
 	plugin._agyModels = [{ id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)" }];
 	plugin.updateControls(root);
 	const button = root.querySelector(".zs-model-btn");
 	assert.equal(button.querySelector(".zs-label").textContent, "Gemini 3.8 Flash (High)");
 	assert.match(button.title, /^Antigravity · Gemini 3\.8 Flash \(High\)/);
-	const short = sidebar({ "extensions.zusia.claude.model": "opus" });
+	const short = sidebar({ "extensions.abstractin.claude.model": "opus" });
 	assert.equal(short.root.querySelector(".zs-model-btn .zs-label").textContent, "Claude · Opus");
 });
 

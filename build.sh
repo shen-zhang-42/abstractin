@@ -2,16 +2,23 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-rm -f zusia.xpi
-cd src
-if command -v zip >/dev/null; then
-	zip -r ../zusia.xpi * -x ".*"
-else
-	python3 -c "import os, zipfile
-with zipfile.ZipFile(\"../zusia.xpi\", \"w\", zipfile.ZIP_DEFLATED) as z:
-    for r, d, f in os.walk(\".\"):
-        d[:] = [x for x in d if not x.startswith(\".\")]
-        [z.write(os.path.join(r, n), os.path.relpath(os.path.join(r, n))) for n in f if not n.startswith(\".\")]"
-fi
-cd ..
-echo "Built zusia.xpi"
+python3 - <<'PY'
+import json
+from pathlib import Path
+from zipfile import ZipFile, ZIP_DEFLATED
+
+root = Path.cwd()
+src = root / 'src'
+catalog = json.loads((src / 'content/reading-skill-assets.json').read_text())
+assets = [(src / path, str(path)) for path in sorted(p.relative_to(src) for p in src.rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(src).parts))]
+assets.extend((root / name, name) for name in ['LICENSE', 'THIRD_PARTY_NOTICES.md'])
+for relative in catalog['files']:
+    source = root / 'skills' / relative
+    if not source.is_file():
+        raise SystemExit('Missing original skill resource: ' + str(source))
+    assets.append((source, 'skills/' + relative))
+with ZipFile(root / 'abstractin.xpi', 'w', ZIP_DEFLATED) as archive:
+    for source, target in assets:
+        archive.write(source, target)
+print('Built ' + str(root / 'abstractin.xpi'))
+PY

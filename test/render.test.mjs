@@ -6,6 +6,24 @@ const env = loadPlugin();
 const texErrors = c => [...c.querySelectorAll(".zs-tex-error")].map(n => n.textContent);
 const cellText = (table, row, col) => table.rows[row].cells[col].textContent.trim();
 
+test("bundled KaTeX loads without DOM globals and renders the Bayesian formulas from the reported failure", () => {
+	const local = loadPlugin();
+	const text = String.raw`\begin{definition}[Bayesian decision problem]
+A Bayesian decision problem consists of a parameter space $\Theta$, an observation $x$, an action space $\mathcal A$, a statistical model $p(x\mid\theta)$, a prior distribution $\pi(\theta)$, and a loss function $L(\theta,a)$.
+\end{definition}
+
+$$p(x,\theta)=p(x\mid\theta)\pi(\theta). \tag{1}$$
+
+$$\pi(\theta\mid x) = \frac{p(x\mid\theta)\pi(\theta)}{\displaystyle\int_{\Theta}p(x\mid u)\pi(u)\,du}. \tag{2}$$
+
+$$\rho(a\mid x) = \int_{\Theta}L(\theta,a)\pi(\theta\mid x)\,d\theta. \tag{3}$$`;
+	const result = render(local, text);
+	assert.equal(typeof local.plugin.getKatex().renderToString, "function");
+	assert.deepEqual(texErrors(result), []);
+	assert.deepEqual(leftoverMarkup(result), []);
+	assert.equal(result.querySelectorAll("math").length, 9);
+});
+
 for (const name of ["fft-real.md", "metric-review-real.md", "tables.md", "latex.md", "markdown.md"]) {
 	test(`${name}: no raw Markdown/LaTeX left in the rendered text`, () => {
 		assert.deepEqual(leftoverMarkup(render(env, fixture(name))), []);

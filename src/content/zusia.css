@@ -1,5 +1,5 @@
 /*
- * Zusia.
+ * AbstractIn, built from Zusia.
  *
  * Layout and surfaces follow the two established Zotero AI plugins:
  *  - Beaver (jlegewie/beaver-zotero): raised composer card mixed from Zotero's
@@ -2397,6 +2397,71 @@
 	flex-direction: column;
 	gap: 8px;
 	user-select: text;
+}
+.zs-reading-bar {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 8px;
+	padding: 0;
+}
+.zs-reading-status {
+	font-size: 11px;
+	color: var(--zs-muted);
+	text-align: center;
+}
+.zs-reading-status:empty { display: none; }
+.zs-reading-record {
+	font-size: 10px;
+	color: var(--zs-muted);
+}
+.zs-reading-primary {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 40px;
+	padding: 9px 14px;
+	border: 1px solid var(--zs-accent);
+	border-radius: var(--zs-radius-control);
+	background: var(--zs-accent);
+	color: var(--zs-accent-text);
+	font: inherit;
+	font-weight: 650;
+	cursor: pointer;
+}
+.zs-reading-primary:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--zs-accent) 85%, var(--zs-text));
+}
+.zs-reading-primary:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+.zs-reading-primary .zs-i {
+	width: 20px;
+	height: 20px;
+}
+.zs-reading-primary .zs-i .zs-duo {
+	fill: currentColor;
+}
+.zs-reading-form {
+	gap: 12px;
+}
+.zs-reading-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.zs-reading-field input, .zs-reading-field select {
+	width: 100%;
+	min-width: 0;
+	padding: 6px;
+	font: inherit;
+	color: var(--zs-text);
+	background: var(--zs-ground);
+	border: 1px solid var(--zs-border-strong);
+	border-radius: var(--zs-radius-control);
 }
 .zs-clar-item {
 	display: flex;

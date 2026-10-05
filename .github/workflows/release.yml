@@ -39,6 +39,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" zusia.xpi updates.json \
-            --title "Zusia $GITHUB_REF_NAME" \
+          gh release create "$GITHUB_REF_NAME" abstractin.xpi updates.json \
+            --title "AbstractIn $GITHUB_REF_NAME" \
             --generate-notes

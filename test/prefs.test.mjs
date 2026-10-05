@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { loadPlugin } from "./load-plugin.mjs";
 
-const PREFIX = "extensions.zusia.";
+const PREFIX = "extensions.abstractin.";
 
 function pane(prefs = {}) {
 	const env = loadPlugin({ prefs });
@@ -46,8 +46,8 @@ test("extra Codex models appear in its model list", () => {
 	const { container, window, plugin } = pane();
 	const codex = card(container, "Assistants").querySelector('[data-backend="codex"]');
 	change(window, codex.querySelector('input[type="text"]'), "gpt-5.5, gpt-5.5-mini");
-	assert.deepEqual([...codex.querySelector(".zs-select").options].map(o => o.value), ["", "gpt-5.5", "gpt-5.5-mini"]);
-	assert.deepEqual([...plugin.getModels("codex").map(m => m.id)], ["", "gpt-5.5", "gpt-5.5-mini"]);
+	assert.deepEqual([...codex.querySelector(".zs-select").options].map(o => o.value), ["", "gpt-6-sol", "gpt-5.5", "gpt-5.5-mini"]);
+	assert.deepEqual([...plugin.getModels("codex").map(m => m.id)], ["", "gpt-6-sol", "gpt-5.5", "gpt-5.5-mini"]);
 });
 
 test("Claude user-settings switch toggles the pref", () => {
@@ -180,7 +180,7 @@ test("answer language: saved from Chat settings and used in every prompt", () =>
 	change(window, select, "Italiano");
 	assert.equal(prefs[PREFIX + "language"], "Italiano");
 	assert.match(plugin.systemPrompt(), /Always reply in Italiano, whatever language the user writes in\./);
-	assert.match(plugin.formattingReminder(), /Reply in Italiano\.\)$/);
+	assert.match(plugin.formattingReminder(), /Always reply in Italiano, whatever language the user writes in\.\)$/);
 	assert.match(plugin.buildAntigravityPrompt({ files: { metadata: "# T\n", annotations: "" }, question: "Why?", history: [], session: null }), /Always reply in Italiano/);
 	prefs[PREFIX + "language"] = "Klingon";
 	assert.equal(plugin.getLanguage(), "", "unknown values fall back to the question's language");

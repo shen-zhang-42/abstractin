@@ -1,2 +1,2 @@
-pref("extensions.zusia.backend", "claude");
-pref("extensions.zusia.useClaudeUserSettings", false);
+pref("extensions.abstractin.backend", "codex");
+pref("extensions.abstractin.useClaudeUserSettings", false);

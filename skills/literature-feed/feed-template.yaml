@@ -1,0 +1,59 @@
+# Created automatically for each literature feed.
+
+identity:
+  feed_id: "a7K2"
+  name: example-feed
+  title: Example Literature Feed
+  status: active
+  created: null
+
+topic:
+  description: >
+    Describe semantically what scientific work belongs in this feed.
+  granularity: G1
+
+scope:
+  include:
+    - example inclusion rule
+  exclude:
+    - example exclusion rule
+
+search:
+  keywords:
+    - example keyword
+  alternative_terms: []
+  researchers: []
+  groups: []
+  sources: []
+
+schedule:
+  frequency: weekly
+  window_days: 7
+  batch_weekday: Friday
+  batch_start_time: "02:00"
+  timezone: Europe/Berlin
+  window_boundary: "[Friday 00:00, next Friday 00:00)"
+
+storage:
+  canonical_root: null
+  mirror_folders: []
+
+ranking:
+  show_relevance: true
+  show_scientific_importance: true
+  show_reading_priority: true
+
+output:
+  include_all_relevant: true
+  summary_length: short
+  include_progress_summary: true
+  include_reading_queue: true
+  include_publication_status: true
+  include_identifiers: true
+
+baseline:
+  source_review: null
+  baseline_date: null
+
+state:
+  last_successful_run: null

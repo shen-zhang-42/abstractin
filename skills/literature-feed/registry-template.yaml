@@ -1,0 +1,10 @@
+feeds:
+  - feed_id: "a7K2"
+    name: example-feed
+    title: Example Literature Feed
+    status: active
+    frequency: weekly
+    created: null
+    last_successful_run: null
+    last_canonical_snapshot: null
+    mirror_folders: []

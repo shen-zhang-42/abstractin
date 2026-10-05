@@ -1,7 +1,8 @@
 var Zusia;
+var chromeHandle;
 
 function log(msg) {
-	Zotero.debug("[zusia] " + msg);
+	Zotero.debug("[abstractin] " + msg);
 }
 
 function install() {
@@ -11,10 +12,18 @@ function install() {
 async function startup({ id, version, rootURI }) {
 	log("Starting up, rootURI=" + rootURI);
 
-	Services.scriptloader.loadSubScript(rootURI + "content/zusia.js");
-	Zusia.init({ id, version, rootURI });
+	let aomStartup = Cc["@mozilla.org/addons/addon-manager-startup;1"].getService(Ci.amIAddonManagerStartup);
+	chromeHandle = aomStartup.registerChrome(Services.io.newURI(rootURI + "manifest.json"), [
+		["content", "abstractin", "./"],
+	]);
+	let resourceURI = "chrome://abstractin/content/";
+	Services.scriptloader.loadSubScript(resourceURI + "content/zusia.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/reading.js");
+	Zusia.init({ id, version, rootURI, resourceURI });
+	// Load the bundled renderer immediately, before any answer needs it.
+	Zusia.getKatex();
 	// The settings pane runs in the Settings window and reaches the plugin through Zotero.
-	Zotero.Zusia = Zusia;
+	Zotero.AbstractIn = Zusia;
 	Zusia.addToAllWindows();
 	Zusia.registerPaneSection();
 	// Zotero removes the reader listeners itself when the plugin shuts down.
@@ -36,13 +45,17 @@ function onMainWindowUnload({ window }) {
 function shutdown() {
 	log("Shutting down");
 	if (!Zusia) {
+		chromeHandle?.destruct();
+		chromeHandle = null;
 		return;
 	}
 	Zusia.unwatchPrefs();
 	Zusia.unregisterPaneSection();
 	Zusia.removeFromAllWindows();
-	delete Zotero.Zusia;
+	delete Zotero.AbstractIn;
 	Zusia = undefined;
+	chromeHandle?.destruct();
+	chromeHandle = null;
 }
 
 function uninstall() {

@@ -57,6 +57,82 @@ function pendingFor(p, backend = "claude") {
 	return pending;
 }
 
+test("unsupported Codex model retries once with local defaults and a fresh session", async () => {
+	const { plugin: p, prefs } = loadPlugin({ prefs: { "extensions.abstractin.codex.model": "gpt-6.1-sol" } });
+	const store = fakeStore(p);
+	store.sessions.codex = { id: "old", seen: 0 };
+	const pending = { ...pendingFor(p, "codex"), model: "gpt-6.1-sol" };
+	let requests = [];
+	p.runBackend = async (backend, request) => {
+		requests.push({ ...request });
+		return requests.length === 1 ? { text: "", resumeFailed: true,
+			error: JSON.stringify({ type: "error", status: 400, error: { type: "invalid_request_error", message: "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account." } }) } :
+			{ text: "Answer with $x$", sessionId: "new" };
+	};
+	const result = await p.ask(base.ctx, "Why?", pending);
+	assert.equal(requests.length, 2);
+	assert.equal(requests[1].model, "");
+	assert.equal(requests[1].effort, "");
+	assert.equal(requests[1].session, null);
+	assert.ok(!p.codexArgs(requests[1]).includes("-m"));
+	assert.equal(prefs["extensions.abstractin.codex.model"], "");
+	assert.equal(store.history[1].model, undefined);
+	assert.equal(store.history[1].text, "Answer with $x$");
+	assert.equal(store.sessions.codex.id, "new");
+	assert.ok(result.modelFallback);
+});
+
+test("Codex fallback does not retry indefinitely or retry unrelated failures", async () => {
+	for (const error of ["Rate limit exceeded", "model is not supported when using Codex with a ChatGPT account."]) {
+		const { plugin: p } = loadPlugin();
+		fakeStore(p);
+		const pending = { ...pendingFor(p, "codex"), model: "gpt-6.1-sol" };
+		let runs = 0;
+		p.runBackend = async () => { runs++; return { text: "", error, resumeFailed: true }; };
+		const result = await p.ask(base.ctx, "Why?", pending);
+		assert.equal(runs, error.startsWith("Rate") ? 1 : 2);
+		assert.equal(result.error, error);
+	}
+});
+
+test("Codex parses structured model rejection errors", () => {
+	const result = plugin.parseCodexEvents([{ type: "error", status: 400,
+		error: { type: "invalid_request_error", message: "Unsupported model" } }]);
+	assert.equal(result.error, "Unsupported model");
+});
+
+test("changing Codex model starts a fresh thread and explicitly passes the selected model", async () => {
+	const { plugin: p } = loadPlugin();
+	const store = fakeStore(p);
+	store.sessions.codex = { id: "old", seen: 0, model: "gpt-6.1-sol" };
+	const pending = { ...pendingFor(p, "codex"), model: "gpt-6-sol" };
+	p.runBackend = async (backend, request) => {
+		assert.equal(request.session, null);
+		assert.equal(valueAfter(p.codexArgs(request), "-m"), "gpt-6-sol");
+		return { text: "Answer", sessionId: "new" };
+	};
+	const result = await p.ask(base.ctx, "Why?", pending);
+	assert.equal(result.error, undefined);
+	assert.equal(store.sessions.codex.model, "gpt-6-sol");
+	assert.equal(store.history[1].model, "gpt-6-sol");
+});
+
+test("cancelled Codex requests and unconfigured models never trigger model fallback", async () => {
+	for (const cancelled of [false, true]) {
+		const { plugin: p } = loadPlugin();
+		fakeStore(p);
+		const pending = { ...pendingFor(p, "codex"), model: cancelled ? "gpt-6.1-sol" : "" };
+		let runs = 0;
+		p.runBackend = async () => {
+			runs++;
+			pending.cancelled = cancelled;
+			return { text: "", error: "The model is not supported when using Codex with a ChatGPT account." };
+		};
+		await p.ask(base.ctx, "Why?", pending);
+		assert.equal(runs, 1);
+	}
+});
+
 test("stopping mid-answer keeps what was written, marked as stopped, and does not retry", async () => {
 	const { plugin: p } = loadPlugin();
 	const store = fakeStore(p);

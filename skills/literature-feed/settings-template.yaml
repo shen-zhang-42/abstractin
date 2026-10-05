@@ -1,0 +1,40 @@
+# Global settings for the literature-feed skill.
+# Recommended location:
+#   ~/.agents/literature-feed-settings.yaml
+# Windows:
+#   %USERPROFILE%\.agents\literature-feed-settings.yaml
+
+# Required after first setup.
+feed_root: null
+# Example:
+# feed_root: D:/Research/literature-feeds
+
+defaults:
+  frequency: weekly
+  window_days: 7
+  batch_weekday: Friday
+  batch_start_time: "02:00"
+  timezone: Europe/Berlin
+  weekly_window_boundary: "[Friday 00:00, next Friday 00:00)"
+
+  sources:
+    - bioRxiv
+    - medRxiv
+    - arXiv
+    - PsyArXiv
+    - OSF Preprints
+    - Research Square
+    - PubMed
+    - Europe PMC
+    - OpenAlex
+    - Crossref
+    - Semantic Scholar
+    - journal online-first
+
+  output:
+    include_all_relevant: true
+    summary_length: short
+    include_progress_summary: true
+    include_reading_queue: true
+    include_publication_status: true
+    include_identifiers: true

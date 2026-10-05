@@ -42,15 +42,18 @@ test("every bundled third-party file is credited with its licence", () => {
 	assert.deepEqual(own.sort(), ["mascot-cat.svg", "mascot-owl.svg", "mascot-robot.svg"], "only the mascots are the plugin's own drawings");
 });
 
-test("the extension is called Zusia everywhere a user sees its name", () => {
+test("the extension uses the AbstractIn name and its own plugin identity", () => {
 	const manifest = JSON.parse(read("src/manifest.json"));
-	assert.equal(manifest.name, "Zusia");
-	assert.equal(JSON.parse(read("package.json")).name, "zusia");
-	assert.match(read("src/locale/en-US/zusia.ftl"), /\.label = Zusia/);
-	assert.match(read("src/content/zusia.js"), /label: "Zusia"/);
-	assert.match(read("build.sh"), /zusia\.xpi/);
-	assert.match(read("README.md"), /Zusia/);
-	assert.equal(manifest.applications.zotero.id, "zusia@firekern.github.io");
+	assert.equal(manifest.name, "AbstractIn");
+	assert.equal(JSON.parse(read("package.json")).name, "abstractin");
+	assert.match(read("src/locale/en-US/abstractin.ftl"), /\.label = AbstractIn/);
+	assert.match(read("src/content/zusia.js"), /label: "AbstractIn"/);
+	assert.match(read("build.sh"), /abstractin\.xpi/);
+	assert.match(read("README.md"), /AbstractIn/);
+	assert.equal(manifest.applications.zotero.id, "abstractin@shen-zhang-42.github.io");
+	assert.match(read("src/bootstrap.js"), /Zotero\.AbstractIn = Zusia/);
+	assert.match(read("src/prefs.xhtml"), /abstractin-prefs-root/);
+	assert.match(read("src/content/zusia.js"), /PREF_PREFIX: "extensions\.abstractin\."/);
 });
 
 test("nothing but the Claude Code backend itself is named after Claude", () => {
@@ -85,7 +88,7 @@ test("CI runs the tests and builds the plugin", () => {
 	assert.match(ci, /npm ci/);
 	assert.match(ci, /npm test/);
 	assert.match(ci, /npm run build/);
-	assert.match(ci, /zusia\.xpi/);
+	assert.match(ci, /abstractin\.xpi/);
 	for (const file of [".github/ISSUE_TEMPLATE/bug_report.yml", ".github/ISSUE_TEMPLATE/feature_request.yml",
 		".github/pull_request_template.md", "CONTRIBUTING.md", ".editorconfig"]) {
 		assert.ok(exists(file), file);
@@ -105,12 +108,20 @@ test("a tag is the only thing that publishes a release, and it is checked agains
 
 test("the update manifest points at the release the tag will create", async () => {
 	const manifest = JSON.parse(read("src/manifest.json"));
-	assert.match(manifest.applications.zotero.update_url, /^https:\/\/github\.com\/firekern\/zusia\/releases\/latest\/download\/updates\.json$/);
-	const { execFileSync } = await import("node:child_process");
-	execFileSync(process.execPath, [new URL("../scripts/updates.mjs", import.meta.url).pathname]);
-	const updates = JSON.parse(read("updates.json")).addons[manifest.applications.zotero.id].updates[0];
+	assert.equal(manifest.applications.zotero.update_url, "https://github.com/shen-zhang-42/abstractin/releases/latest/download/updates.json");
+	const { createUpdates } = await import("../scripts/updates.mjs");
+	const updates = createUpdates("shen-zhang-42/abstractin").addons[manifest.applications.zotero.id].updates[0];
 	assert.equal(updates.version, manifest.version);
-	assert.equal(updates.update_link, `https://github.com/firekern/zusia/releases/download/v${manifest.version}/zusia.xpi`);
+	assert.equal(updates.update_link, `https://github.com/shen-zhang-42/abstractin/releases/download/v${manifest.version}/abstractin.xpi`);
+	assert.match(createUpdates("example/fork").addons[manifest.applications.zotero.id].updates[0].update_link, /example\/fork/);
+});
+
+test("bundled skill resources are the supplied originals, including the book folder alias", () => {
+	const catalog = JSON.parse(read("src/content/reading-skill-assets.json"));
+	for (const path of catalog.files) assert.ok(exists("skills/" + path), path);
+	assert.match(read("skills/scientific-book-reading/SKILL.md"), /^name: book-reading$/m);
+	assert.ok(catalog.files.includes("scientific-paper-reading/REPORT-FORMAT.md"));
+	assert.ok(catalog.files.includes("scientific-information-extraction/SKILL.md"));
 });
 
 test("the project is MIT licensed, so a fork is allowed to exist", () => {
