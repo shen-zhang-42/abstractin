@@ -1,7 +1,7 @@
 {
 	"name": "abstractin",
 	"private": true,
-	"version": "0.2.0",
+	"version": "0.2.3",
 	"description": "AbstractIn: skill-driven reading of books and scientific papers in Zotero with local Codex.",
 	"type": "module",
 	"scripts": {

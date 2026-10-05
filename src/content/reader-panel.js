@@ -1,0 +1,230 @@
+"use strict";
+
+// The toolbar entry uses Zotero's public Reader API. Keep the native-window
+// layout adapter here, separate from reading, storage and model transport.
+Object.assign(Zusia, {
+	_readerPanelWindows: new Map(),
+	_readerToolbarButtons: new Map(),
+
+	readerPanelWindow(reader) {
+		return reader._window || Zotero.getMainWindow();
+	},
+
+	readerPanelMount(doc) {
+		let context = doc.getElementById("zotero-context-pane");
+		let splitter = doc.getElementById("zotero-context-splitter");
+		if (context && splitter?.parentElement === context.parentElement) {
+			return { parent: context.parentElement, before: splitter, context };
+		}
+		// Detached reader windows have a reader vbox, without the main tab deck.
+		let reader = doc.getElementById("zotero-reader");
+		if (reader?.parentElement && doc.getElementById("reader")) {
+			return { parent: reader.parentElement, before: reader.nextSibling, context: null };
+		}
+		return null;
+	},
+
+	renderReaderToolbar({ reader, doc, append }) {
+		if (reader.type !== "pdf") return;
+		let win = this.readerPanelWindow(reader);
+		let buttons = this._readerToolbarButtons.get(win);
+		if (!buttons) { buttons = new Map(); this._readerToolbarButtons.set(win, buttons); }
+		let old = buttons.get(reader);
+		if (old) old.remove();
+		let button = this.el(doc, "button", "toolbar-button zs-reader-toggle");
+		button.type = "button";
+		button.title = "Toggle AbstractIn panel";
+		button.setAttribute("aria-label", button.title);
+		button.setAttribute("aria-controls", "abstractin-reader-panel");
+		button.setAttribute("data-tabstop", "1");
+		button.tabIndex = -1;
+		let icon = this.svgIcon(doc, "book");
+		icon.style.cssText = "display:block;width:20px;height:20px;";
+		// The reader toolbar is in its own document without the chat stylesheet.
+		this.loadIcon(doc, "book").then(() => {
+			let svg = icon.querySelector("svg");
+			if (svg) {
+				svg.style.cssText = "display:block;width:20px;height:20px;";
+				for (let layer of svg.querySelectorAll(".zs-duo")) layer.style.opacity = "0.2";
+			}
+		});
+		button.append(icon);
+		button.addEventListener("click", () => {
+			this.openReaderPanel(reader, { toggle: true }).catch(e => {
+				this.logError("openReaderPanel", e);
+				button.title = "AbstractIn: " + (e.message || e);
+				if (Zotero.alert) Zotero.alert(win, "AbstractIn", e.message || String(e));
+			});
+		});
+		buttons.set(reader, button);
+		append(button);
+		this.updateReaderPanelButtons(win);
+	},
+
+	updateReaderPanelButtons(win) {
+		let state = this._readerPanelWindows.get(win);
+		for (let [reader, button] of this._readerToolbarButtons.get(win) || []) {
+			let active = !!state?.active && state.reader === reader;
+			button.setAttribute("aria-pressed", String(active));
+			button.classList.toggle("active", active);
+		}
+	},
+
+	createReaderPanel(win) {
+		let doc = win.document;
+		let mount = this.readerPanelMount(doc);
+		if (!mount) throw new Error("This Zotero reader layout does not expose a supported side-panel mount. Use the AbstractIn item section or open the PDF in a main-window tab.");
+		this.addToWindow(win);
+		let splitter = doc.createXULElement("splitter");
+		splitter.classList.add("zs-reader-splitter");
+		for (let [name, value] of Object.entries({ orient: "horizontal", resizebefore: "flex", resizeafter: "closest", collapse: "after", state: "open" })) splitter.setAttribute(name, value);
+		let panel = this.el(doc, "section", "zs-reader-panel");
+		panel.id = "abstractin-reader-panel";
+		panel.setAttribute("role", "complementary");
+		panel.setAttribute("aria-label", "AbstractIn reading assistant");
+		let width = Number(this.getPref("readerPanelWidth"));
+		panel.style.width = (Number.isFinite(width) && width >= 280 ? Math.min(width, 720) : 380) + "px";
+		panel.setAttribute("width", parseInt(panel.style.width, 10));
+		panel.hidden = true; splitter.hidden = true;
+		mount.parent.insertBefore(splitter, mount.before);
+		mount.parent.insertBefore(panel, mount.before);
+		let state = { win, panel, splitter, views: new Map(), active: false, reader: null, contextWasOpen: false };
+		this._readerPanelWindows.set(win, state);
+		state.observer = new win.MutationObserver(() => {
+			// Native XUL splitters resize their next sibling through a width
+			// attribute. HTML sections need that value reflected into CSS.
+			let width = Number(panel.getAttribute("width"));
+			if (width >= 280 && panel.style.width !== Math.min(width, 720) + "px") panel.style.width = Math.min(width, 720) + "px";
+			if (!state.active) return;
+			if (splitter.getAttribute("state") === "collapsed") this.closeReaderPanel(win);
+			else if (mount.context && win.ZoteroContextPane?.collapsed === false) this.closeReaderPanel(win, { restoreContext: false });
+		});
+		if (mount.context) state.observer.observe(mount.context, { attributes: true, attributeFilter: ["collapsed"] });
+		state.observer.observe(splitter, { attributes: true, attributeFilter: ["state"] });
+		state.observer.observe(panel, { attributes: true, attributeFilter: ["width"] });
+		if (win.ResizeObserver) {
+			state.resize = new win.ResizeObserver(entries => {
+				let width = Math.round(entries[0].contentRect.width);
+				if (state.active && width >= 280) this.setPref("readerPanelWidth", Math.min(width, 720));
+			});
+			state.resize.observe(panel);
+		}
+		state.notifier = Zotero.Notifier.registerObserver({ notify: async (action, type, ids, extraData) => {
+			if (type !== "tab") return;
+			if (action === "close") {
+				for (let [reader, entry] of state.views) {
+					if (ids.includes(reader.tabID)) {
+						this.releaseReaderPanelView(state, reader, entry);
+						if (state.reader === reader) this.closeReaderPanel(win, { restoreContext: false });
+					}
+				}
+			}
+			if (!state.active || !["select", "load"].includes(action)) return;
+			let tabs = win.Zotero_Tabs;
+			if (!tabs || !ids.includes(tabs.selectedID)) return;
+			let tabType = extraData?.[tabs.selectedID]?.type || tabs.selectedType;
+			if (tabType !== "reader") { this.closeReaderPanel(win, { restoreContext: false }); return; }
+			let reader = Zotero.Reader.getByTabID(tabs.selectedID);
+			if (reader?.type === "pdf") await this.openReaderPanel(reader);
+			else if (!reader) {
+				// Selecting an unloaded PDF precedes its Reader instance. Hide the old
+				// attachment immediately and resume on the subsequent load event.
+				state.reader = null;
+				for (let entry of state.views.values()) entry.body.hidden = true;
+				if (!state.panel.querySelector(".zs-reader-loading")) state.panel.append(this.el(doc, "div", "zs-notice zs-reader-loading", "Loading selected PDF…"));
+				this.updateReaderPanelButtons(win);
+			}
+			else this.closeReaderPanel(win, { restoreContext: false });
+		} }, ["tab"], "abstractinReaderPanel");
+		state.unload = () => this.removeReaderPanel(win);
+		win.addEventListener("unload", state.unload, { once: true });
+		return state;
+	},
+
+	async openReaderPanel(reader, { toggle = false } = {}) {
+		if (reader.type !== "pdf") throw new Error("Open a PDF to use the AbstractIn reading panel.");
+		let win = this.readerPanelWindow(reader);
+		let state = this._readerPanelWindows.get(win);
+		if (toggle && state?.active && state.reader === reader) { this.closeReaderPanel(win); return; }
+		let item = Zotero.Items.get(reader.itemID);
+		if (!item) throw new Error("The selected PDF attachment is no longer available.");
+		state = state || this.createReaderPanel(win);
+		if (!state.active) state.contextWasOpen = win.ZoteroContextPane?.collapsed === false;
+		if (win.ZoteroContextPane && this.readerPanelMount(win.document)?.context) win.ZoteroContextPane.collapsed = true;
+		state.reader = reader; state.active = true;
+		state.panel.querySelector(".zs-reader-loading")?.remove();
+		state.panel.hidden = false; state.splitter.hidden = false; state.splitter.setAttribute("state", "open");
+		let entry = state.views.get(reader);
+		for (let existing of state.views.values()) existing.body.hidden = true;
+		if (!entry) {
+			let body = this.el(win.document, "div", "zs-reader-view");
+			state.panel.append(body);
+			this.renderSkeleton(win.document, body);
+			let root = body.querySelector(".zs-root");
+			root.querySelector(".zs-header").append(this.iconButton(win.document, "zs-reader-close", "Close AbstractIn panel", "close", () => this.closeReaderPanel(win)));
+			entry = { body, root, itemID: item.id };
+			state.views.set(reader, entry);
+			// renderContent attaches to an existing pending request; never await that
+			// request here, so a panel can close or switch while an answer streams.
+			entry.render = this.renderContent(win.document, body, item, reader).catch(e => {
+				this.logError("reader panel render", e);
+				let view = this._views.get(root);
+				if (view) this.appendError(view, e.message || String(e));
+				else root.querySelector(".zs-log").textContent = "AbstractIn could not load this PDF: " + (e.message || e);
+			});
+		}
+		entry.body.hidden = false;
+		this.updateReaderPanelButtons(win);
+		this.fitWideContent(entry.root);
+		let view = this._views.get(entry.root);
+		if (view) { this.applyDraft(view); view.input.focus(); }
+	},
+
+	closeReaderPanel(win, { restoreContext = true } = {}) {
+		let state = this._readerPanelWindows.get(win);
+		if (!state?.active) return;
+		state.active = false;
+		state.panel.hidden = true; state.splitter.hidden = true;
+		if (restoreContext && state.contextWasOpen && win.ZoteroContextPane) win.ZoteroContextPane.collapsed = false;
+		this.updateReaderPanelButtons(win);
+	},
+
+	releaseReaderPanelView(state, reader, entry) {
+		this._views.delete(entry.root);
+		entry.root.disposeUI?.();
+		entry.body.remove();
+		state.views.delete(reader);
+		let binding = this._positionBindings.get(reader);
+		if (binding) {
+			(binding.bus.off || binding.bus._off)?.call(binding.bus, "pagechanging", binding.listener);
+			binding.win.clearTimeout(binding.timer);
+			this._positionBindings.delete(reader);
+		}
+		let button = this._readerToolbarButtons.get(state.win)?.get(reader);
+		button?.remove();
+		this._readerToolbarButtons.get(state.win)?.delete(reader);
+	},
+
+	removeReaderPanel(win) {
+		let state = this._readerPanelWindows.get(win);
+		if (state) {
+			this.closeReaderPanel(win);
+			state.observer.disconnect(); state.resize?.disconnect();
+			Zotero.Notifier.unregisterObserver(state.notifier);
+			win.removeEventListener("unload", state.unload);
+			for (let [reader, entry] of state.views) this.releaseReaderPanelView(state, reader, entry);
+			state.panel.remove(); state.splitter.remove();
+			this._readerPanelWindows.delete(win);
+		}
+		for (let button of this._readerToolbarButtons.get(win)?.values() || []) button.remove();
+		this._readerToolbarButtons.delete(win);
+		if (!win.ZoteroPane) {
+			win.document.getElementById("abstractin-stylesheet")?.remove();
+			win.document.querySelector('[href="abstractin.ftl"]')?.remove();
+		}
+	},
+
+	removeAllReaderPanels() {
+		for (let win of new Set([...this._readerPanelWindows.keys(), ...this._readerToolbarButtons.keys()])) this.removeReaderPanel(win);
+	},
+});

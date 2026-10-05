@@ -47,9 +47,9 @@ test("contents initialize from source evidence as one Zotero note, with derived 
 	assert.equal(notes.length, 1, "updates preserve one authoritative contents note");
 });
 
-test("contents reject invented evidence, invalid paths and guessed PDF page locations", async () => {
+test("contents reject entirely invented evidence without creating a note", async () => {
 	const { plugin: p, ctx, contents, notes } = await setup();
-	for (const patch of [{ evidence: "Unseen chapter" }, { id: "../escape" }, { pageIndex: 19 }, { pageIndex: 1.5 }]) {
+	for (const patch of [{ title: "Unseen chapter", evidence: "Unseen chapter" }]) {
 		let data = { ...contents, entries: [{ ...contents.entries[0], ...patch }] };
 		await assert.rejects(p.saveReadingAction(ctx, "contents", "Answer\n<abstractin-workspace>" + JSON.stringify(data) + "</abstractin-workspace>"));
 	}
@@ -119,7 +119,10 @@ test("records merge a follow-up within the same verified scope and attachment", 
 	assert.equal(notes.length, 2);
 	assert.match(notes[1].getNote(), /Corrected merged conclusion/);
 	assert.ok(!notes[1].getNote().includes("Original conclusion"));
-	await assert.rejects(p.saveReadingRecord(ctx, "Unverified section", null, { ...record, scope: { level: "section", id: "missing", title: "Missing" } }), /not been verified/);
+	const unverified = { ...record, scope: { level: "section", id: "missing", title: "Missing" } };
+	await p.saveReadingRecord(ctx, "Unverified section", null, unverified);
+	assert.match(unverified.saveNotice, /scope/);
+	assert.match(notes[2].getNote(), /Scope: book; id: /);
 });
 
 test("summary transport passes local PDF text and saves a summary without a second discussion note", async () => {
@@ -146,16 +149,146 @@ test("retrieved source quotes must match their physical PDF page before a record
 		sources: [{ pageIndex: 2, printedPageLabel: null, quote: "1 Foundations" }] };
 	await p.saveReadingRecord(ctx, "Why?", null, record);
 	assert.match(notes[0].getNote(), /PDF-A\?page=3/);
-	await assert.rejects(p.saveReadingRecord(ctx, "Wrong page", null, { ...record, sources: [{ ...record.sources[0], pageIndex: 1 }] }), /could not be verified/);
-	assert.equal(notes.length, 1);
+	const wrong = { ...record, sources: [{ ...record.sources[0], pageIndex: 1 }] };
+	await p.saveReadingRecord(ctx, "Wrong page", null, wrong);
+	assert.equal(notes.length, 2);
+	assert.match(wrong.saveNotice, /page/);
+	assert.ok(!notes[1].getNote().includes("?page="));
+	assert.match(notes[1].getNote(), /1 Foundations/);
+});
+
+test("discussion records save when page mapping is unavailable and omit fabricated excerpts", async () => {
+	const { plugin: p, ctx, notes } = await setup();
+	ctx.reading.pdfSource.pageMapping = false;
+	const record = { title: "An explanation", summary: "The conclusion is preserved.", openQuestions: ["Check the condition"],
+		sources: [{ pageIndex: 2, printedPageLabel: "1", quote: "1 Foundations" }, { pageIndex: 19, quote: "Imaginary source passage" }] };
+	const key = await p.saveReadingRecord(ctx, "Why?", null, record);
+	assert.equal(key, notes[0].key);
+	assert.match(notes[0].getNote(), /The conclusion is preserved/);
+	assert.match(notes[0].getNote(), /1 Foundations/);
+	assert.ok(!notes[0].getNote().includes("Imaginary source passage"));
+	assert.ok(!notes[0].getNote().includes("?page="));
+	assert.match(record.saveNotice, /unverified/);
+});
+
+test("a discussion with ambiguous PDF page boundaries saves through ask and returns an informational notice", async () => {
+	const { plugin: p, window, ctx, notes } = await setup();
+	p.prepareReadingSkills = async ctx => ctx.reading;
+	window.Zotero.PDFWorker = { getFullText: async () => ({ text: "Foundations\fArgument", extractedPages: 3, totalPages: 3 }) };
+	p.runBackend = async () => ({ text: 'A useful answer.\n<abstractin-record>```json\n' + JSON.stringify({
+		title: "An argument", summary: "The recorded conclusion.", openQuestions: [], sources: [{ pageIndex: 2, quote: "Argument" }],
+	}) + '\n```</abstractin-record>\nFinished.', sessionId: "discussion" });
+	const result = await p.ask(ctx, "Why?", { backend: "codex", progress() {} });
+	assert.equal(result.recordWarning, undefined);
+	assert.equal(result.recordKey, notes[0].key);
+	assert.match(result.recordNotice, /unverified/);
+	assert.match(notes[0].getNote(), /The recorded conclusion/);
+	assert.ok(!notes[0].getNote().includes("?page="));
+	assert.equal((await p.loadHistory(ctx.dir))[1].recordNotice, result.recordNotice);
+});
+
+test("contents initialization reads a bounded excerpt in a fresh context and saves without chapter page scans", async () => {
+	const { plugin: p, window, ctx, notes, dir } = await setup();
+	p.prepareReadingSkills = async ctx => ctx.reading;
+	p.loadSessions = async () => ({ codex: { id: "old", model: "", sourceSignature: "old" } });
+	window.Zotero.PDFWorker = { getFullText: async () => ({ text: "Contents\n1 Foundations .... 3\fPreface\f1 Foundations\nArgument", extractedPages: 3, totalPages: 3 }) };
+	p.runBackend = async (backend, request) => {
+		assert.equal(request.session, null);
+		assert.equal(request.history.length, 0);
+		assert.ok(!request.question.includes("append exactly one <abstractin-record>"));
+		assert.match(request.question, /set every pageIndex to null/);
+		assert.match(await readFile(join(dir, "contents-source.md"), "utf8"), /Contents/);
+		return { text: 'Structure initialized.\n<abstractin-workspace>' + JSON.stringify({ kind: "contents", coverage: "Actual contents", entries: [
+			{ title: "1 Foundations", evidence: "1 Foundations ... 3", printedPageLabel: "3" },
+		] }) + '</abstractin-workspace>', sessionId: "contents" };
+	};
+	const result = await p.ask(ctx, "Initialize", { backend: "codex", readingAction: "contents", progress() {} });
+	assert.equal(result.recordWarning, undefined);
+	assert.equal(result.recordKey, notes[0].key);
+	assert.equal(p.readingArtifactData(notes[0]).entries[0].pageIndex, null);
+	assert.match((await p.loadHistory(ctx.dir))[1].text, /1 Foundations/);
 });
 
 test("contents links require a chapter heading verified on the target physical page", async () => {
-	const { plugin: p, ctx, contents } = await setup();
+	const { plugin: p, ctx, contents, notes } = await setup();
 	let data = { ...contents, entries: [{ ...contents.entries[0], pageIndex: 1 }] };
-	await assert.rejects(p.saveReadingAction(ctx, "contents", "Contents\n<abstractin-workspace>" + JSON.stringify(data) + "</abstractin-workspace>"), /heading was not verified/);
+	const saved = await p.saveReadingAction(ctx, "contents", "Contents\n<abstractin-workspace>" + JSON.stringify(data) + "</abstractin-workspace>");
+	assert.match(saved.notice, /page/);
+	assert.equal(p.readingArtifactData(notes[0]).entries[0].pageIndex, null);
 	data.entries[0].pageIndex = 2;
 	assert.ok((await p.saveReadingAction(ctx, "contents", "Contents\n<abstractin-workspace>" + JSON.stringify(data) + "</abstractin-workspace>")).key);
+});
+
+test("one bad entry does not discard verified contents; identifiers are plugin-owned and stable", async () => {
+	const { plugin: p, ctx, contents, notes } = await setup();
+	const data = { ...contents, entries: [
+		{ title: "1 Foundations", printedPageLabel: "3", evidence: "1 Foundations ... 3", id: "../escape" },
+		{ title: "Invented appendix", evidence: "Never in this PDF" },
+	] };
+	const response = 'Claimed complete directory.\n<abstractin-workspace>```json\n' + JSON.stringify(data) + '\n```</abstractin-workspace>\nDone.';
+	const saved = await p.saveReadingAction(ctx, "contents", response);
+	assert.match(saved.notice, /1.*unverified/);
+	let actual = p.readingArtifactData(notes[0]);
+	assert.equal(actual.entries.length, 1);
+	assert.match(actual.entries[0].id, /^[a-z0-9-]+$/);
+	assert.equal(actual.entries[0].pageIndex, null);
+	assert.equal(actual.entries[0].evidence, "1 Foundations .... 3", "recover an exact excerpt from actual contents");
+	assert.match(saved.answer, /1 Foundations/);
+	assert.ok(!saved.answer.includes("Claimed complete"));
+	const stable = actual.entries[0].id;
+	data.entries[0].id = "a-different-model-id";
+	await p.saveReadingAction(ctx, "contents", "Updated\n<abstractin-workspace>" + JSON.stringify(data) + "</abstractin-workspace>");
+	assert.equal(p.readingArtifactData(notes[0]).entries[0].id, stable);
+	assert.equal(notes.length, 1);
+});
+
+test("unverified page hints retain structural contents and never create guessed links", async () => {
+	const { plugin: p, ctx, contents, notes } = await setup();
+	ctx.reading.pdfSource.pageMapping = false;
+	for (let pageIndex of [19, 1.5, 0]) {
+		let data = { ...contents, entries: [{ ...contents.entries[0], pageIndex }] };
+		const saved = await p.saveReadingAction(ctx, "contents", "Contents\n<abstractin-workspace>" + JSON.stringify(data) + "</abstractin-workspace>");
+		assert.ok(saved.key);
+		assert.equal(p.readingArtifactData(notes[0]).entries[0].pageIndex, null);
+	}
+});
+
+test("a failed automatic initialization does not run again after another Start or plugin restart", async () => {
+	const { plugin: p, ctx, view, dir } = await setup();
+	let requests = [];
+	p.startRequest = (...args) => requests.push(args);
+	await p.beginReadingWorkflow(view);
+	await p.beginReadingWorkflow(view);
+	assert.equal(requests.length, 1);
+	assert.match(view.root.textContent, /not saved/);
+	const attempt = JSON.parse(await readFile(join(dir, "contents-auto-attempt.json"), "utf8"));
+	assert.equal(attempt.attachmentKey, ctx.attachmentItem.key);
+	delete ctx.reading.contentsAttempted;
+	await p.beginReadingWorkflow(view);
+	assert.equal(requests.length, 1);
+	const retry = [...view.root.querySelectorAll("button")].find(n => n.textContent === "Initialize contents");
+	retry.click();
+	assert.equal(requests.length, 2, "a user can retry explicitly or go straight to questions");
+});
+
+test("contents preparation supplies a bounded exact source excerpt and avoids chapter scans", async () => {
+	const { plugin: p, ctx, dir } = await setup();
+	await p.prepareContentsSource(ctx);
+	assert.match(await readFile(join(dir, "contents-source.md"), "utf8"), /Contents\n1 Foundations/);
+	ctx.reading.action = "contents";
+	const prompt = p.readingPrompt(ctx) + p.readingActionPrompt(ctx, "contents");
+	assert.match(prompt, /contents-source.md/);
+	assert.match(prompt, /pageIndex.*null/);
+	assert.ok(!prompt.includes("append exactly one <abstractin-record>"));
+	assert.ok(!prompt.includes("inspect the actual contents and chapter openings"));
+});
+
+test("failure to refresh a derived cache after Zotero save is reported as a notice, not a failed note", async () => {
+	const { plugin: p, ctx, response, notes } = await setup();
+	p.exportReadingWorkspace = async () => { throw new Error("Cache unavailable"); };
+	const saved = await p.saveReadingAction(ctx, "contents", response);
+	assert.equal(saved.key, notes[0].key);
+	assert.match(saved.notice, /saved.*cache/i);
 });
 
 test("changed source starts a new agent thread and unnamed questions receive the current page", async () => {
@@ -195,4 +328,68 @@ test("saved summary view preserves display equations and tables", async () => {
 	assert.equal(view.root.querySelectorAll(".zs-workspace-view math").length, 2);
 	assert.ok(view.root.querySelector(".zs-workspace-view table"));
 	assert.ok(!view.root.querySelector(".zs-workspace-view").textContent.includes("abstractin-workspace-v1"));
+});
+
+test("unmapped chapter opens by a unique PDF outline destination without guessing printed-page offsets", async () => {
+ const { plugin: p, window, ctx, view, contents } = await setup();
+ ctx.reading.pdfSource.pageMapping = false;
+ let navigated;
+ const pdf = { numPages: 30, getOutline: async () => [{ title: '1 Foundations', dest: 'chapter1', items: [] }], getDestination: async () => [{ num: 100, gen: 0 }], getPageIndex: async () => 12 };
+ window.Zotero.Reader = { _readers: [{ itemID: 7, type: 'pdf', navigate: async loc => { navigated = loc.pageIndex; }, _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfDocument: pdf } } } } }] };
+ await p.openReadingContentsEntry(view, contents.entries[0]);
+ assert.equal(navigated, 12); assert.equal(contents.entries[0].pageIndex, null);
+ pdf.getOutline = async () => [];
+ await assert.rejects(p.openReadingContentsEntry(view, contents.entries[0]), /verified/);
+});
+
+test("discussion source links validate against live physical pages when full-text mapping is unavailable", async () => {
+ const { plugin: p, window, ctx, notes } = await setup();
+ ctx.reading.pdfSource.pageMapping = false;
+ await writeFile(join(ctx.dir, 'source-text.md'), 'Argument');
+ window.Zotero.Reader = { _readers: [{ itemID: 7, type: 'pdf', _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfDocument: { numPages: 3, getPage: async n => ({ getTextContent: async () => ({ items: [{ str: n === 3 ? 'Argument' : 'Other page' }] }) }) } } } } } }] };
+ await p.saveReadingRecord(ctx, 'Explain', null, { title: 'Result', summary: 'Conclusion', openQuestions: [], sources: [{ pageIndex: 2, quote: 'Argument' }] });
+ assert.match(notes[0].html, /page=3/);
+ await p.saveReadingRecord(ctx, 'Explain', null, { title: 'Other', summary: 'Conclusion', openQuestions: [], sources: [{ pageIndex: 1, quote: 'Argument' }] });
+ assert.ok(!notes[1].html.includes('page=2'));
+});
+
+test("current-page questions receive native page text despite blank-cover mapping loss and snapshot the send-time page", async () => {
+ const { plugin: p, window, ctx, dir } = await setup();
+ p.prepareReadingSkills = async ctx => ctx.reading;
+ window.Zotero.PDFWorker = { getFullText: async () => ({ text: 'Preface\fCurrent equation and argument', extractedPages: 3, totalPages: 3 }) };
+ let calls = 0;
+ const app = { pdfDocument: { numPages: 3, getPage: async n => { if (n === 3) calls++; return { getTextContent: async () => ({ items: [{ str: n === 1 ? '' : n === 2 ? 'Preface' : 'Current equation and argument' }] }) }; } }, pdfViewer: { currentPageNumber: 1, getPageView: () => ({ pageLabel: '1' }) } };
+ window.Zotero.Reader = { _readers: [{ itemID: 7, type: 'pdf', _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: app } } } }] };
+ p.runBackend = async (_, request) => {
+  assert.match(request.question, /Current equation and argument/);
+  assert.match(request.question, /current-page.md/);
+  assert.match(request.question, /do not search source-text.md/);
+  assert.match(request.question, /"pageIndex":2/);
+  return { text: 'Explanation\n<abstractin-record>{"title":"Explanation","summary":"Conclusion","openQuestions":[],"sources":[{"quote":"Current equation and argument","pageIndex":2}]}</abstractin-record>' };
+ };
+ const result = await p.ask(ctx, 'Explain this page', { backend: 'codex', currentPage: { pageIndex: 2, pageLabel: '1' }, progress() {} });
+ assert.equal(result.error, undefined); assert.ok(result.recordKey); assert.equal(result.recordNotice, undefined);
+ assert.match(await readFile(join(dir, 'current-page.md'), 'utf8'), /pageIndex: 2/);
+ assert.equal(calls, 1, 'record validation reuses the already extracted native page');
+});
+
+test("an explicitly bound reader wins over another window showing the same attachment", async () => {
+ const { plugin: p, window, ctx } = await setup();
+ const makeReader = n => ({ itemID: 7, type: 'pdf', _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfViewer: { currentPageNumber: n, getPageView: () => ({}) } } } } } });
+ window.Zotero.Reader = { _readers: [makeReader(1), makeReader(3)] };
+ ctx.reader = window.Zotero.Reader._readers[1];
+ assert.equal(p.currentReadingLocation(ctx).pageIndex, 2);
+ ctx.reader = { ...ctx.reader, itemID: 8 }; assert.equal(p.currentReadingLocation(ctx).pageIndex, 0);
+});
+
+test("mapped chapter navigation accepts a wrapped heading, excludes contents rows and rejects ambiguous bookmarks", async () => {
+ const { plugin: p, window, ctx, view, contents, dir } = await setup();
+ let navigated;
+ const pdf = { numPages: 3, getOutline: async () => [] };
+ window.Zotero.Reader = { _readers: [{ itemID: 7, type: 'pdf', navigate: async loc => { navigated = loc.pageIndex; }, _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfDocument: pdf } } } } }] };
+ await writeFile(join(dir, 'source-text.md'), '## PDF page 1; pageIndex 0\nContents\n1 Foundations\n## PDF page 2; pageIndex 1\nPreface\n## PDF page 3; pageIndex 2\n1\nFoundations\nArgument');
+ await p.openReadingContentsEntry(view, contents.entries[0]); assert.equal(navigated, 2);
+ pdf.getOutline = async () => [{ title: 'Foundations', dest: [0] }, { title: 'Chapter 1 Foundations', dest: [1] }];
+ await assert.rejects(p.openReadingContentsEntry(view, contents.entries[0]), /unique/);
+ assert.equal(navigated, 2);
 });

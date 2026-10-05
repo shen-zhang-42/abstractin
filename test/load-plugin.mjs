@@ -27,6 +27,7 @@ export function loadPlugin({ prefs = {} } = {}) {
 	window.eval("var Zusia;\n" + read("src/content/zusia.js") + "\nwindow.Zusia = Zusia;");
 	window.eval(read("src/content/reading.js"));
 	window.eval(read("src/content/reading-workflow.js"));
+	window.eval(read("src/content/reader-panel.js"));
 	const plugin = window.Zusia;
 	plugin.rootURI = "./";
 	return { window, document: window.document, plugin, prefs };

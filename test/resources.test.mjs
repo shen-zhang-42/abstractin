@@ -7,7 +7,7 @@ import { loadPlugin } from "./load-plugin.mjs";
 test("startup registers resources before loading scripts and releases them on shutdown", async () => {
 	const events = [];
 	const rootURI = "jar:file:///C:/Users/User/plugin.xpi!/";
-	const plugin = Object.fromEntries(["init", "getKatex", "addToAllWindows", "registerPaneSection", "registerReaderHooks", "watchPrefs", "registerPrefsPane", "unwatchPrefs", "stopReadingPositionTracking", "unregisterPaneSection", "removeFromAllWindows"].map(name => [name, arg => { events.push({ name, arg }); return true; }]));
+	const plugin = Object.fromEntries(["init", "getKatex", "addToAllWindows", "registerPaneSection", "registerReaderHooks", "watchPrefs", "registerPrefsPane", "unwatchPrefs", "stopReadingPositionTracking", "removeAllReaderPanels", "unregisterPaneSection", "removeFromAllWindows"].map(name => [name, arg => { events.push({ name, arg }); return true; }]));
 	const scope = {
 		Zotero: { debug() {} },
 		Cc: { "@mozilla.org/addons/addon-manager-startup;1": { getService: () => ({ registerChrome: (uri, entries) => {

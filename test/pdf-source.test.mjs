@@ -99,3 +99,39 @@ test("Stop during PDF extraction prevents agent execution", async () => {
 	p.runBackend = async () => { throw new Error("Must not launch after Stop"); };
 	assert.equal((await p.ask(ctx, "Question", pending)).cancelled, true);
 });
+
+test("live page extraction preserves physical indices despite unverified full-text boundaries and caches per PDF", async () => {
+ const { p, window, ctx } = await setup();
+ let calls = 0;
+ const pdf = { numPages: 9, getPage: async n => { calls++; assert.equal(n, 5); return { getTextContent: async () => ({ items: [{ str: 'Current equation', hasEOL: true }, { str: 'Verified argument' }] }) }; } };
+ const app = { pdfDocument: pdf, pdfViewer: { currentPageNumber: 5, getPageView: () => ({ pageLabel: '1' }) } };
+ window.Zotero.Reader = { _readers: [{ itemID: 7, type: 'pdf', _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: app } } } }] };
+ ctx.reading.pdfSource = { status: 'ready', pageMapping: false };
+ const page = await p.readNativeReadingPage(ctx, 4);
+ assert.equal(page.pageIndex, 4); assert.match(page.text, /Current equation\nVerified argument/);
+ await p.readNativeReadingPage(ctx, 4); assert.equal(calls, 1);
+ app.pdfDocument = { ...pdf }; await p.readNativeReadingPage(ctx, 4); assert.equal(calls, 2);
+ await assert.rejects(p.readNativeReadingPage(ctx, 9), /outside/);
+});
+
+test("blank-cover boundaries recover only when native edge pages and full extraction agree", async () => {
+ const { p, window, ctx } = await setup();
+ window.Zotero.PDFWorker = { getFullText: async () => ({ text: 'Contents\fChapter argument', extractedPages: 4, totalPages: 4 }) };
+ let native = ['', 'Contents', 'Chapter argument', ''];
+ window.Zotero.Reader = { _readers: [{ itemID: 7, type: 'pdf', _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfDocument: { numPages: 4, getPage: async n => ({ getTextContent: async () => ({ items: [{ str: native[n - 1] }] }) }) } } } } } }] };
+ let source = await p.exportReadingSource(ctx);
+ source = await p.recoverReadingPageMapping(ctx, source);
+ assert.equal(source.pageMapping, true);
+ let text = await readFile(join(ctx.dir, 'source-text.md'), 'utf8');
+ assert.match(p.pdfPageText(text, 0), /No extractable text/);
+ assert.match(p.pdfPageText(text, 1), /Contents/);
+ assert.match(p.pdfPageText(text, 2), /Chapter argument/);
+ assert.equal(JSON.parse(await readFile(join(ctx.dir, 'source-manifest.json'), 'utf8')).pageMapping, true);
+});
+
+test("a disagreement with the reader never repairs page offsets", async () => {
+ const { p, window, ctx } = await setup();
+ window.Zotero.PDFWorker = { getFullText: async () => ({ text: 'Old text', extractedPages: 2, totalPages: 2 }) };
+ window.Zotero.Reader = { _readers: [{ itemID: 7, type: 'pdf', _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfDocument: { numPages: 2, getPage: async n => ({ getTextContent: async () => ({ items: [{ str: n === 1 ? '' : 'Changed text' }] }) }) } } } } } }] };
+ assert.equal((await p.recoverReadingPageMapping(ctx, await p.exportReadingSource(ctx))).pageMapping, false);
+});

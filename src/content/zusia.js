@@ -703,7 +703,7 @@ Zusia = {
 	},
 
 	refreshAllSidebars() {
-		for (let win of Zotero.getMainWindows()) {
+		for (let win of new Set([...Zotero.getMainWindows(), ...this._readerPanelWindows.keys()])) {
 			for (let root of win.document.querySelectorAll(".zs-root")) {
 				this.refreshRoot(root);
 			}
@@ -751,6 +751,7 @@ Zusia = {
 	},
 
 	removeFromWindow(window) {
+		this.removeReaderPanel(window);
 		let doc = window.document;
 		doc.getElementById("abstractin-stylesheet")?.remove();
 		doc.querySelector('[href="abstractin.ftl"]')?.remove();
@@ -784,9 +785,9 @@ Zusia = {
 			onInit: () => {
 				this.log("section onInit");
 			},
-			onItemChange: ({ item, setEnabled }) => {
+			onItemChange: ({ item, tabType, doc, setEnabled }) => {
 				let usable = !!item && (item.isRegularItem() || item.isFileAttachment());
-				setEnabled(usable);
+				setEnabled(usable && !(tabType === "reader" && doc && this.readerPanelMount(doc)));
 			},
 			onRender: ({ doc, body }) => {
 				try {
@@ -1077,9 +1078,12 @@ Zusia = {
 	// ---------------------------------------------------------------------
 
 	renderSkeleton(doc, body) {
+		body.querySelector(".zs-root")?.disposeUI?.();
 		body.textContent = "";
 
 		let root = this.el(doc, "div", "zs-root");
+		let cleanup = [];
+		root.disposeUI = () => { for (let dispose of cleanup.splice(0)) dispose(); };
 		// Background image, veil and glow, behind everything else (see .zs-backdrop).
 		let backdrop = this.el(doc, "div", "zs-backdrop");
 		backdrop.setAttribute("aria-hidden", "true");
@@ -1113,11 +1117,12 @@ Zusia = {
 			let refit = () => log.isConnected && this.fitWideContent(log);
 			doc.fonts.addEventListener("loadingdone", refit);
 			doc.fonts.ready.then(refit);
+			cleanup.push(() => doc.fonts.removeEventListener("loadingdone", refit));
 		}
 		if (win && win.ResizeObserver) {
 			let pendingFit = null;
 			let lastWidth = 0;
-			new win.ResizeObserver((entries) => {
+			let resize = new win.ResizeObserver((entries) => {
 				let width = Math.round(entries[0].contentRect.width);
 				if (width === lastWidth) {
 					return;
@@ -1125,7 +1130,9 @@ Zusia = {
 				lastWidth = width;
 				win.cancelAnimationFrame(pendingFit);
 				pendingFit = win.requestAnimationFrame(() => this.fitWideContent(log));
-			}).observe(log);
+			});
+			resize.observe(log);
+			cleanup.push(() => { resize.disconnect(); win.cancelAnimationFrame(pendingFit); });
 		}
 		let back = this.ghostButton(doc, "zs-back", "back", "Back", () => this.goBack(root));
 		back.hidden = true;
@@ -2072,7 +2079,7 @@ Zusia = {
 		}
 	},
 
-	async renderContent(doc, body, item) {
+	async renderContent(doc, body, item, boundReader = null) {
 		let root = body.querySelector(".zs-root");
 		let logEl = body.querySelector(".zs-log");
 		let input = body.querySelector(".zs-input");
@@ -2104,12 +2111,13 @@ Zusia = {
 			return;
 		}
 		// Resolve the PDF actually open in this reader before choosing a workspace.
-		let reader = this.readerFor(ctx, doc.defaultView);
+		let reader = boundReader || this.readerFor(ctx, doc.defaultView);
 		if (reader && item.isRegularItem()) {
 			let attachment = Zotero.Items.get(reader.itemID);
 			if (attachment) ctx = await this.getContext(attachment);
 		}
 
+		ctx.reader = reader?.itemID === ctx.attachmentItem?.id ? reader : null;
 		let view = { doc, root, logEl, input, ctx, send: null };
 		view.send = (text, images) => this.sendText(view, text, images);
 
@@ -2207,6 +2215,7 @@ Zusia = {
 			modes,
 			selection,
 			readingAction,
+			currentPage: this.currentReadingLocation(view.ctx),
 			backend,
 			model: this.getModel(backend),
 			effort: this.getEffort(backend),
@@ -2340,6 +2349,10 @@ Zusia = {
 	// ---------------------------------------------------------------------
 
 	registerReaderHooks() {
+		Zotero.Reader.registerEventListener("renderToolbar", event => {
+			try { this.renderReaderToolbar(event); }
+			catch (e) { this.logError("renderReaderToolbar", e); }
+		}, this.id);
 		Zotero.Reader.registerEventListener("renderTextSelectionPopup", (event) => {
 			try {
 				this.renderSelectionButtons(event);
@@ -2411,13 +2424,9 @@ Zusia = {
 			},
 		});
 		let win = reader._window || Zotero.getMainWindow();
-		// Open the side pane and bring the chat section into view.
+		// Reveal the dedicated reading panel for this exact PDF.
 		try {
-			let pane = win.ZoteroContextPane;
-			if (pane && pane.collapsed) {
-				pane.togglePane();
-			}
-			pane?.sidenav?.container?.scrollToPane(this.paneID, "smooth");
+			this.openReaderPanel(reader).catch(e => this.logError("selection reader panel", e));
 		}
 		catch (e) {
 			this.log("askAboutSelection: could not reveal the sidebar: " + e);
@@ -3352,6 +3361,7 @@ Zusia = {
 		else if (result.recordKey) {
 			logEl.appendChild(this.el(doc, "div", "zs-notice", "Reading record saved as a Zotero note (" + result.recordKey + ")."));
 		}
+		if (result.recordNotice) logEl.appendChild(this.el(doc, "div", "zs-notice", result.recordNotice));
 		if (result.cancelled && !view.input.value.trim()) {
 			// Nothing was answered: give the question back so it can be edited and resent.
 			this.editPrompt(view, pending.question, pending.images);
@@ -3383,7 +3393,7 @@ Zusia = {
 				if (backend !== "codex") return { error: "Reading sessions require local Codex." };
 				ctx = { ...ctx, reading: await this.prepareReadingSkills(ctx) };
 				ctx.reading.action = pending.readingAction || "discuss";
-				ctx.reading.currentPage = this.currentReadingLocation(ctx);
+				ctx.reading.currentPage = pending.currentPage !== undefined ? pending.currentPage : this.currentReadingLocation(ctx);
 				try { await this.rememberReadingPosition(ctx); }
 				catch (e) { this.logError("rememberReadingPosition", e); }
 			}
@@ -3392,12 +3402,10 @@ Zusia = {
 			if (ctx.reading) {
 				pending.progress({ status: "preparing PDF text" });
 				pdfSource = await this.exportReadingSource(ctx);
+				if (!pending.cancelled) pdfSource = await this.recoverReadingPageMapping(ctx, pdfSource);
 				if (pending.cancelled) return { cancelled: true };
 				ctx = { ...ctx, reading: { ...ctx.reading, pdfSource } };
-				if (pdfSource.status === "ready" && pdfSource.pageMapping && ctx.reading.currentPage) {
-					let text = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
-					ctx.reading.currentPage.text = this.pdfPageText(text, ctx.reading.currentPage.pageIndex).slice(0, 6000);
-				}
+				if (pdfSource.status === "ready") await this.prepareCurrentReadingPage(ctx);
 				if (pdfSource.status !== "ready") {
 					if (!pending.selection?.text && !pending.images?.length) return { error: pdfSource.error, pdfSource };
 					sourceWarning = pdfSource.error + " This answer uses only the supplied passage or image.";
@@ -3405,19 +3413,21 @@ Zusia = {
 			}
 			if (ctx.reading) await this.exportReadingRecords(ctx);
 			if (ctx.reading) await this.exportReadingWorkspace(ctx);
+			if (ctx.reading && pending.readingAction === "contents") await this.prepareContentsSource(ctx);
 			let history = await this.loadHistory(ctx.dir);
 			let sessions = await this.loadSessions(ctx.dir);
 			let session = sessions[backend] || null;
 			// A model change starts a fresh thread, preserving history in the prompt.
 			if (backend === "codex" && session && session.model !== (pending.model || "")) session = null;
 			if (ctx.reading && session && session.sourceSignature !== pdfSource.signature) session = null;
+			if (pending.readingAction === "contents") session = null;
 
 			let images = pending.images || [];
 			if (images.length && !this.BACKENDS[backend].images) {
 				return { error: label + " cannot see images from the sidebar. Switch to Claude or Codex, or remove the image and ask again." };
 			}
 			let request = {
-				ctx, files, history, session, images,
+				ctx, files, history: pending.readingAction === "contents" ? [] : history, session, images,
 				question: (question || "Look at the attached image.") + this.imageNote(backend, images) +
 					this.modeInstructions(pending.modes) + (ctx.reading ? "\n\n" + this.readingPrompt(ctx, pending.selection) +
 						(pending.readingAction ? "\n\n" + this.readingActionPrompt(ctx, pending.readingAction) : "") : ""),
@@ -3475,11 +3485,12 @@ Zusia = {
 			else if (!result.text) {
 				return { error: result.error || label + " returned no text." };
 			}
-			let recordKey, recordWarning;
+			let recordKey, recordWarning, recordNotice;
 			if (ctx.reading && !result.stopped && pending.readingAction) {
 				try {
 					let saved = await this.saveReadingAction(ctx, pending.readingAction, result.text);
 					result.text = saved.answer; recordKey = saved.key;
+					recordNotice = saved.notice;
 				}
 				catch (e) { result.text = this.readingVisibleText(result.text); recordWarning = e.message || String(e); }
 				if (recordKey) meta.recordKey = recordKey;
@@ -3493,6 +3504,7 @@ Zusia = {
 				if (parsed.record) {
 					try {
 						recordKey = await this.saveReadingRecord(ctx, question, pending.selection, parsed.record);
+						recordNotice = parsed.record.saveNotice;
 					}
 					catch (e) { recordWarning = "The answer is available, but Zotero could not save its reading note: " + (e.message || e); }
 				}
@@ -3500,6 +3512,7 @@ Zusia = {
 				if (recordKey) meta.recordKey = recordKey;
 				if (recordWarning) meta.recordWarning = recordWarning;
 			}
+			if (recordNotice) meta.recordNotice = recordNotice;
 			await this.appendHistory(ctx.dir, [
 				Object.assign({ role: "user", text: question, ts: Date.now() },
 					pending.selection ? { selection: pending.selection } : {},
@@ -3538,7 +3551,7 @@ Zusia = {
 				if (ctx.reading) sessions[backend].sourceSignature = pdfSource.signature;
 				await this.saveSessions(ctx.dir, sessions);
 			}
-			return { ...(ctx.reading ? { recordKey, recordWarning, pdfSource, sourceWarning } : {}), ...(modelFallback ? { modelFallback: true } : {}) };
+			return { ...(ctx.reading ? { recordKey, recordWarning, recordNotice, pdfSource, sourceWarning } : {}), ...(modelFallback ? { modelFallback: true } : {}) };
 		}
 		catch (e) {
 			this.logError("ask", e);

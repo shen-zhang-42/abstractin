@@ -257,7 +257,8 @@ Object.assign(Zusia, {
 			type: options.type, itemKey: parent.key, attachmentKey: attachment.key,
 		}));
 		this._readingStates.set(attachment.id, options);
-		view.ctx = { paperItem: parent, attachmentItem: attachment, dir, reading: options };
+		view.ctx = { paperItem: parent, attachmentItem: attachment, dir, reading: options,
+			reader: view.ctx.reader?.itemID === attachment.id ? view.ctx.reader : this.readerFor({ paperItem: parent, attachmentItem: attachment }, view.doc.defaultView) };
 		this.setPref("backend", "codex");
 		this.updateControls(view.root);
 		this.renderPaperChip(view.root, this.paperInfo(view.ctx));
@@ -311,13 +312,23 @@ Object.assign(Zusia, {
 		if (resume) resume.hidden = !reading?.referenceNavigation;
 		let sourceStatus = view.root.querySelector(".zs-reading-source-status");
 		if (sourceStatus) sourceStatus.textContent = reading?.pdfSource ? (reading.pdfSource.status === "ready" ?
-			"PDF text ready · " + reading.pdfSource.extractedPages + "/" + reading.pdfSource.totalPages + " pages" : "PDF text unavailable — use a selected passage or page image") : "";
+			"PDF text ready · " + reading.pdfSource.extractedPages + "/" + reading.pdfSource.totalPages + " pages" +
+			(reading.pdfSource.pageMapping ? "" : " · page links unverified") : "PDF text unavailable — use a selected passage or page image") : "";
 		let quick = view.root.querySelector(".zs-quick");
 		if (quick) quick.hidden = true;
 	},
 
 	readingPrompt(ctx, selection) {
 		let reading = ctx.reading;
+		if (reading.action === "contents") return "AbstractIn book contents initialization. Read the original book-reading skill at " + JSON.stringify(reading.skillPath) +
+			" and use only its structure initialization workflow. " + this.languageInstruction() +
+			" Document identity: " + JSON.stringify({ libraryID: ctx.paperItem.libraryID, itemKey: ctx.paperItem.key, attachmentKey: ctx.attachmentItem.key }) + ". " +
+			"PDF source status: " + JSON.stringify(reading.pdfSource || {}) + ". " +
+			"Begin with contents-source.md, a bounded candidate excerpt copied from source-text.md. If it does not include the actual contents, search source-text.md for the contents heading and inspect only those pages. " +
+			"Existing contents corrections are in workspace.md, derived from the current Zotero note. Recheck changed headings against the actual source. " +
+			"Extract verified structure only. Do not read chapter openings, locate every chapter's physical page, or generate summaries. " +
+			"The plugin creates folders and saves the authoritative Zotero contents note. Do not write files, use a browser bridge, or conduct external research. " +
+			"Use the abstractin-workspace output schema in the action instructions. Do not emit abstractin-record.";
 		let source = selection ? {
 			selectedText: selection.text, printedPageLabel: selection.pageLabel || null,
 			pdfPageIndex: selection.position?.pageIndex ?? null,
@@ -332,7 +343,8 @@ Object.assign(Zusia, {
 			"Source for this question: " + JSON.stringify(source) + ". " +
 			"Current reader location: " + JSON.stringify(reading.currentPage || null) + ". " +
 			"For 'this', an unnamed equation or a proof step, start at this current page when no passage is selected. If the reference stays ambiguous, ask which passage; do not infer it. " +
-			"Existing contents and paper summary are in workspace.md, derived from authoritative Zotero notes. Use the paper summary first for discussion, then verify missing details in source-text.md. " +
+			(reading.currentPage?.verified ? "The current page above was read directly at its physical PDF index. Its complete text is in current-page.md when file is specified. For a current-page question, answer from this supplied text first; do not search source-text.md or scan the book unless a specific missing dependency requires it. Cite this verified zero-based pageIndex in record sources. " : "") +
+			"Existing contents and paper summary are in workspace.md, derived from authoritative Zotero notes. For current-page questions use the supplied current page first; for broader paper discussion use the saved summary and verify missing details in source-text.md. " +
 			"PDF source status: " + JSON.stringify(reading.pdfSource || { status: "not checked" }) + ". " +
 			"When PDF source status is ready, source.pdf is the exact attachment and source-text.md contains its extracted text in this working directory. " +
 			"Read the requested portions of source-text.md using local file tools; you do not need a Zotero browser or reader tool to access it. " +
@@ -349,6 +361,7 @@ Object.assign(Zusia, {
 			"Generate summaries only when the user requests them. Do not conduct external research or write files. " +
 			"Use the plugin's Zotero note storage boundary for discussion records rather than creating parallel editable workspace notes or reports. " +
 			"Distinguish the author's argument from supplementary explanations. " +
+			(reading.action === "summary" ? "For this summary use only the abstractin-workspace output schema in the action instructions.\n" :
 			"Answer the user's question, then append exactly one <abstractin-record>JSON</abstractin-record> block. " +
 			"The JSON must have title (short string), summary (a concise useful discussion record, at most 200 words), " +
 			"and openQuestions (array of strings). Save only conclusions actually discussed, never infer mastery. " +
@@ -357,7 +370,7 @@ Object.assign(Zusia, {
 			"or updateNoteKey from records.md, and return a merged concise record that preserves prior valid conclusions and explicitly notes corrections. " +
 			'For newly retrieved source passages, also provide sources [{"pageIndex":0,"printedPageLabel":null,"quote":"exact extracted source excerpt"}], at most 10. ' +
 			"Cite only verified physical page indices; use null for an unverified printed label. Existing selected-passage locations are supplied by Zotero. " +
-			"Use valid JSON escaping for LaTeX. The plugin saves this record as a Zotero note; this block is hidden from the conversation.";
+			"Use valid JSON escaping for LaTeX. The plugin saves this record as a Zotero note; this block is hidden from the conversation.");
 	},
 
 	async windowsCodexExecutable(path) {
@@ -403,16 +416,21 @@ Object.assign(Zusia, {
 
 	parseReadingAnswer(text) {
 		let answer = this.readingVisibleText(text).trim();
-		let match = String(text).match(/<abstractin-record>\s*([\s\S]*?)\s*<\/abstractin-record>\s*$/);
-		if (!match) return { answer, record: null };
 		try {
-			let record = JSON.parse(match[1]);
+			let record = this.readingEnvelope(text, "record");
+			if (!record) return { answer, record: null };
 			if (typeof record.title !== "string" || !record.title.trim() || typeof record.summary !== "string" ||
 				!record.summary.trim() || record.summary.length > 6000 || !Array.isArray(record.openQuestions) ||
 				!record.openQuestions.every(q => typeof q === "string")) return { answer, record: null };
 			return { answer, record };
 		}
 		catch (e) { return { answer, record: null }; }
+	},
+
+	readingEnvelope(text, kind) {
+		let blocks = [...String(text).matchAll(new RegExp("<abstractin-" + kind + ">\\s*([\\s\\S]*?)\\s*</abstractin-" + kind + ">", "g"))];
+		if (blocks.length !== 1) return null;
+		return JSON.parse(blocks[0][1].trim().replace(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i, "$1"));
 	},
 
 	readingPDFLink(ctx, selection) {
@@ -424,21 +442,43 @@ Object.assign(Zusia, {
 	},
 
 	async saveReadingRecord(ctx, question, selection, record) {
-		let sources = record.sources || [];
-		if (!Array.isArray(sources) || sources.length > 10) throw new Error("Invalid record source list.");
-		if (sources.length) {
-			if (!ctx.reading.pdfSource?.pageMapping) throw new Error("Record page locations could not be verified against this PDF text.");
-			let sourceText = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
-			let normalize = text => text.replace(/\s+/g, " ").trim();
-			for (let source of sources) {
-				if (!Number.isInteger(source.pageIndex) || source.pageIndex < 0 || source.pageIndex >= ctx.reading.pdfSource.totalPages || typeof source.quote !== "string" || !source.quote.trim() || source.quote.length > 3000 ||
-					!normalize(this.pdfPageText(sourceText, source.pageIndex)).includes(normalize(source.quote)) ||
-					(source.printedPageLabel !== null && typeof source.printedPageLabel !== "string")) throw new Error("A record source quote or PDF page could not be verified.");
-			}
+		let notices = [];
+		let candidates = Array.isArray(record.sources) ? record.sources.slice(0, 10) : [];
+		let sources = [];
+		let sourceText = "";
+		if (candidates.length && ctx.reading.pdfSource?.status === "ready") {
+			try { sourceText = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md")); }
+			catch (e) { this.logError("record source verification", e); }
 		}
-		let scope = record.scope || { level: ctx.reading.type === "book" ? "book" : "paper", id: "", title: "" };
-		if (!["book", "chapter", "section", "paper"].includes(scope.level) || typeof scope.id !== "string" || typeof scope.title !== "string") throw new Error("The reading record has an invalid scope.");
-		if (["chapter", "section"].includes(scope.level) && !this.readingArtifactNotes(ctx, "Contents").some(note => this.readingArtifactData(note)?.entries?.some(entry => entry.id === scope.id))) throw new Error("The record's chapter or section has not been verified in the contents.");
+		let normalize = text => text.normalize("NFKC").replace(/[\u00ad\u200b]/g, "").replace(/\s+/g, " ").trim();
+		let normalizedSource = normalize(sourceText);
+		let unlocated = 0, omitted = 0;
+		for (let candidate of candidates) {
+			if (!candidate || typeof candidate.quote !== "string" || !candidate.quote.trim() || candidate.quote.length > 3000) { omitted++; continue; }
+			let source = { ...candidate, printedPageLabel: typeof candidate.printedPageLabel === "string" ? candidate.printedPageLabel : null };
+			let quote = normalize(source.quote), pageVerified = false;
+			if (!quote) { omitted++; continue; }
+			if (ctx.reading.pdfSource?.status === "ready" && Number.isInteger(source.pageIndex) && source.pageIndex >= 0) {
+				if (ctx.reading.pdfSource.pageMapping && source.pageIndex < ctx.reading.pdfSource.totalPages) pageVerified = normalize(this.pdfPageText(sourceText, source.pageIndex)).includes(quote);
+				if (!pageVerified) {
+					try { pageVerified = normalize((await this.readNativeReadingPage(ctx, source.pageIndex)).text).includes(quote); }
+					catch (e) { /* Retain an independently verified excerpt without a page link. */ }
+				}
+			}
+			if (!pageVerified && (!sourceText || !normalizedSource.includes(quote))) { omitted++; continue; }
+			if (!pageVerified) { source.pageIndex = null; unlocated++; }
+			sources.push(source);
+		}
+		if (unlocated) notices.push(unlocated + " source page locations are unverified. The discussion and verified excerpts were saved without those page links.");
+		if (omitted) notices.push(omitted + " unverified source excerpts were omitted; the discussion was saved.");
+		if (record.sources && (!Array.isArray(record.sources) || record.sources.length > 10)) notices.push("Unsupported source entries were omitted; the discussion was saved.");
+		let broadScope = { level: ctx.reading.type === "book" ? "book" : "paper", id: "", title: "" };
+		let scope = record.scope || broadScope;
+		if (!["book", "chapter", "section", "paper"].includes(scope.level) || typeof scope.id !== "string" || typeof scope.title !== "string" ||
+			(["chapter", "section"].includes(scope.level) && !this.readingArtifactNotes(ctx, "Contents").some(note => this.readingArtifactData(note)?.entries?.some(entry => entry.id === scope.id)))) {
+			scope = broadScope; notices.push("The requested chapter/section scope is unverified. The discussion was saved at the document scope.");
+		}
+		record.saveNotice = notices.join(" ") || undefined;
 		let topic = typeof record.topicKey === "string" && /^[a-z0-9-]{1,80}$/.test(record.topicKey) ? record.topicKey : null;
 		let doc = Zotero.getMainWindow().document;
 		let existing = (ctx.paperItem.getNotes?.() || []).map(id => Zotero.Items.get(id)).find(note => {
@@ -470,12 +510,17 @@ Object.assign(Zusia, {
 		if (Number.isInteger(selection?.position?.pageIndex)) add("PDF page index (zero-based): " + selection.position.pageIndex);
 		if (selection?.text) wrapper.appendChild(this.el(doc, "blockquote", null, selection.text));
 		for (let verified of sources) {
-			let link = this.el(doc, "a", null, "Source PDF page " + (verified.pageIndex + 1));
-			link.href = this.readingPDFLink(ctx, { position: { pageIndex: verified.pageIndex } });
-			wrapper.append(link, this.el(doc, "blockquote", null, verified.quote));
+			if (Number.isInteger(verified.pageIndex)) {
+				let link = this.el(doc, "a", null, "Source PDF page " + (verified.pageIndex + 1));
+				link.href = this.readingPDFLink(ctx, { position: { pageIndex: verified.pageIndex } });
+				wrapper.append(link);
+			}
+			else add("Verified source excerpt; physical PDF page unverified.");
+			wrapper.append(this.el(doc, "blockquote", null, verified.quote));
 			if (verified.printedPageLabel) add("Agent-reported printed label (verify in PDF): " + verified.printedPageLabel);
 		}
 		if (ctx.reading.pdfSource?.status === "unavailable") add("Source coverage: supplied passage or image only. PDF text was unavailable.");
+		for (let notice of notices) add("Source validation: " + notice);
 		add("Question: " + question);
 		// Reuse upstream TeX-preserving note rendering; never insert agent HTML directly.
 		let summary = this.noteHTML("Discussion", record.summary);

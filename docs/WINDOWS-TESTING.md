@@ -5,11 +5,22 @@
 1. Download `abstractin.xpi` from this checkout. It is the AbstractIn build; the existing `zusia.xpi` is the preserved upstream artifact.
 2. Install and sign in to local Codex. Confirm `codex --version` and a normal Codex session work from your Windows terminal.
 3. In Zotero, open **Tools → Plugins → gear → Install Plugin From File…**, select `abstractin.xpi`, and restart Zotero if requested.
-4. Open a PDF attached to a regular Zotero book or paper item. Use the **AbstractIn** sidebar section.
+4. Open a PDF attached to a regular Zotero book or paper item. Click the book icon in the reader's top toolbar (**Toggle AbstractIn panel**), alongside **Toggle Context Pane**, to open its dedicated right-side panel. The library view retains the AbstractIn item section.
 5. Click **Start Reading**. Confirm the exact PDF and choose **Book** or **Scientific paper**. Unknown item types require a manual choice. Reading answers follow the plugin's existing **Answer language** setting; **Same as my question** follows the language of your question. There is no separate reading language selector as of version 0.1.3, and changing the shared setting applies to subsequent questions in an existing reading session.
 6. Leave the skills folder empty for automatic local discovery with bundled originals as fallback. To use your existing installation explicitly, enter `C:\Users\SZhang\.codex\skills`. A configured folder must contain the original skills; an invalid explicit path is reported rather than silently replaced.
 
 The book skill is named `book-reading` in its front matter. Both `book-reading/SKILL.md` and `scientific-book-reading/SKILL.md` are accepted. Paper reading also requires `scientific-information-extraction/SKILL.md`. The XPI bundles the supplied originals and their supporting files unchanged.
+
+## Verify the dedicated reader panel (0.2.1)
+
+1. Fully exit and restart Zotero after installing this XPI. Open a PDF tab and find **Toggle AbstractIn panel** in the top toolbar. Click it: the chat should occupy its own right-side panel, outside the metadata sections, with Start Reading at the top and the composer at the bottom.
+2. Open the native context pane first, then open AbstractIn. Only AbstractIn should remain visible. Click its icon again or its Close button: the previous native pane should return. While AbstractIn is open, **Toggle Context Pane** should switch back to native metadata/notes.
+3. Enter an unsent question, close/reopen AbstractIn and verify the draft remains. During a running answer, close/reopen the panel and check that the same request continues.
+4. Switch between two PDF tabs. The displayed chat and draft must correspond to each exact attachment. An unloaded PDF must show loading rather than another attachment's conversation. Switch to the library: the dedicated reader panel should hide.
+5. Select text and use **Ask Codex about this** or **Explain this**. The dedicated panel should open with the exact passage and physical page location. Test the same entry in a detached PDF window.
+6. Drag the panel divider to resize it, and check long formulas, tables, light/dark themes and a small window. Disable/re-enable the plugin: injected controls and panels must be cleaned up. Restart or reopen the PDF if its toolbar was already loaded when the plugin was re-enabled.
+
+The toolbar entry uses Zotero's public `renderToolbar` hook. Panel mounting uses a small adapter for the main/detached reader window layouts; unfamiliar layouts report a diagnostic and retain the item-section fallback. These tests still need real Windows Zotero verification.
 
 ## Verify the minimal reading loop
 
@@ -35,9 +46,29 @@ If a chosen Codex model is explicitly rejected as unsupported or unavailable, Ab
 3. Navigate to a genuine reading page. Allow two seconds for position saving, then use a verified contents/source link to jump elsewhere. **Return to reading** should restore the original page. **Resume here** accepts the reference page as the new reading position. Restart and use **Start Reading** to check restoration and the discussion recap. This records location, not mastery.
 4. Ask two follow-up questions on the same topic and verified chapter/section. When Codex supplies the same scope/topic identifier, the concise discussion should update one note instead of creating duplicates. Edit a conclusion or open question in Zotero and ask again; current notes should be included in the derived reading context.
 5. Check the source-status line and debug log for PDF extraction. Test another attachment, a missing linked file and an image-only PDF. Missing/unextractable sources should report an actionable error before a general request is sent. An explicitly selected passage or attached image may still be discussed, with a source-coverage warning.
-6. Check that source links use physical PDF pages. Printed labels are stored separately and must never be converted with a guessed fixed offset. Partially extracted text must not be presented as complete; unverifiable page boundaries must not produce guessed links.
+6. Check that source links use physical PDF pages. Printed labels are stored separately and must never be converted with a guessed fixed offset. Partially extracted text must not be presented as complete; unverifiable page boundaries must not produce guessed links. **page links unverified** means text extraction succeeded but physical page boundaries could not be established. A saved contents note with null pageIndex values is usable structure; its Open buttons verify destinations on demand. A destination that cannot be verified reports the gap instead of guessing.
 
 Extraction uses Zotero's native PDF worker. No separate Python/PDF dependency is required. Scanned pages need OCR or an explicitly attached page image. This build does not automatically read book chapters, perform external literature research or export QMD/HTML reports. Unit tests simulate Zotero APIs; Windows reader behavior and note synchronization still require these manual checks.
+
+## Verify resilient saving and contents initialization (0.2.3)
+
+1. Use a PDF whose source status says **page links unverified**. Ask a question: the concise discussion must still save as a Zotero child note. A verified excerpt may be retained without a page link; an excerpt absent from the actual text is omitted with an informational notice. The reader's own selected-passage page location remains usable independently.
+2. Initialize a book whose model output reformats dot leaders or omits an identifier. The plugin should recover an exact contents excerpt, assign a safe identifier and save the verified entries. An unverified entry must be omitted and the saved directory clearly marked incomplete. Unknown chapter locations must remain null; no guessed links are generated.
+3. If initialization cannot save any verified entries, click **Start Reading** again and restart Zotero. It should offer **Initialize contents** and **Go to questions**, without automatically repeating the scan. An explicit initialization click retries. A successfully saved contents note is reused.
+4. Inspect the saved contents note and its viewer: they must show the validated directory entries. Initialization should start from the bounded `contents-source.md` excerpt and inspect only additional contents pages if needed, rather than locating every chapter in the book.
+5. If a Zotero note saves but its derived cache cannot refresh, the sidebar should say the note saved and report the cache issue separately. A real `saveTx()` failure must still show a save error.
+
+Previous failed answers remain in chat history. **More → Save as note** saves an existing full answer without another model request. These fixes avoid unnecessary repeated work, but response time still depends on local PDF extraction and Codex.
+
+## Verify current-page discussion and chapter navigation (0.2.3)
+
+1. Open a book with a blank cover or unverified global page boundaries. Go to a text page and ask “Explain this equation on the current page.” Inspect `<Zotero data directory>/abstractin/<library>-<item>/reading-<attachment>/current-page.md`: it must show that physical page's text and zero-based index. Change the displayed page while the request prepares; the answer must use the send-time page. Repeat on another page. Current-page questions should use the supplied text before searching the full book; model latency still varies.
+2. Ask for an exact quotation from that page. A matching record source must generate a physical PDF page link even if global boundaries remain unverified. A quotation assigned to the wrong physical page must not generate a link. Discussion saving remains available.
+3. For PDFs whose only lost boundaries were blank first/last pages, check the log for **Recovered PDF page mapping**. Recovery requires native page count and edge text agreement; other discrepancies remain unverified. Native page extraction is cached per loaded PDF.
+4. Open **Reading workspace → View contents → Open <chapter>**. The plugin verifies a unique bookmark destination, a printed label plus matching heading, or an exact heading in verified mapped text. Missing/ambiguous destinations must report an error without navigating. **Return to reading** should restore your original page. Initialization still does not scan all chapters.
+5. Open the same attachment in another reader window at a different page. Each panel must read its own reader's page, with no other-window context leakage.
+
+The automated tests exercise these behaviors with mocked Zotero readers. Actual Windows/Zotero performance, private PDF reader access and panel layout still require the above manual checks.
 
 ## If Codex cannot start
 
@@ -49,7 +80,7 @@ Record the Zotero version, Codex version, executable path and exact sidebar erro
 
 ## Verify formula resources after upgrading
 
-Version 0.1.4 registers plugin resources through Zotero's runtime chrome registration and loads the bundled KaTeX renderer at startup. Install the new XPI, fully exit Zotero, and reopen it before checking formulas. In `<Zotero data directory>/abstractin/debug.log`, confirm `init() version 0.2.0` and `KaTeX 0.16.22 loaded`. Reopen a previous answer to check inline math and numbered equations; no new model request is needed. A `getKatex` input-stream error means the renderer file could not be read, before TeX parsing. No separate LaTeX installation is required. If the error remains, provide the new startup log and Zotero version.
+Version 0.1.4 registers plugin resources through Zotero's runtime chrome registration and loads the bundled KaTeX renderer at startup. Install the new XPI, fully exit Zotero, and reopen it before checking formulas. In `<Zotero data directory>/abstractin/debug.log`, confirm `init() version 0.2.3` and `KaTeX 0.16.22 loaded`. Reopen a previous answer to check inline math and numbered equations; no new model request is needed. A `getKatex` input-stream error means the renderer file could not be read, before TeX parsing. No separate LaTeX installation is required. If the error remains, provide the new startup log and Zotero version.
 
 ## Source directory and development loading
 

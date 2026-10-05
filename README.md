@@ -19,13 +19,17 @@
 
 AbstractIn is a Zotero reading assistant built from [Zusia](https://github.com/firekern/zusia).
 
-Version 0.2.0 supports **Start Reading → choose the exact PDF and book/paper type → verified source access → local Codex → rendered answer → editable Zotero child notes**. Answers follow the existing plugin language setting.
+Version 0.2.3 supports **Start Reading → choose the exact PDF and book/paper type → verified source access → local Codex → rendered answer → editable Zotero child notes**. Answers follow the existing plugin language setting.
 
 The original `book-reading`, `scientific-paper-reading` and the paper skill's local extraction dependency are bundled without modification. Local skills may be used from your `.codex/skills` directory; `scientific-book-reading` is recognized as the folder alias for `book-reading`.
 
 See [Windows installation and verification](docs/WINDOWS-TESTING.md). No running Codespace is needed. Source development uses this checkout's `src/` directory; run `npm run source:path` to print its absolute location.
 
-Books initialize their actual table of contents without generating chapter summaries. Papers offer summary creation, viewing, updating, or immediate questions. Returning readers restore their saved reading position and see prior discussions and open questions. Verified source links preserve the original reading position for **Return to reading**; **Resume here** makes a reference page the new reading position. Follow-up questions can update the same scoped discussion note.
+In PDF readers, use the book icon in the top toolbar beside the **Toggle Context Pane** controls to open the dedicated AbstractIn panel. The chat has its own right-side panel with a fixed composer and scrollable messages. Close/reopen preserves drafts and running requests; switching PDF tabs selects the matching chat. The library item section remains available.
+
+Books initialize their actual table of contents from a bounded source excerpt without generating chapter summaries or scanning every chapter for page links. Verified entries can be saved even if some entries or page locations are unverified. After a failed automatic attempt, Start Reading offers an explicit retry or immediate questions instead of repeating the scan. Papers offer summary creation, viewing, updating, or immediate questions. Returning readers restore their saved reading position and see prior discussions and open questions. Verified source links preserve the original reading position for **Return to reading**; **Resume here** makes a reference page the new reading position. Follow-up questions can update the same scoped discussion note. Unverified source page locations no longer prevent a discussion note from saving; guessed links are omitted and source gaps are reported separately.
+
+Current-page discussions receive text directly from the open reader at the page captured when you send the question, independently of the whole-document index. Page text is cached per loaded PDF; verified quotations can produce physical-page links even when global mapping is unavailable. Blank edge pages are restored only after comparing native reader pages with extracted text. In **Reading workspace → View contents**, each **Open** button resolves its chapter on demand from a unique PDF bookmark, verified page label or mapped heading. It never assumes a fixed printed-page offset.
 
 The local workspace contains a PDF copy and text extracted by Zotero, with physical page boundaries when verified. Codex reads relevant portions as needed; the full text is not inserted into every prompt. Missing files and image-only PDFs produce explicit errors; OCR and QMD/HTML report export are not included. The demos below show the inherited Zusia interface.
 
@@ -103,7 +107,7 @@ The local workspace contains a PDF copy and text extracted by Zotero, with physi
 1. **Install local Codex CLI** and sign in. Start Reading uses Codex; see the [Windows instructions](docs/WINDOWS-TESTING.md).
 2. **Download `abstractin.xpi`** from the [latest release](https://github.com/shen-zhang-42/abstractin/releases/latest).
 3. **In Zotero:** Tools → Plugins → ⚙ → *Install Plugin From File…* → pick the `.xpi`. Restart if asked.
-4. **Open a book or paper PDF.** AbstractIn appears in the side pane. Click **Start Reading**, confirm the attachment and material type, then initialize the book contents or choose a paper summary or immediate questions.
+4. **Open a book or paper PDF.** Click the AbstractIn book icon in the reader toolbar to open its dedicated panel, then click **Start Reading**, confirm the attachment and material type, then initialize the book contents or choose a paper summary or immediate questions.
 
 The plugin update feed points at this AbstractIn repository. In-place updates become available after an AbstractIn release is published.
 

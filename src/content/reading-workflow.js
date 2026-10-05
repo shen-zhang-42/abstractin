@@ -143,14 +143,26 @@ Object.assign(Zusia, {
 		await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "workspace.md"), "# Reading workspace (derived from current Zotero notes)\n\n" + parts.join("\n\n"));
 	},
 
+	contentsExcerpt(source) {
+		let heading = /^\s*(?:table of contents|contents|目\s*录)\s*(?:[ivxlcdm]+|\d+)?\s*$/im.exec(source);
+		let start = heading ? heading.index : 0;
+		return source.slice(start).split(/\f|(?=^## PDF page \d+; pageIndex \d+\r?$)/m).slice(0, 12).join("\n\n").slice(0, 60000);
+	},
+
+	async prepareContentsSource(ctx) {
+		let source = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
+		await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "contents-source.md"),
+			"# Candidate contents excerpt\n\nCopied from the current PDF text. This bounded excerpt may require continuation; it is not a whole-book read or an independently verified page mapping.\n\n" + this.contentsExcerpt(source));
+	},
+
 	readingActionPrompt(ctx, action) {
 		if (action === "contents") return "Initialize the book-reading workspace from the actual table of contents in source-text.md. " +
-			"Find the contents pages first, and extract the real chapter hierarchy. Do not read or summarize chapters. " +
+			"Use contents-source.md first, then search the full text only for missing contents pages. Extract the real chapter hierarchy. Do not read or summarize chapters. " +
 			"Append one <abstractin-workspace>JSON</abstractin-workspace> block instead of an abstractin-record. " +
 			'The JSON schema is {"kind":"contents","entries":[{"id":"ch-01","title":"exact chapter heading","printedPageLabel":null,"pageIndex":null,"evidence":"exact contents-page text"}],"coverage":"actual contents pages inspected"}. ' +
-			"IDs must be stable lowercase letters/digits/hyphens. Include parts and sections only if supported by the contents. " +
-			"Use null for unknown locations; a printed chapter-start label is not its physical PDF page. Only fill pageIndex after finding the actual chapter heading on that extracted physical page. " +
-			"Each evidence string must be an exact excerpt from extracted source text. Do not invent missing chapters. " +
+			"Include parts and sections only if supported by the contents. The plugin assigns safe stable identifiers. " +
+			"For this structural initialization set every pageIndex to null. Do not scan chapter bodies to resolve page links; physical locations can be verified later for a requested chapter. " +
+			"Each evidence string must be an exact contents excerpt, including the entry heading. Copy it without reformulating punctuation or dot leaders. Do not invent missing chapters. " +
 			"If no contents can be verified, explain the missing source and do not emit a workspace block. The plugin creates the structural workspace and saves its authoritative Zotero note.";
 		if (action === "summary") return "The user has approved creating or updating this paper's summary. Follow the original scientific-paper-reading skill's initial read workflow and report format. " +
 			"Use source-text.md for progressive structural scan, targeted extraction, whole-paper synthesis and consistency checks. " +
@@ -162,46 +174,212 @@ Object.assign(Zusia, {
 	},
 
 	async saveReadingAction(ctx, action, text) {
-		let match = String(text).match(/<abstractin-workspace>\s*([\s\S]*?)\s*<\/abstractin-workspace>\s*$/);
-		if (!match) throw new Error("Codex did not return a verified " + action + " workspace. The answer remains available; no workspace was saved.");
-		let data = JSON.parse(match[1]);
+		let data = this.readingEnvelope(text, "workspace");
+		if (!data) throw new Error("Codex did not return a verified " + action + " workspace. The answer remains available; no workspace was saved.");
 		if (data.kind !== action || typeof data.coverage !== "string" || !data.coverage.trim()) throw new Error("Invalid workspace source coverage.");
 		let answer = this.readingVisibleText(text).trim();
 		if (!answer) throw new Error("Codex returned an empty workspace answer.");
+		let notices = [];
 		if (action === "contents") {
 			if (!Array.isArray(data.entries) || !data.entries.length || data.entries.length > 1000) throw new Error("No verified table of contents was returned.");
 			let source = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
-			let normalize = text => text.replace(/\s+/g, " ").trim();
+			let normalize = text => text.normalize("NFKC").replace(/[\u00ad\u200b]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+			let normalized = normalize(source);
+			let candidates = this.contentsExcerpt(source).split(/\r?\n/);
+			let prior = this.readingArtifactData(this.readingArtifactNotes(ctx, "Contents")[0])?.entries || [];
 			let ids = new Set();
-			for (let entry of data.entries) {
-				if (!entry || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(entry.id) || ids.has(entry.id) || typeof entry.title !== "string" || !entry.title.trim() ||
-					typeof entry.evidence !== "string" || !entry.evidence.trim() || !normalize(source).includes(normalize(entry.evidence))) throw new Error("A contents entry has no verifiable source evidence or valid identifier.");
-				if (entry.pageIndex !== null && (!Number.isInteger(entry.pageIndex) || entry.pageIndex < 0 || !ctx.reading.pdfSource.pageMapping || entry.pageIndex >= ctx.reading.pdfSource.totalPages)) throw new Error("Invalid chapter PDF page index.");
-				if (entry.pageIndex !== null && !normalize(this.pdfPageText(source, entry.pageIndex)).toLowerCase().includes(normalize(entry.title).toLowerCase())) throw new Error("The chapter heading was not verified on the specified physical PDF page. Use null for unknown locations.");
-				if (entry.printedPageLabel !== null && typeof entry.printedPageLabel !== "string") throw new Error("Invalid printed page label.");
-				ids.add(entry.id);
+			let verified = [], omitted = 0, unlocated = 0;
+			for (let candidate of data.entries) {
+				if (!candidate || typeof candidate.title !== "string" || !candidate.title.trim() || candidate.title.length > 600) { omitted++; continue; }
+				let entry = { ...candidate, title: candidate.title.trim(), pageIndex: candidate.pageIndex ?? null, printedPageLabel: candidate.printedPageLabel ?? null };
+				let title = normalize(entry.title);
+				if (!title) { omitted++; continue; }
+				if (typeof entry.evidence !== "string" || !normalize(entry.evidence).includes(title) || !normalized.includes(normalize(entry.evidence))) {
+					// Recover the exact quoted contents line when the model reformats
+					// whitespace/dot leaders. Never substitute a guessed heading.
+					entry.evidence = null;
+					for (let count = 1; count <= 3 && !entry.evidence; count++) {
+						for (let i = 0; i < candidates.length; i++) {
+							let excerpt = candidates.slice(i, i + count).join("\n").trim();
+							if (excerpt.length <= 3000 && normalize(excerpt).includes(title) && normalized.includes(normalize(excerpt))) { entry.evidence = excerpt; break; }
+						}
+					}
+				}
+				if (!entry.evidence) { omitted++; continue; }
+				if (entry.printedPageLabel !== null && typeof entry.printedPageLabel !== "string") entry.printedPageLabel = null;
+				let old = prior.find(previous => normalize(previous.title) === title && !ids.has(previous.id) && previous.printedPageLabel === entry.printedPageLabel) ||
+					prior.find(previous => normalize(previous.title) === title && !ids.has(previous.id));
+				let id = old?.id || entry.id;
+				if (typeof id !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(id) || ids.has(id)) {
+					let hash = 2166136261;
+					for (let char of title + "|" + (entry.printedPageLabel || "")) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+					id = "entry-" + hash.toString(36);
+					let suffix = 1; while (ids.has(id)) id = "entry-" + hash.toString(36) + "-" + suffix++;
+				}
+				entry.id = id; ids.add(id);
+				if (entry.pageIndex !== null && (!Number.isInteger(entry.pageIndex) || entry.pageIndex < 0 || !ctx.reading.pdfSource?.pageMapping ||
+					entry.pageIndex >= ctx.reading.pdfSource.totalPages || !normalize(this.pdfPageText(source, entry.pageIndex)).includes(title))) {
+					entry.pageIndex = null; unlocated++;
+				}
+				verified.push(entry);
 			}
+			if (!verified.length) throw new Error("No contents entries could be verified against this PDF text. No contents note was saved; you can still ask about a selected passage or initialize again explicitly.");
+			data.entries = verified; data.omittedEntries = omitted;
+			if (omitted) notices.push("Saved " + verified.length + " verified contents entries; " + omitted + " unverified entries were omitted. The directory is incomplete.");
+			if (unlocated) notices.push(unlocated + " chapter page locations were unverified; structure was saved without those page links.");
+			// The saved human-facing directory must reflect validated entries,
+			// rather than an agent's claim that an unverified directory is complete.
+			let escape = value => value.replace(/[\\`*_\[\]<>]/g, "\\$&");
+			answer = "## Verified book contents\n\n" + verified.map(entry => "- " + escape(entry.title) + (entry.printedPageLabel ? " (printed page " + escape(entry.printedPageLabel) + ")" : "")).join("\n") +
+				"\n\nSource coverage: " + data.coverage + "\n\nPhysical page links are available only for independently verified locations.\n\n" + notices.join("\n\n");
 		}
 		data.sourceSignature = ctx.reading.pdfSource?.signature;
 		let key = await this.saveReadingArtifact(ctx, action === "contents" ? "Contents" : "Summary", action === "contents" ? "Book contents" : "Paper summary", answer, data);
-		await this.exportReadingWorkspace(ctx);
-		if (action === "contents") {
-			let chapters = OS.Path.join(ctx.dir, "chapters"); await Zotero.File.createDirectoryIfMissingAsync(chapters);
-			for (let entry of data.entries) await Zotero.File.createDirectoryIfMissingAsync(OS.Path.join(chapters, entry.id));
+		try {
+			await this.exportReadingWorkspace(ctx);
+			if (action === "contents") {
+				let chapters = OS.Path.join(ctx.dir, "chapters"); await Zotero.File.createDirectoryIfMissingAsync(chapters);
+				for (let entry of data.entries) await Zotero.File.createDirectoryIfMissingAsync(OS.Path.join(chapters, entry.id));
+			}
 		}
-		return { answer, key };
+		catch (e) { this.logError("workspace cache", e); notices.push("Zotero note saved, but its derived workspace cache could not be refreshed: " + (e.message || e)); }
+		return { answer, key, notice: notices.join(" ") || undefined };
 	},
 
 	exactReadingReader(ctx) {
-		return (Zotero.Reader?._readers || []).find(reader => reader.itemID === ctx.attachmentItem.id && reader.type === "pdf") || null;
+		let matches = reader => !!reader && reader.itemID === ctx.attachmentItem.id && reader.type === "pdf";
+		if (matches(ctx.reader)) return ctx.reader;
+		let selected = Zotero.Reader?.getByTabID?.(Zotero.getMainWindow()?.Zotero_Tabs?.selectedID);
+		return (matches(selected) ? selected : null) || (Zotero.Reader?._readers || []).find(matches) || null;
+	},
+
+	readingPDFApplication(ctx) {
+		let internal = this.exactReadingReader(ctx)?._internalReader;
+		let frame = (internal?._lastView || internal?._primaryView)?._iframeWindow;
+		return (frame?.wrappedJSObject || frame)?.PDFViewerApplication || null;
+	},
+
+	_nativeReadingPages: new WeakMap(),
+
+	async readNativeReadingPage(ctx, pageIndex) {
+		let app = this.readingPDFApplication(ctx), pdf = app?.pdfDocument;
+		if (!pdf) throw new Error("Open this PDF in the Zotero reader to verify page locations.");
+		if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pdf.numPages) throw new Error("This location is outside the selected PDF.");
+		let pages = this._nativeReadingPages.get(pdf);
+		if (!pages) { pages = new Map(); this._nativeReadingPages.set(pdf, pages); }
+		if (!pages.has(pageIndex)) {
+			let request = (async () => {
+				let page = await pdf.getPage(pageIndex + 1);
+				let content = await page.getTextContent();
+				return content.items.filter(item => typeof item.str === "string").map(item => item.str + (item.hasEOL ? "\n" : " ")).join("").trim();
+			})();
+			pages.set(pageIndex, request);
+			request.catch(() => { if (pages.get(pageIndex) === request) pages.delete(pageIndex); });
+		}
+		return { pageIndex, pageLabel: app.pdfViewer?.getPageView(pageIndex)?.pageLabel || "", text: await pages.get(pageIndex) };
+	},
+
+	_pageMappingRepairs: new WeakMap(),
+
+	async recoverReadingPageMapping(ctx, source) {
+		let pdf = this.readingPDFApplication(ctx)?.pdfDocument;
+		if (source.status !== "ready" || source.pageMapping || !pdf || pdf.numPages !== source.totalPages) return source;
+		let attempted = this._pageMappingRepairs.get(pdf);
+		if (!attempted) { attempted = new Set(); this._pageMappingRepairs.set(pdf, attempted); }
+		if (attempted.has(source.signature)) return source;
+		attempted.add(source.signature);
+		try {
+			let text = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
+			let warning = "Page boundaries could not be verified. Do not infer page indices from this text.\n\n";
+			let start = text.indexOf(warning);
+			if (start < 0) return source;
+			let pages = text.slice(start + warning.length).split("\f");
+			let missing = source.totalPages - pages.length;
+			// Limit edge probing; current-page access remains independent if this check fails.
+			if (missing < 1 || missing > 12) return source;
+			let compact = value => value.normalize("NFKC").replace(/[\s\u00ad\u200b]/g, "");
+			let leading = 0, trailing = 0;
+			let first = await this.readNativeReadingPage(ctx, leading);
+			while (!first.text.trim() && leading < missing) first = await this.readNativeReadingPage(ctx, ++leading);
+			let last = await this.readNativeReadingPage(ctx, source.totalPages - 1);
+			while (!last.text.trim() && trailing < missing - leading) last = await this.readNativeReadingPage(ctx, source.totalPages - 1 - ++trailing);
+			if (leading + trailing !== missing || !compact(first.text) || !compact(last.text) ||
+				compact(first.text) !== compact(pages[0]) || compact(last.text) !== compact(pages[pages.length - 1])) return source;
+			pages = [...Array(leading).fill(""), ...pages, ...Array(trailing).fill("")];
+			let mapped = text.slice(0, start) + pages.map((page, i) => "## PDF page " + (i + 1) + "; pageIndex " + i + "\n\n" +
+				(page.trim() || "[No extractable text on this page]")).join("\n\n");
+			await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "source-text.md"), mapped);
+			source = { ...source, pageMapping: true, mappingVerification: "Native edge pages verified trimmed blank-page boundaries" };
+			await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "source-manifest.json"), JSON.stringify(source));
+			this.log("Recovered PDF page mapping: " + leading + " leading and " + trailing + " trailing blank pages");
+		}
+		catch (e) { this.logError("PDF page boundary verification", e); }
+		return source;
+	},
+
+	async prepareCurrentReadingPage(ctx) {
+		let location = ctx.reading.currentPage;
+		if (!location) return;
+		try {
+			let page = await this.readNativeReadingPage(ctx, location.pageIndex);
+			ctx.reading.currentPage = { ...page, text: page.text.slice(0, 12000), file: "current-page.md", verified: true };
+			await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "current-page.md"),
+				"# Current PDF page\n\nAttachment: " + ctx.attachmentItem.key + "\nPhysical PDF page: " + (page.pageIndex + 1) +
+				"; pageIndex: " + page.pageIndex + "\nPrinted label: " + (page.pageLabel || "unverified") + "\n\n" + (page.text || "[No extractable text; request a page image.]"));
+		}
+		catch (e) {
+			this.logError("current PDF page", e);
+			if (ctx.reading.pdfSource?.pageMapping) {
+				let text = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
+				ctx.reading.currentPage = { ...location, text: this.pdfPageText(text, location.pageIndex).slice(0, 12000), verified: true };
+			}
+		}
+	},
+
+	async openReadingContentsEntry(view, entry) {
+		let ctx = view.ctx, pdf = this.readingPDFApplication(ctx)?.pdfDocument;
+		let normalize = text => String(text || "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+		let title = normalize(entry.title), indices = new Set();
+		let heading = text => normalize(text).replace(/^(?:chapter\s+)?(?:\d+(?:\.\d+)*|[ivxlcdm]+)[\s.:–—-]+/i, "");
+		if (pdf) {
+			let walk = async nodes => {
+				for (let node of nodes || []) {
+					if ((normalize(node.title) === title || (heading(node.title) && heading(node.title) === heading(entry.title))) && node.dest) {
+						let dest = typeof node.dest === "string" ? await pdf.getDestination(node.dest) : node.dest;
+						let ref = dest?.[0];
+						let index = Number.isInteger(ref) ? ref : ref ? await pdf.getPageIndex(ref) : null;
+						if (Number.isInteger(index) && index >= 0 && index < pdf.numPages) indices.add(index);
+					}
+					await walk(node.items);
+				}
+			};
+			await walk(await pdf.getOutline?.());
+			if (!indices.size && entry.printedPageLabel && pdf.getPageLabels) {
+				let labels = await pdf.getPageLabels();
+				for (let i = 0; i < (labels?.length || 0); i++) {
+					if (labels[i] === entry.printedPageLabel && normalize((await this.readNativeReadingPage(ctx, i)).text).includes(title)) indices.add(i);
+				}
+			}
+		}
+		if (!indices.size && ctx.reading.pdfSource?.pageMapping) {
+			let source = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
+			let markers = [...source.matchAll(/^## PDF page \d+; pageIndex (\d+)\r?\n/gm)];
+			for (let i = 0; i < markers.length; i++) {
+				let pageIndex = Number(markers[i][1]);
+				if (pageIndex >= ctx.reading.pdfSource.totalPages) continue;
+				let text = source.slice(markers[i].index + markers[i][0].length, markers[i + 1]?.index ?? source.length);
+				// A contents row is not a chapter heading. Accept an exact standalone heading only.
+				let lines = text.split(/\r?\n/);
+				if (lines.some((line, j) => normalize(line) === title || normalize(line + " " + (lines[j + 1] || "")) === title) &&
+					!/^\s*(?:table of contents|contents|目\s*录)\s*$/im.test(text)) indices.add(pageIndex);
+			}
+		}
+		if (indices.size !== 1) throw new Error("A unique chapter location could not be verified. Open its heading in the PDF or use a PDF bookmark; no printed-page offset was guessed.");
+		await this.navigateReading(view, { pageIndex: [...indices][0] });
 	},
 
 	currentReadingLocation(ctx) {
-		let reader = this.exactReadingReader(ctx);
-		let pdfView = reader?._internalReader?._lastView || reader?._internalReader?._primaryView;
-		let frame = pdfView?._iframeWindow;
-		frame = frame?.wrappedJSObject || frame;
-		let viewer = frame?.PDFViewerApplication?.pdfViewer;
+		let viewer = this.readingPDFApplication(ctx)?.pdfViewer;
 		let index = viewer?.currentPageNumber - 1;
 		if (!Number.isInteger(index) || index < 0) return null;
 		return { pageIndex: index, pageLabel: viewer.getPageView(index)?.pageLabel || "" };
@@ -223,7 +401,8 @@ Object.assign(Zusia, {
 
 	async navigateReading(view, location, reference = true) {
 		if (!Number.isInteger(location?.pageIndex) || location.pageIndex < 0) throw new Error("This location has no verified PDF page index.");
-		if (Number.isInteger(view.ctx.reading.pdfSource?.totalPages) && location.pageIndex >= view.ctx.reading.pdfSource.totalPages) throw new Error("This location is outside the selected PDF.");
+		let totalPages = this.readingPDFApplication(view.ctx)?.pdfDocument?.numPages ?? view.ctx.reading.pdfSource?.totalPages;
+		if (Number.isInteger(totalPages) && location.pageIndex >= totalPages) throw new Error("This location is outside the selected PDF.");
 		if (reference && !view.ctx.reading.referenceNavigation) await this.rememberReadingPosition(view.ctx);
 		view.ctx.reading.referenceNavigation = reference;
 		let reader = this.exactReadingReader(view.ctx);
@@ -253,7 +432,17 @@ Object.assign(Zusia, {
 		catch (e) { this.appendError(view, "Reading position could not be restored or saved: " + (e.message || e)); }
 		this.trackReadingPosition(view);
 		await this.exportReadingRecords(ctx);
-		if (ctx.reading.type === "book" && !this.readingArtifactNotes(ctx, "Contents").length && !this._pending.has(ctx.dir)) {
+		if (ctx.reading.type === "book" && !ctx.reading.contentsAttempted) {
+			try {
+				let attempt = JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "contents-auto-attempt.json")));
+				ctx.reading.contentsAttempted = attempt.attachmentKey === ctx.attachmentItem.key;
+			}
+			catch (e) { /* No previous automatic attempt for this attachment. */ }
+		}
+		if (ctx.reading.type === "book" && !this.readingArtifactNotes(ctx, "Contents").length && !ctx.reading.contentsAttempted && !this._pending.has(ctx.dir)) {
+			ctx.reading.contentsAttempted = true;
+			try { await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "contents-auto-attempt.json"), JSON.stringify({ attachmentKey: ctx.attachmentItem.key, requestedAt: new Date().toISOString() })); }
+			catch (e) { this.logError("contents initialization attempt", e); }
 			this.startRequest(view, "Initialize the actual book contents without chapter summaries.", [], [], { readingAction: "contents" });
 		}
 		else this.openReadingWorkspace(view);
@@ -283,9 +472,14 @@ Object.assign(Zusia, {
 			this.renderMarkdown(doc, content, text); body.append(content);
 			if (kind === "Contents") {
 				for (let entry of this.readingArtifactData(note)?.entries || []) {
-					if (Number.isInteger(entry.pageIndex)) {
+					{
 						let link = this.el(doc, "button", "zs-reading-tool", "Open " + entry.title);
-						link.addEventListener("click", () => this.navigateReading(view, entry).catch(e => this.appendError(view, e.message)));
+						link.addEventListener("click", async () => {
+							link.disabled = true;
+							try { await this.openReadingContentsEntry(view, entry); }
+							catch (e) { this.appendError(view, e.message); }
+							finally { link.disabled = false; }
+						});
 						content.append(link);
 					}
 				}
@@ -298,6 +492,7 @@ Object.assign(Zusia, {
 		generate.disabled = this._pending.has(ctx.dir);
 		button("Go to questions", () => panel.remove());
 		body.append(this.el(doc, "p", null, action === "contents" ? "Initialize structure from the actual contents. Chapter summaries are generated only when you ask." : "Choose whether to summarize first or ask immediately. Existing summaries are saved as editable Zotero notes."), controls);
+		if (action === "contents" && !note && ctx.reading.contentsAttempted) body.append(this.el(doc, "p", "zs-notice", "Contents are not saved yet. Initialize contents to retry explicitly, or go straight to questions. Start Reading will not repeat the scan automatically."));
 		let records = (ctx.paperItem.getNotes?.() || []).map(id => Zotero.Items.get(id)).filter(n => n && n.getTags().some(t => t.tag === "AbstractIn") && !n.getTags().some(t => t.tag.startsWith("AbstractIn:")));
 		let recap = this.el(doc, "div", "zs-workspace-recap");
 		recap.append(this.el(doc, "h3", null, "Previous discussions and open questions"));

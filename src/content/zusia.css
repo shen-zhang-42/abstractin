@@ -59,6 +59,43 @@
 .zs-prefs * {
 	box-sizing: border-box;
 }
+/* The reader panel sits beside the PDF, outside item metadata sections. */
+.zs-reader-panel {
+	display: flex;
+	flex: 0 0 auto;
+	flex-direction: column;
+	min-width: 280px;
+	max-width: min(720px, 65vw);
+	min-height: 0;
+	overflow: hidden;
+	background: var(--material-sidepane, #f2f2f2);
+	border-inline-start: 1px solid var(--fill-quarternary, #ddd);
+}
+.zs-reader-panel[hidden],
+.zs-reader-splitter[hidden],
+.zs-reader-view[hidden] { display: none !important; }
+.zs-reader-view {
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	overflow: hidden;
+}
+.zs-reader-view > .zs-root {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
+	padding: 8px;
+	border-radius: 0;
+}
+.zs-reader-panel .zs-log-wrap { flex: 1 1 0; min-height: 0; }
+.zs-reader-panel .zs-log { height: 100%; min-height: 0; max-height: none; }
+.zs-reader-panel .zs-header,
+.zs-reader-panel .zs-reading-bar,
+.zs-reader-panel .zs-composer { flex: 0 0 auto; }
+.zs-reader-panel .zs-header-title { display: block !important; }
+.zs-reader-splitter { min-width: 4px; cursor: col-resize; }
 /* Component display rules must never un-hide an element hidden by the script. */
 .zs-root [hidden],
 .zs-prefs [hidden] {
