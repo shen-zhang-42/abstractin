@@ -162,7 +162,7 @@ Zusia = {
 		alert: "warning-circle.svg",
 		paper: "file-text.svg",
 		book: "book-open-text.svg",
-		app: "app-marmoset.svg",
+		app: "app-document-chat.svg",
 		"mascot-marmoset": "mascot-marmoset.svg",
 		close: "x.svg",
 		search: "magnifying-glass.svg",
