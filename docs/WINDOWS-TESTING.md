@@ -126,3 +126,10 @@ Continue on computer B, sync both computers, and confirm the original transcript
 ## Verify the single marmoset companion (0.2.13)
 
 Install and restart. The PDF toolbar entry and native item-pane entry should use the red marmoset avatar, while Start Reading keeps its book icon. Empty chat and onboarding show the matching red marmoset with ear tufts, a ringed tail and a book. Appearance has no Buddy selector and onboarding offers only the backdrop pattern at its corresponding step. Existing cat/owl/robot/none preferences must fall back to the same marmoset. Verify red artwork remains visible in both light and dark themes.
+
+
+## Verify icon and menu rendering (0.2.14)
+
+After installing the new XPI, confirm version 0.2.14 in Zotero's add-on manager and restart. The PDF toolbar and chat header should show the red marmoset avatar; Start Reading should show a separate book. The empty chat should show the red book-reading marmoset. Open the reading mode menu at narrow and wide panel widths: the checkmark and mode symbol must sit beside the label, with the description below it and each mode in its own row. Updates register a fresh resource address, and marmoset artwork is inserted synchronously without an external resource request.
+
+For the native visual regression checks in an isolated profile, run `ZOTERO_BIN=/path/to/zotero bash test/integration/appearance.sh`. Results and screenshots are written to `test/integration/out/appearance/`.

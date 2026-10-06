@@ -12,11 +12,15 @@ function install() {
 async function startup({ id, version, rootURI }) {
 	log("Starting up, rootURI=" + rootURI);
 
+	// Give each startup its own resource address so Gecko cannot reuse artwork,
+	// scripts or styles cached from the previously installed XPI.
+	let resourcePackage = "abstractin-" + version.replace(/[^a-z0-9-]/gi, "-").toLowerCase() + "-" + Date.now();
 	let aomStartup = Cc["@mozilla.org/addons/addon-manager-startup;1"].getService(Ci.amIAddonManagerStartup);
 	chromeHandle = aomStartup.registerChrome(Services.io.newURI(rootURI + "manifest.json"), [
 		["content", "abstractin", "./"],
+		["content", resourcePackage, "./"],
 	]);
-	let resourceURI = "chrome://abstractin/content/";
+	let resourceURI = "chrome://" + resourcePackage + "/content/";
 	Services.scriptloader.loadSubScript(resourceURI + "content/zusia.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading-workflow.js");

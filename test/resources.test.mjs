@@ -21,8 +21,10 @@ test("startup registers resources before loading scripts and releases them on sh
 	assert.equal(events[0].name, "register");
 	assert.equal(events[0].uri, rootURI + "manifest.json");
 	assert.equal(events[0].entries[0][1], "abstractin");
-	assert.equal(events.find(e => e.name === "load").url, "chrome://abstractin/content/content/zusia.js");
-	assert.equal(events.find(e => e.name === "init").arg.resourceURI, "chrome://abstractin/content/");
+	const resourcePackage = events[0].entries[1][1];
+	assert.match(resourcePackage, /^abstractin-test-\d+$/);
+	assert.equal(events.find(e => e.name === "load").url, "chrome://" + resourcePackage + "/content/content/zusia.js");
+	assert.equal(events.find(e => e.name === "init").arg.resourceURI, "chrome://" + resourcePackage + "/content/");
 	assert.ok(events.findIndex(e => e.name === "getKatex") < events.findIndex(e => e.name === "addToAllWindows"));
 	assert.ok(events.findIndex(e => e.name === "registerReaderHooks") < events.findIndex(e => e.name === "restoreReaderToolbarEntries"));
 	scope.shutdown();
@@ -47,4 +49,25 @@ test("toolbar and composer icons load through Zotero resources when iframe fetch
  const icon = p.svgIcon(doc, 'settings'); doc.body.append(icon);
  await p.loadIcon(doc, 'settings'); await Promise.resolve();
  assert.equal(reads, 1); assert.ok(icon.querySelector('svg')); assert.equal(icon.querySelector('path').getAttribute('fill'), 'currentColor');
+});
+
+
+test("marmoset artwork renders in the header and empty chat even when resource reads fail", () => {
+ const { plugin: p, window, document: doc } = loadPlugin({ prefs: { "extensions.abstractin.onboarded": true } });
+ p.iconBase = "chrome://abstractin/content/content/icons/";
+ window.Zotero.File = { getResourceAsync: async () => { throw new Error("Resource unavailable"); } };
+ window.fetch = async () => { throw new Error("Iframe fetch blocked"); };
+ const body = doc.createElement("div"); doc.body.append(body);
+ p.renderSkeleton(doc, body);
+ const root = body.querySelector(".zs-root");
+ p.renderEmptyState({ doc, root, logEl: root.querySelector(".zs-log"), ctx: { dir: "/tmp/reading" } });
+ const avatar = root.querySelector(".zs-header-icon svg");
+ const companion = root.querySelector(".zs-mascot svg");
+ assert.equal(avatar?.namespaceURI, "http://www.w3.org/2000/svg");
+ assert.equal(companion?.namespaceURI, "http://www.w3.org/2000/svg");
+ assert.equal(avatar.querySelector("rect").getAttribute("fill"), "#b84459");
+ assert.ok(companion.querySelectorAll("path").length > 10);
+ for (const [name, artwork] of Object.entries(p.BRAND_ICONS)) {
+  assert.equal(artwork, readFileSync(new URL("../src/content/icons/" + p.ICON_FILES[name], import.meta.url), "utf8").trim());
+ }
 });

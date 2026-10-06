@@ -19,7 +19,7 @@
 
 AbstractIn is a Zotero reading assistant built from [Zusia](https://github.com/firekern/zusia).
 
-Version 0.2.13 supports **Start Reading → choose the exact PDF and book/paper type → verified source access → local Codex → rendered answer → editable Zotero child notes**. Answers follow the existing plugin language setting.
+Version 0.2.14 supports **Start Reading → choose the exact PDF and book/paper type → verified source access → local Codex → rendered answer → editable Zotero child notes**. Answers follow the existing plugin language setting.
 
 The original `book-reading`, `scientific-paper-reading` and the paper skill's local extraction dependency are bundled without modification. Local skills may be used from your `.codex/skills` directory; `scientific-book-reading` is recognized as the folder alias for `book-reading`.
 

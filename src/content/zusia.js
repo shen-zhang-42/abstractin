@@ -206,6 +206,40 @@ Zusia = {
 		styleGlass: "drop.svg",
 		styleFlat: "squares-four.svg",
 	},
+	// Brand artwork is available immediately, including in reader iframes.
+	// Keep these SVGs in sync with content/icons (verified by resource tests).
+	BRAND_ICONS: {
+		"app": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#9f3046" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="2" y="2" width="60" height="60" rx="18" fill="#b84459" stroke="none"/>
+  <path d="m17 22-11-5 3 9-5 4 10 4-5 6 12-2m26-16 11-5-3 9 5 4-10 4 5 6-12-2" fill="#fff5f2" stroke="#fff5f2"/>
+  <path d="M17 25c0-11 6-16 15-16s15 5 15 16v9c0 12-7 20-15 20s-15-8-15-20z" fill="#f3bdc7"/>
+  <path d="m26 12 3-7 4 6 4-5 2 8" stroke="#fff5f2"/>
+  <path d="M20 27c0-6 7-8 12-3 5-5 12-3 12 3v8c0 8-6 13-12 13s-12-5-12-13z" fill="#fff5f2"/>
+  <ellipse cx="26" cy="31" rx="2.5" ry="3" fill="#9f3046" stroke="none"/>
+  <ellipse cx="38" cy="31" rx="2.5" ry="3" fill="#9f3046" stroke="none"/>
+  <path d="m30 37 2 2 2-2m-7 5c3 3 7 3 10 0"/>
+  <path d="M21 37h3m16 0h3" stroke="#dc8897"/>
+</svg>`,
+		"mascot-marmoset": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M43 45c13-3 15 6 9 11-3 3-8 2-8-1 0-2 3-3 4-1"/>
+  <path d="M50 46l-2 4m7 1-4 1m0 7-1-4"/>
+  <path d="M22 39c-5 4-7 10-5 16h29c2-6-1-12-6-16" fill="currentColor" opacity="0.16"/>
+  <path d="M14 20 6 17l3 7-5 3 8 3-4 5 10-2m32-13 8-3-3 7 5 3-8 3 4 5-10-2" fill="#fff5f2"/>
+  <path d="M17 20c1-8 8-12 15-12s14 4 15 12v9c0 10-7 16-15 16s-15-6-15-16z" fill="currentColor" opacity="0.16"/>
+  <path d="M17 20c1-8 8-12 15-12s14 4 15 12v9c0 10-7 16-15 16s-15-6-15-16z"/>
+  <path d="m26 10 3-6 3 5 4-5 2 7"/>
+  <path d="M19 25c0-5 7-7 13-3 6-4 13-2 13 3v6c0 7-6 11-13 11s-13-4-13-11z" fill="#fff5f2"/>
+  <ellipse cx="25" cy="28" rx="2" ry="2.6" fill="currentColor" stroke="none"/>
+  <ellipse cx="39" cy="28" rx="2" ry="2.6" fill="currentColor" stroke="none"/>
+  <path d="m30 32 2 2 2-2m-7 4c3 3 7 3 10 0"/>
+  <path class="zs-mascot-blush" d="M21 33h3m16 0h3"/>
+  <path d="M12 45c7-2 13-1 20 3 7-4 13-5 20-3v15c-8-2-14-1-20 2-6-3-12-4-20-2z" fill="#fff5f2"/>
+  <path d="M32 48v14m-15-11 9 2m12 0 9-2m-30 5 9 2m12 0 9-2"/>
+  <path d="M17 44c-5-1-7 1-6 4s5 4 7 2m29-6c5-1 7 1 6 4s-5 4-7 2" fill="currentColor" opacity="0.16"/>
+  <path d="M17 44c-5-1-7 1-6 4s5 4 7 2m29-6c5-1 7 1 6 4s-5 4-7 2"/>
+  <path class="zs-mascot-spark" d="m53 5 1.2 3.5L58 10l-3.8 1.4L53 15l-1.3-3.6L48 10l3.7-1.5z" fill="currentColor" stroke="none"/>
+</svg>`,
+	},
 	// Set from rootURI in init().
 	iconBase: "content/icons/",
 	_iconCache: new Map(),
@@ -863,7 +897,10 @@ Zusia = {
 		let icon = this.el(doc, "span", "zs-i" + (className ? " " + className : ""));
 		icon.dataset.icon = name;
 		icon.setAttribute("aria-hidden", "true");
-		if (this.ICON_FILES[name]) {
+		if (this.BRAND_ICONS[name]) {
+			icon.appendChild(doc.importNode(this.parseIcon(doc, this.BRAND_ICONS[name]), true));
+		}
+		else if (this.ICON_FILES[name]) {
 			this.loadIcon(doc, name).then((svg) => {
 				if (svg && !icon.firstChild) {
 					icon.appendChild(doc.importNode(svg, true));
@@ -873,8 +910,30 @@ Zusia = {
 		return icon;
 	},
 
+	parseIcon(doc, text) {
+		let svg = new doc.defaultView.DOMParser().parseFromString(text, "image/svg+xml").documentElement;
+		if (svg.localName !== "svg") {
+			throw new Error("not an SVG");
+		}
+		// Zotero paints icons with context-fill/context-stroke, used in either
+		// attribute (attachment.svg strokes with context-fill).
+		for (let attr of ["fill", "stroke"]) {
+			for (let node of svg.querySelectorAll("[" + attr + "^='context-']")) {
+				node.setAttribute(attr, "currentColor");
+			}
+		}
+		for (let node of svg.querySelectorAll("[opacity]")) {
+			node.removeAttribute("opacity");
+			node.setAttribute("class", "zs-duo");
+		}
+		svg.removeAttribute("width");
+		svg.removeAttribute("height");
+		return svg;
+	},
+
 	// Fetches a Zotero icon once and returns an <svg> that paints with currentColor.
 	loadIcon(doc, name) {
+		if (this.BRAND_ICONS[name]) return Promise.resolve(this.parseIcon(doc, this.BRAND_ICONS[name]));
 		let url = this.iconBase + this.ICON_FILES[name];
 		if (!this._iconCache.has(url)) {
 			let win = doc.defaultView;
@@ -890,24 +949,7 @@ Zusia = {
 						text = Zotero.File.getResource(url);
 					}
 					else text = await (await win.fetch(url)).text();
-					let svg = new win.DOMParser().parseFromString(text, "image/svg+xml").documentElement;
-					if (svg.localName !== "svg") {
-						throw new Error("not an SVG");
-					}
-					// Zotero paints icons with context-fill/context-stroke, used in either
-					// attribute (attachment.svg strokes with context-fill).
-					for (let attr of ["fill", "stroke"]) {
-						for (let node of svg.querySelectorAll("[" + attr + "^='context-']")) {
-							node.setAttribute(attr, "currentColor");
-						}
-					}
-					for (let node of svg.querySelectorAll("[opacity]")) {
-						node.removeAttribute("opacity");
-						node.setAttribute("class", "zs-duo");
-					}
-					svg.removeAttribute("width");
-					svg.removeAttribute("height");
-					return svg;
+					return this.parseIcon(doc, text);
 				}
 				catch (e) {
 					this.log("Could not load icon " + url + ": " + e);
@@ -1063,20 +1105,23 @@ Zusia = {
 		menu.appendChild(this.el(doc, "div", "zs-menu-section", label));
 	},
 
-	menuItem(doc, menu, { label, desc, checked, disabled, onSelect }) {
+	menuItem(doc, menu, { label, desc, checked, disabled, icon, onSelect }) {
 		let item = this.el(doc, "button", "zs-menu-item");
 		item.type = "button";
 		item.setAttribute("role", checked === undefined ? "menuitem" : "menuitemradio");
+		let content = this.el(doc, "span", "zs-menu-content");
 		if (checked !== undefined) {
 			item.setAttribute("aria-checked", String(!!checked));
-			item.appendChild(this.svgIcon(doc, "check", "zs-check"));
+			content.appendChild(this.svgIcon(doc, "check", "zs-check"));
 		}
+		if (icon) content.appendChild(this.svgIcon(doc, icon, "zs-reading-menu-icon"));
 		let text = this.el(doc, "span", "zs-menu-text");
 		text.appendChild(this.el(doc, "span", "zs-menu-label", label));
 		if (desc) {
 			text.appendChild(this.el(doc, "span", "zs-menu-desc", desc));
 		}
-		item.appendChild(text);
+		content.appendChild(text);
+		item.appendChild(content);
 		item.disabled = !!disabled;
 		item.addEventListener("click", onSelect);
 		menu.appendChild(item);
@@ -1411,7 +1456,8 @@ Zusia = {
 				["knowledge", "Knowledge discussion", "Use existing context and knowledge without PDF searches."],
 				["source", "Source verification", "Read original passages to verify the answer."],
 			]) {
-				let item = this.menuItem(doc, menu, {
+				this.menuItem(doc, menu, {
+					icon: value === "knowledge" ? "readingKnowledge" : "readingSource",
 					label, desc, checked: this.getReadingEvidenceMode() === value,
 					onSelect: () => {
 						this.setPref("readingEvidenceMode", value);
@@ -1426,9 +1472,6 @@ Zusia = {
 						anchor.focus();
 					},
 				});
-				item.insertBefore(this.svgIcon(doc,
-					value === "knowledge" ? "readingKnowledge" : "readingSource", "zs-reading-menu-icon"),
-					item.querySelector(".zs-menu-text"));
 			}
 		}, { placement: "below" });
 	},

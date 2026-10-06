@@ -117,7 +117,20 @@
 	}
 	else {
 		const view = sidebar(pane("Claude"));
-		if (scenario === "clarifications") {
+		if (scenario === "menu-reading" || scenario === "reading-empty") {
+			view.ctx.reading = { type: "book", language: "English" };
+			view.ctx.paperItem = { getField: () => "Theory of Statistics", getCreators: () => [] };
+			prefs["extensions.abstractin.readingEvidenceMode"] = "knowledge";
+			view.root.dataset.readingTheme = "neutral";
+			CS.renderMessages(view, []);
+			CS.setBusy(view, false);
+			CS.updateReadingControls(view);
+			const toolbar = document.createElement("div");
+			view.root.before(toolbar);
+			CS.renderReaderToolbar({ reader: { type: "pdf", itemID: 1 }, doc: document, append: node => toolbar.append(node) });
+			if (scenario === "menu-reading") view.root.querySelector(".zs-reading-evidence-mode").click();
+		}
+		else if (scenario === "clarifications") {
 			const clar = (id, day, passage, page, answer) => ({ id, ts: Date.parse("2026-09-" + day + "T10:00:00Z"), passage, pageLabel: page,
 				position: null, attachmentID: 1, question: "Explain this passage (p. " + page + "):\n\n> " + passage,
 				prompt: "Explain this passage (p. " + page + "):\n\n> " + passage + "\n\n(Sidebar formatting: maths in LaTeX…)",

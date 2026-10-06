@@ -417,7 +417,7 @@ test("knowledge discussion skips full PDF extraction, supplies corrected notes i
  button.click(); assert.equal(button.getAttribute('aria-expanded'), 'true');
  const choices = [...view.root.querySelectorAll('.zs-menu-item')];
  assert.ok(choices[0].closest('.zs-reading-mode-menu'));
- assert.equal(choices[0].querySelector('.zs-reading-menu-icon').parentElement, choices[0]);
+ assert.equal(choices[0].querySelector('.zs-reading-menu-icon').closest('.zs-menu-item'), choices[0]);
  assert.equal(choices[0].querySelector('.zs-menu-text').children.length, 2);
  assert.equal(choices[0].getAttribute('aria-checked'), 'true'); choices[1].click();
  assert.equal(p.getReadingEvidenceMode(), 'source'); assert.equal(button.dataset.mode, 'source');

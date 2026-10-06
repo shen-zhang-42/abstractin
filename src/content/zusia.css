@@ -1263,6 +1263,13 @@
 	color: var(--zs-text) !important;
 	background: transparent;
 }
+.zs-menu-content {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-width: 0;
+}
 .zs-menu-item:hover:not(:disabled),
 .zs-menu-item:focus-visible {
 	background: var(--zs-hover);
@@ -2748,29 +2755,53 @@
 	min-width: 0;
 	max-width: min(360px, 100%);
 }
-.zs-reading-mode-menu .zs-menu-item {
-	display: grid;
-	grid-template-columns: 14px 18px minmax(0, 1fr);
-	align-items: start;
-	column-gap: 8px;
+.zs-root .zs-reading-mode-menu .zs-menu-item {
+	display: block;
+	appearance: none;
 	height: auto !important;
 	min-height: 64px;
-	max-height: none;
+	max-height: none !important;
 	padding: 10px 8px;
 	box-sizing: border-box;
 	line-height: 1.45;
 	white-space: normal;
 }
-.zs-reading-mode-menu .zs-menu-text { gap: 3px; }
-.zs-reading-mode-menu .zs-menu-label,
-.zs-reading-mode-menu .zs-menu-desc {
-	white-space: normal;
+/* Put layout inside the button: native Gecko button rules can constrain the
+   button's anonymous content box even when its display is grid/flex. */
+.zs-root .zs-reading-mode-menu .zs-menu-content {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+.zs-root .zs-reading-mode-menu .zs-menu-text {
+	display: block;
+	flex: 1 1 0;
+	min-width: 0;
+}
+.zs-root .zs-reading-mode-menu .zs-menu-label,
+.zs-root .zs-reading-mode-menu .zs-menu-desc {
+	display: block;
+	line-height: 1.45;
+	white-space: normal !important;
 	overflow: visible;
 	text-overflow: clip;
 	overflow-wrap: anywhere;
 }
-.zs-reading-mode-menu .zs-check,
-.zs-reading-menu-icon { margin-top: 3px; }
+.zs-root .zs-reading-mode-menu .zs-menu-desc { margin-top: 3px; }
+.zs-root .zs-reading-mode-menu .zs-check,
+.zs-root .zs-reading-mode-menu .zs-reading-menu-icon {
+	flex: 0 0 16px;
+	width: 16px;
+	height: 16px;
+	margin-top: 3px;
+}
+.zs-root .zs-header > .zs-header-icon {
+	display: block;
+	flex: 0 0 24px;
+	width: 24px;
+	height: 24px;
+}
+
 /* Keep every formal environment's left rule crimson across flat/glass themes. */
 .zs-env { border-inline-start-color: var(--zs-env-heading) !important; }
 

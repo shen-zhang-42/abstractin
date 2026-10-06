@@ -830,3 +830,24 @@ test("clarifications panel: go to the chat message, delete, empty state and Esca
 	}
 	assert.deepEqual(unnamed, []);
 });
+
+
+test("reading mode menu wraps check, symbol and text in an inner layout and switches modes", () => {
+ const { root, view, plugin, prefs } = sidebar();
+ view.ctx.reading = { type: "book", language: "English" };
+ plugin.updateReadingControls(view);
+ root.querySelector(".zs-reading-evidence-mode").click();
+ const rows = [...root.querySelectorAll(".zs-reading-mode-menu .zs-menu-item")];
+ assert.equal(rows.length, 2);
+ for (const row of rows) {
+  assert.equal(row.children.length, 1);
+  const content = row.firstElementChild;
+  assert.ok(content.classList.contains("zs-menu-content"));
+  assert.deepEqual([...content.children].map(n => n.className), ["zs-i zs-check", "zs-i zs-reading-menu-icon", "zs-menu-text"]);
+  assert.equal(content.querySelector(".zs-menu-text").children.length, 2);
+ }
+ rows[0].click();
+ assert.equal(prefs[PREFIX + "readingEvidenceMode"], "knowledge");
+ assert.equal(root.querySelector(".zs-reading-evidence-mode .zs-i").dataset.icon, "readingKnowledge");
+ assert.equal(root.querySelector(".zs-menu"), null);
+});
