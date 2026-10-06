@@ -206,39 +206,8 @@ Zusia = {
 		styleGlass: "drop.svg",
 		styleFlat: "squares-four.svg",
 	},
-	// Brand artwork is available immediately, including in reader iframes.
-	// Keep these SVGs in sync with content/icons (verified by resource tests).
-	BRAND_ICONS: {
-		"app": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="#808088" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M16 4 13 2l-1 3C8 5 5 8 5 11l-3 1 2 4-2 3 4 2c1 6 5 9 10 9s9-3 10-9l4-2-2-3 2-4-3-1c0-3-3-6-7-6l-1-3z" fill="#808088" stroke="none"/>
-  <path d="M7 16c0-5 5-7 9-3 4-4 9-2 9 3v5c0 5-4 8-9 8s-9-3-9-8z" fill="#f1f1f3" stroke="none"/>
-  <ellipse cx="11.5" cy="18" rx="3" ry="3.4" fill="#4b4b53" stroke="none"/>
-  <ellipse cx="20.5" cy="18" rx="3" ry="3.4" fill="#4b4b53" stroke="none"/>
-  <circle cx="10.7" cy="16.9" r="0.85" fill="#fff" stroke="none"/>
-  <circle cx="19.7" cy="16.9" r="0.85" fill="#fff" stroke="none"/>
-  <path d="m14.5 23 1.5 1 1.5-1"/>
-  <path d="M13.5 26q2.5 1.4 5 0"/>
-</svg>`,
-		"mascot-marmoset": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M43 45c13-3 15 6 9 11-3 3-8 2-8-1 0-2 3-3 4-1"/>
-  <path d="M50 46l-2 4m7 1-4 1m0 7-1-4"/>
-  <path d="M22 39c-5 4-7 10-5 16h29c2-6-1-12-6-16" fill="currentColor" opacity="0.16"/>
-  <path d="M14 20 6 17l3 7-5 3 8 3-4 5 10-2m32-13 8-3-3 7 5 3-8 3 4 5-10-2" fill="#fff5f2"/>
-  <path d="M17 20c1-8 8-12 15-12s14 4 15 12v9c0 10-7 16-15 16s-15-6-15-16z" fill="currentColor" opacity="0.16"/>
-  <path d="M17 20c1-8 8-12 15-12s14 4 15 12v9c0 10-7 16-15 16s-15-6-15-16z"/>
-  <path d="m26 10 3-6 3 5 4-5 2 7"/>
-  <path d="M19 25c0-5 7-7 13-3 6-4 13-2 13 3v6c0 7-6 11-13 11s-13-4-13-11z" fill="#fff5f2"/>
-  <ellipse cx="25" cy="28" rx="2" ry="2.6" fill="currentColor" stroke="none"/>
-  <ellipse cx="39" cy="28" rx="2" ry="2.6" fill="currentColor" stroke="none"/>
-  <path d="m30 32 2 2 2-2m-7 4c3 3 7 3 10 0"/>
-  <path class="zs-mascot-blush" d="M21 33h3m16 0h3"/>
-  <path d="M12 45c7-2 13-1 20 3 7-4 13-5 20-3v15c-8-2-14-1-20 2-6-3-12-4-20-2z" fill="#fff5f2"/>
-  <path d="M32 48v14m-15-11 9 2m12 0 9-2m-30 5 9 2m12 0 9-2"/>
-  <path d="M17 44c-5-1-7 1-6 4s5 4 7 2m29-6c5-1 7 1 6 4s-5 4-7 2" fill="currentColor" opacity="0.16"/>
-  <path d="M17 44c-5-1-7 1-6 4s5 4 7 2m29-6c5-1 7 1 6 4s-5 4-7 2"/>
-  <path class="zs-mascot-spark" d="m53 5 1.2 3.5L58 10l-3.8 1.4L53 15l-1.3-3.6L48 10l3.7-1.5z" fill="currentColor" stroke="none"/>
-</svg>`,
-	},
+	// Populated by icon-assets.js before any interface renders.
+	BUNDLED_ICONS: {},
 	// Set from rootURI in init().
 	iconBase: "content/icons/",
 	_iconCache: new Map(),
@@ -896,8 +865,9 @@ Zusia = {
 		let icon = this.el(doc, "span", "zs-i" + (className ? " " + className : ""));
 		icon.dataset.icon = name;
 		icon.setAttribute("aria-hidden", "true");
-		if (this.BRAND_ICONS[name]) {
-			icon.appendChild(doc.importNode(this.parseIcon(doc, this.BRAND_ICONS[name]), true));
+		let source = this.BUNDLED_ICONS[this.ICON_FILES[name]];
+		if (source) {
+			icon.appendChild(doc.importNode(this.parseIcon(doc, source), true));
 		}
 		else if (this.ICON_FILES[name]) {
 			this.loadIcon(doc, name).then((svg) => {
@@ -932,7 +902,8 @@ Zusia = {
 
 	// Fetches a Zotero icon once and returns an <svg> that paints with currentColor.
 	loadIcon(doc, name) {
-		if (this.BRAND_ICONS[name]) return Promise.resolve(this.parseIcon(doc, this.BRAND_ICONS[name]));
+		let source = this.BUNDLED_ICONS[this.ICON_FILES[name]];
+		if (source) return Promise.resolve(this.parseIcon(doc, source));
 		let url = this.iconBase + this.ICON_FILES[name];
 		if (!this._iconCache.has(url)) {
 			let win = doc.defaultView;
@@ -956,6 +927,7 @@ Zusia = {
 				}
 			})();
 			this._iconCache.set(url, promise);
+			promise.then(svg => { if (!svg) this._iconCache.delete(url); });
 		}
 		return this._iconCache.get(url);
 	},

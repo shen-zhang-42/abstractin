@@ -31,6 +31,8 @@ async function run() {
   Zotero.Prefs.set('extensions.abstractin.readingEvidenceMode', 'knowledge', true);
   Zotero.Prefs.set('ui.prefersReducedMotion', 0, true);
   p.renderMessages(view, []); p.updateReadingControls(view);
+  const missing = [...root.querySelectorAll('.zs-i')].filter(icon => icon.dataset.icon !== 'stop' && !icon.querySelector('svg')).map(icon => icon.dataset.icon);
+  check('every header and composer control contains SVG', !missing.length, missing);
   const rect = node => { const r = node.getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:r.width, height:r.height }; };
   for (const dark of [false, true]) {
    Zotero.Prefs.set('ui.systemUsesDarkTheme', dark ? 1 : 0, true);

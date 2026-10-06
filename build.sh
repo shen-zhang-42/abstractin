@@ -2,6 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+node scripts/bundle-icons.mjs
 python3 - <<'PY'
 import json
 from pathlib import Path

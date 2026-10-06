@@ -346,6 +346,7 @@ test("every icon shown anywhere maps to a bundled icon file", async () => {
 
 test("icons are fetched once, recoloured to currentColor and inlined", async () => {
 	const { plugin, document, window } = sidebar();
+	delete plugin.BUNDLED_ICONS[plugin.ICON_FILES.newChat];
 	let fetches = 0;
 	window.fetch = async (url) => {
 		fetches++;
@@ -590,6 +591,7 @@ test("the empty chat shows the mascot", () => {
 
 test("icons: Phosphor's duotone layer is tagged so CSS can tint it; licence ships with the icons", async () => {
 	const { plugin, document, window } = sidebar();
+	delete plugin.BUNDLED_ICONS[plugin.ICON_FILES.settings];
 	window.fetch = async () => ({ text: async () =>
 		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M1 1" opacity="0.2"/><path d="M2 2"/></svg>' });
 	plugin._iconCache.clear();

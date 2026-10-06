@@ -43,6 +43,7 @@ test("registered resources supply KaTeX, styles and icons while preserving the s
 test("toolbar and composer icons load through Zotero resources when iframe fetch cannot access chrome URLs", async () => {
  const { plugin: p, window, document: doc } = loadPlugin();
  p.iconBase = 'chrome://abstractin/content/content/icons/'; p._iconCache.clear();
+ delete p.BUNDLED_ICONS[p.ICON_FILES.settings];
  let reads = 0;
  window.Zotero.File = { getResourceAsync: async url => { reads++; assert.ok(url.startsWith(p.iconBase)); return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill="context-fill" d="M1 1h18v18H1z"/></svg>'; } };
  window.fetch = async () => { throw new Error('Reader fetch is blocked'); };
@@ -52,7 +53,7 @@ test("toolbar and composer icons load through Zotero resources when iframe fetch
 });
 
 
-test("marmoset artwork renders in the header and empty chat even when resource reads fail", () => {
+test("all bundled artwork and control icons render even when resource reads fail", () => {
  const { plugin: p, window, document: doc } = loadPlugin({ prefs: { "extensions.abstractin.onboarded": true } });
  p.iconBase = "chrome://abstractin/content/content/icons/";
  window.Zotero.File = { getResourceAsync: async () => { throw new Error("Resource unavailable"); } };
@@ -71,7 +72,25 @@ test("marmoset artwork renders in the header and empty chat even when resource r
   assert.ok(native.isEqualNode(avatar), "native app entry matches the chat avatar");
  }
  assert.ok(companion.querySelectorAll("path").length > 10);
- for (const [name, artwork] of Object.entries(p.BRAND_ICONS)) {
-  assert.equal(artwork, readFileSync(new URL("../src/content/icons/" + p.ICON_FILES[name], import.meta.url), "utf8").trim());
+ for (const file of new Set(Object.values(p.ICON_FILES))) {
+  assert.equal(p.BUNDLED_ICONS[file], readFileSync(new URL("../src/content/icons/" + file, import.meta.url), "utf8").trim());
  }
+ for (const icon of root.querySelectorAll(".zs-i")) {
+  if (icon.dataset.icon !== "stop") assert.ok(icon.querySelector("svg"), "control icon immediately available: " + icon.dataset.icon);
+ }
+});
+
+
+test("failed fallback icon reads can retry instead of caching an empty result", async () => {
+ const { plugin: p, window, document: doc } = loadPlugin();
+ delete p.BUNDLED_ICONS[p.ICON_FILES.settings];
+ p.iconBase = 'chrome://abstractin/content/content/icons/';
+ let reads = 0;
+ window.Zotero.File = { getResourceAsync: async () => {
+  if (++reads === 1) throw new Error('temporary channel failure');
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M1 1h14v14H1z"/></svg>';
+ } };
+ assert.equal(await p.loadIcon(doc, 'settings'), null);
+ assert.ok(await p.loadIcon(doc, 'settings'));
+ assert.equal(reads, 2);
 });
