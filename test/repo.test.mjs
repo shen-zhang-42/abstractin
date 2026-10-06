@@ -39,7 +39,7 @@ test("every bundled third-party file is credited with its licence", () => {
 	}
 	const icons = readdirSync(new URL("../src/content/icons/", import.meta.url)).filter(f => f.endsWith(".svg"));
 	const own = icons.filter(f => f.startsWith("mascot-"));
-	assert.deepEqual(own.sort(), ["mascot-cat.svg", "mascot-owl.svg", "mascot-robot.svg"], "only the mascots are the plugin's own drawings");
+	assert.deepEqual(own.sort(), ["mascot-marmoset.svg"], "the marmoset is the only bundled reading companion");
 });
 
 test("the extension uses the AbstractIn name and its own plugin identity", () => {

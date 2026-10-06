@@ -76,7 +76,7 @@ test("accent, style, message style, text size, corners, spacing and font are sav
 	assert.deepEqual(JSON.parse(prefs[PREFIX + "appearance"]), {
 		accent: "#6d4fd6", style: "flat", bubble: "accent", size: "large", corners: "square", density: "compact", font: "serif",
 		background: "", imageVisibility: 55, imageBlur: 0, glassOpacity: 55, glassBlur: 18, glow: true, glowStrength: 60,
-		mascot: "cat", pattern: "none", labels: "icons",
+		mascot: "marmoset", pattern: "none", labels: "icons",
 	});
 	assert.equal(appearance.querySelector('.zs-swatch[aria-label="Violet"]').getAttribute("aria-checked"), "true");
 	assert.equal(appearance.querySelector('.zs-swatch[aria-label="Zotero"]').getAttribute("aria-checked"), "false");
@@ -190,29 +190,30 @@ test("tiles: a visual radio group of icon cards", () => {
 	const { plugin, document } = pane();
 	let picked = null;
 	const tiles = plugin.tiles(document, [
-		{ value: "cat", icon: "mascot-cat", label: "Cat" },
-		{ value: "owl", icon: "mascot-owl", label: "Owl" },
-	], "cat", v => (picked = v));
+		{ value: "math", icon: "patternMath", label: "Maths" },
+		{ value: "stars", icon: "sparkle", label: "Stars" },
+	], "math", v => (picked = v));
 	assert.equal(tiles.getAttribute("role"), "radiogroup");
 	const [cat, owl] = tiles.querySelectorAll(".zs-tile");
 	assert.equal(cat.getAttribute("aria-checked"), "true");
-	assert.equal(owl.title, "Owl");
-	assert.ok(owl.querySelector(".zs-i[data-icon='mascot-owl']"));
+	assert.equal(owl.title, "Stars");
+	assert.ok(owl.querySelector(".zs-i[data-icon='sparkle']"));
 	owl.click();
-	assert.equal(picked, "owl");
+	assert.equal(picked, "stars");
 	assert.equal(owl.getAttribute("aria-checked"), "true");
 	assert.equal(cat.getAttribute("aria-checked"), "false");
 });
 
-test("appearance: buddy, pattern and labels are chosen visually and saved", () => {
+test("appearance: patterns and labels remain configurable without a companion selector", () => {
 	const { container, prefs } = pane();
 	const appearance = card(container, "Appearance");
 	const tile = (label, title) => [...rowControl(appearance, label).querySelectorAll(".zs-tile")].find(t => t.title === title);
-	tile("Buddy", "Owl").click();
+	assert.ok(!appearance.textContent.includes("Buddy"));
+	assert.ok(!appearance.querySelector('.zs-tile[title="Cat"], .zs-tile[title="Owl"], .zs-tile[title="Robot"]'));
 	tile("Pattern", "Maths").click();
 	choose(appearance, "Button labels", "Icons + text");
 	const saved = JSON.parse(prefs[PREFIX + "appearance"]);
-	assert.equal(saved.mascot, "owl");
+	assert.equal(saved.mascot, "marmoset");
 	assert.equal(saved.pattern, "math");
 	assert.equal(saved.labels, "text");
 });

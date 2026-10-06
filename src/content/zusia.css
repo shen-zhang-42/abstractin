@@ -261,7 +261,7 @@
 	margin-inline-end: 5px;
 	color: var(--zs-accent-ink);
 }
-/* The empty chat's mascot: a nerdy cat reading, in the accent colour. */
+/* The single reading companion: a red marmoset with its book. */
 .zs-mascot {
 	width: 72px;
 	height: 72px;
@@ -774,6 +774,14 @@
 	letter-spacing: 0;
 	font-size: 0.95em;
 }
+/* A muted crimson highlights every formal heading independently of the
+   panel accent, including definitions, propositions, remarks and proofs.
+   Mixing with theme text also keeps the heading visible in dark mode. */
+.zs-env { --zs-env-heading: color-mix(in srgb, #b84459 78%, var(--zs-text)); }
+.zs-env .zs-env-head,
+.zs-env .zs-env-title { color: var(--zs-env-heading); }
+.zs-env .zs-env-head .zs-ref { color: var(--zs-env-heading) !important; }
+
 .zs-qed {
 	text-align: end;
 	line-height: 1;
@@ -2732,3 +2740,40 @@
 .zs-reader-panel .zs-rich math { -moz-user-select: text; user-select: text; }
 .zs-reader-panel .zs-copy-tex { opacity: 0.65; }
 .zs-reader-panel .zs-copy-tex:hover { opacity: 1; }
+
+/* Dedicated Lucide symbols distinguish reading modes from general controls. */
+.zs-reading-mode-menu {
+	box-sizing: border-box;
+	width: min(360px, 100%);
+	min-width: 0;
+	max-width: min(360px, 100%);
+}
+.zs-reading-mode-menu .zs-menu-item {
+	display: grid;
+	grid-template-columns: 14px 18px minmax(0, 1fr);
+	align-items: start;
+	column-gap: 8px;
+	height: auto !important;
+	min-height: 64px;
+	max-height: none;
+	padding: 10px 8px;
+	box-sizing: border-box;
+	line-height: 1.45;
+	white-space: normal;
+}
+.zs-reading-mode-menu .zs-menu-text { gap: 3px; }
+.zs-reading-mode-menu .zs-menu-label,
+.zs-reading-mode-menu .zs-menu-desc {
+	white-space: normal;
+	overflow: visible;
+	text-overflow: clip;
+	overflow-wrap: anywhere;
+}
+.zs-reading-mode-menu .zs-check,
+.zs-reading-menu-icon { margin-top: 3px; }
+/* Keep every formal environment's left rule crimson across flat/glass themes. */
+.zs-env { border-inline-start-color: var(--zs-env-heading) !important; }
+
+.zs-mascot[data-icon="mascot-marmoset"] { color: color-mix(in srgb, #b84459 80%, var(--zs-text)); }
+.zs-mascot[data-icon="mascot-marmoset"] .zs-duo,
+.zs-mascot[data-icon="mascot-marmoset"] .zs-mascot-spark { fill: currentColor; }

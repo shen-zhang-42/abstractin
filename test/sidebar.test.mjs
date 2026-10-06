@@ -337,8 +337,10 @@ test("every icon shown anywhere maps to a bundled icon file", async () => {
 	for (const file of Object.values(plugin.ICON_FILES)) {
 		const url = new URL("../src/content/icons/" + file, import.meta.url);
 		assert.ok(existsSync(url), "missing " + file);
-		// Phosphor Duotone (MIT) at 256×256, or the plugin's own 64×64 mascots.
-		assert.match(readFileSync(url, "utf8"), /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 (256 256|64 64)"/);
+		// Phosphor (256), original mascots (64), or Lucide mode icons (24).
+		let svg = new document.defaultView.DOMParser().parseFromString(readFileSync(url, "utf8"), "image/svg+xml").documentElement;
+		assert.equal(svg.namespaceURI, "http://www.w3.org/2000/svg");
+		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 24 24"].includes(svg.getAttribute("viewBox")));
 	}
 });
 
@@ -582,8 +584,8 @@ test("theorem links: clicking jumps to the box, Back (button or Alt+←) returns
 test("the empty chat shows the mascot", () => {
 	const { root, view, plugin } = sidebar();
 	plugin.renderMessages(view, []);
-	assert.ok(root.querySelector(".zs-empty .zs-mascot[data-icon='mascot-cat']"));
-	assert.ok(root.querySelector(".zs-header .zs-header-icon[data-icon='cat']"));
+	assert.ok(root.querySelector(".zs-empty .zs-mascot[data-icon='mascot-marmoset']"));
+	assert.ok(root.querySelector(".zs-header .zs-header-icon[data-icon='app']"));
 });
 
 test("icons: Phosphor's duotone layer is tagged so CSS can tint it; licence ships with the icons", async () => {
@@ -591,7 +593,7 @@ test("icons: Phosphor's duotone layer is tagged so CSS can tint it; licence ship
 	window.fetch = async () => ({ text: async () =>
 		'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M1 1" opacity="0.2"/><path d="M2 2"/></svg>' });
 	plugin._iconCache.clear();
-	const icon = plugin.svgIcon(document, "cat");
+	const icon = plugin.svgIcon(document, "settings");
 	await new Promise(r => setTimeout(r, 0));
 	await new Promise(r => setTimeout(r, 0));
 	const [duo, main] = icon.querySelectorAll("path");
@@ -620,21 +622,16 @@ test("icon-first: labels are hidden by default and every labelled button keeps a
 	assert.equal(root.dataset.labels, "text");
 });
 
-test("buddy: the chosen mascot shows in the empty chat and the header; none hides it", () => {
-	for (const [mascot, file, header] of [["cat", "mascot-cat", "cat"], ["owl", "mascot-owl", "bird"], ["robot", "mascot-robot", "robot"]]) {
+test("the single marmoset companion replaces all legacy choices and the app icon differs from Start Reading", () => {
+	for (const mascot of ["cat", "owl", "robot", "none", "dragon", "marmoset"]) {
 		const { root, view, plugin } = sidebar({ [PREFIX + "appearance"]: JSON.stringify({ mascot }) });
 		plugin.renderMessages(view, []);
-		assert.equal(root.querySelector(".zs-empty .zs-mascot").dataset.icon, file);
-		assert.equal(root.querySelector(".zs-header-icon").dataset.icon, header);
-		assert.ok(plugin.ICON_FILES[file] && plugin.ICON_FILES[header]);
+		assert.equal(plugin.getAppearance().mascot, "marmoset");
+		assert.equal(root.querySelector(".zs-empty .zs-mascot").dataset.icon, "mascot-marmoset");
+		assert.equal(root.querySelector(".zs-header-icon").dataset.icon, "app");
+		assert.equal(root.querySelector(".zs-start-reading .zs-i").dataset.icon, "book");
+		assert.deepEqual(Object.keys(plugin.MASCOTS), ["marmoset"]);
 	}
-	const none = sidebar({ [PREFIX + "appearance"]: JSON.stringify({ mascot: "none" }) });
-	none.plugin.renderMessages(none.view, []);
-	assert.equal(none.root.querySelector(".zs-mascot"), null);
-	assert.equal(none.root.querySelector(".zs-header-icon").dataset.icon, "sparkle");
-	const bad = sidebar({ [PREFIX + "appearance"]: JSON.stringify({ mascot: "dragon", pattern: "lasers" }) });
-	assert.equal(bad.plugin.getAppearance().mascot, "cat");
-	assert.equal(bad.plugin.getAppearance().pattern, "none");
 });
 
 test("pattern: the nerdy background pattern is applied to the root", () => {
@@ -697,10 +694,9 @@ test("wizard: every step's choices are saved, finishing closes it for good", () 
 	assert.equal(plugin.getAppearance().accent, "#6d4fd6");
 	assert.equal(root.dataset.style, "flat", "the sidebar previews the choice at once");
 	next();
-	assert.equal(wizard.dataset.step, "buddy");
-	tile("Robot").click();
+	assert.equal(wizard.dataset.step, "pattern");
 	tile("Stars").click();
-	assert.equal(plugin.getAppearance().mascot, "robot");
+	assert.equal(plugin.getAppearance().mascot, "marmoset");
 	assert.equal(plugin.getAppearance().pattern, "stars");
 	next();
 	assert.equal(wizard.dataset.step, "answers");
@@ -715,7 +711,7 @@ test("wizard: every step's choices are saved, finishing closes it for good", () 
 	assert.equal(tile("Drawing").getAttribute("aria-pressed"), "true");
 	next();
 	assert.equal(wizard.dataset.step, "done");
-	assert.ok(wizard.querySelector(".zs-mascot[data-icon='mascot-robot']"));
+	assert.ok(wizard.querySelector(".zs-mascot[data-icon='mascot-marmoset']"));
 	wizard.querySelector(".zs-wizard-next").click();
 	assert.equal(root.querySelector(".zs-wizard"), null);
 	assert.equal(prefs[PREFIX + "onboarded"], true);

@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/lucide-icons/lucide",
+  "commit": "ccb4b193d2680ad2eceb966a129d6bb9c8967014",
+  "files": [
+    "icons/brain-circuit.svg",
+    "icons/file-search.svg"
+  ],
+  "license": "LICENSE"
+}

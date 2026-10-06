@@ -161,12 +161,12 @@ for (const type of ["book", "paper"]) {
 		window.Zotero.Items = { get: id => notes.find(note => note.id === id) };
 		window.Zotero.Libraries = { get: () => ({ libraryType: "user" }) };
 		window.Zotero.Item = class {
-			constructor() { this.key = "NOTE0001"; this.id = 30; }
+			constructor() { this.key = "NOTE" + String(notes.length + 1).padStart(4, "0"); this.id = 30 + notes.length; this.tags = []; }
 			setNote(html) { this.html = html; }
 			getNote() { return this.html; }
-			addTag(tag) { this.tag = tag; }
-			getTags() { return [{ tag: this.tag }]; }
-			async saveTx() { notes.push(this); }
+			addTag(tag) { if (!this.tags.includes(tag)) this.tags.push(tag); }
+			getTags() { return this.tags.map(tag => ({ tag })); }
+			async saveTx() { if (!notes.includes(this)) notes.push(this); }
 		};
 		window.Subprocess.getEnvironment = () => ({ HOME: "/local", PATH: "/bin" });
 		window.Subprocess.pathSearch = async () => "/bin/codex";
@@ -202,7 +202,7 @@ for (const type of ["book", "paper"]) {
 		assert.match(submittedPrompt, type === "book" ? /book-reading/ : /scientific-information-extraction/);
 		assert.match(submittedPrompt, /source-text.md/);
 		assert.match(await readFile(join(view.ctx.dir, "source-text.md"), "utf8"), /Original proof/);
-		assert.equal(notes.length, 1);
+		assert.equal(notes.filter(n => !n.tags.includes("AbstractIn:Chat")).length, 1);
 		assert.equal(notes[0].parentID, 9);
 		assert.match(notes[0].html, /PDF00001\?page=9/);
 		assert.ok(root.querySelector("math"), "the final answer renders real mathematics");

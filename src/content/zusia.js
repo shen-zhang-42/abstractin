@@ -122,14 +122,11 @@ Zusia = {
 			formal: { label: "Formal", icon: "toneFormal", prompt: "Use a formal, academic tone." },
 		},
 	},
-	WIZARD_STEPS: ["welcome", "assistant", "look", "buddy", "answers", "done"],
+	WIZARD_STEPS: ["welcome", "assistant", "look", "pattern", "answers", "done"],
 	BACKEND_ICONS: { claude: "sparkle", codex: "terminal", agy: "rocket" },
 	// Study buddies: original drawings shown in the empty chat, with a matching header icon.
 	MASCOTS: {
-		cat: { label: "Cat", icon: "mascot-cat", header: "cat" },
-		owl: { label: "Owl", icon: "mascot-owl", header: "bird" },
-		robot: { label: "Robot", icon: "mascot-robot", header: "robot" },
-		none: { label: "None", icon: null, header: "sparkle" },
+		marmoset: { label: "Marmoset", icon: "mascot-marmoset", header: "app" },
 	},
 	// Faint background patterns behind the chat.
 	PATTERNS: {
@@ -139,7 +136,8 @@ Zusia = {
 		dots: { label: "Dots", icon: "patternDots" },
 		stars: { label: "Stars", icon: "sparkle" },
 	},
-	// Icons are Phosphor Duotone (MIT, content/icons/PHOSPHOR-LICENSE), bundled and inlined
+	// General icons are Phosphor Duotone (MIT, content/icons/PHOSPHOR-LICENSE).
+	// Reading mode icons are Lucide (ISC, content/icons/LUCIDE-LICENSE), bundled and inlined
 	// as SVG so they take the text colour; the soft duotone layer is tinted by CSS (.zs-duo).
 	// mascot*.svg are the plugin's own drawings.
 	ICON_FILES: {
@@ -155,6 +153,8 @@ Zusia = {
 		chevronRight: "caret-down.svg",
 		check: "check.svg",
 		effort: "brain.svg",
+		readingKnowledge: "lucide-brain-circuit.svg",
+		readingSource: "lucide-file-search.svg",
 		up: "caret-up.svg",
 		down: "caret-down.svg",
 		jump: "arrow-down.svg",
@@ -162,6 +162,8 @@ Zusia = {
 		alert: "warning-circle.svg",
 		paper: "file-text.svg",
 		book: "book-open-text.svg",
+		app: "app-marmoset.svg",
+		"mascot-marmoset": "mascot-marmoset.svg",
 		close: "x.svg",
 		search: "magnifying-glass.svg",
 		terminal: "terminal-window.svg",
@@ -174,9 +176,6 @@ Zusia = {
 		save: "download-simple.svg",
 		back: "arrow-u-up-left.svg",
 		ref: "link.svg",
-		cat: "cat.svg",
-		bird: "bird.svg",
-		robot: "robot.svg",
 		code: "code.svg",
 		patternMath: "function.svg",
 		patternGrid: "grid-four.svg",
@@ -206,9 +205,6 @@ Zusia = {
 		openPdf: "arrow-square-out.svg",
 		styleGlass: "drop.svg",
 		styleFlat: "squares-four.svg",
-		"mascot-cat": "mascot-cat.svg",
-		"mascot-owl": "mascot-owl.svg",
-		"mascot-robot": "mascot-robot.svg",
 	},
 	// Set from rootURI in init().
 	iconBase: "content/icons/",
@@ -425,7 +421,7 @@ Zusia = {
 			corners: oneOf(saved.corners, ["square", "rounded", "round"], ""),
 			density: oneOf(saved.density, ["compact", "comfortable", "roomy"], "comfortable"),
 			font: oneOf(saved.font, Object.keys(this.FONTS), "zotero"),
-			mascot: oneOf(saved.mascot, Object.keys(this.MASCOTS), "cat"),
+			mascot: "marmoset",
 			pattern: oneOf(saved.pattern, Object.keys(this.PATTERNS), "none"),
 			labels: oneOf(saved.labels, ["icons", "text"], "icons"),
 		};
@@ -1108,7 +1104,7 @@ Zusia = {
 
 		let header = this.el(doc, "div", "zs-header");
 		let identity = this.el(doc, "div", "zs-header-identity");
-		let evidence = this.ghostButton(doc, "zs-reading-evidence-mode", "book", "", () =>
+		let evidence = this.ghostButton(doc, "zs-reading-evidence-mode", "readingSource", "", () =>
 			this.openReadingEvidenceMenu(root, evidence), { chevron: true });
 		evidence.hidden = true;
 		identity.append(this.el(doc, "span", "zs-header-title", "AbstractIn"), evidence);
@@ -1409,12 +1405,13 @@ Zusia = {
 	openReadingEvidenceMenu(root, anchor) {
 		let doc = root.ownerDocument;
 		this.openMenu(root, anchor, menu => {
+			menu.classList.add("zs-reading-mode-menu");
 			this.menuSection(doc, menu, "Reading discussion mode");
 			for (let [value, label, desc] of [
 				["knowledge", "Knowledge discussion", "Use existing context and knowledge without PDF searches."],
 				["source", "Source verification", "Read original passages to verify the answer."],
 			]) {
-				this.menuItem(doc, menu, {
+				let item = this.menuItem(doc, menu, {
 					label, desc, checked: this.getReadingEvidenceMode() === value,
 					onSelect: () => {
 						this.setPref("readingEvidenceMode", value);
@@ -1429,6 +1426,9 @@ Zusia = {
 						anchor.focus();
 					},
 				});
+				item.insertBefore(this.svgIcon(doc,
+					value === "knowledge" ? "readingKnowledge" : "readingSource", "zs-reading-menu-icon"),
+					item.querySelector(".zs-menu-text"));
 			}
 		}, { placement: "below" });
 	},
@@ -2353,11 +2353,17 @@ Zusia = {
 		if (!history.length) {
 			return;
 		}
+		try {
+			let state = await this.chatSyncState(dir);
+			await this.saveChatNotes(dir, history, { ...(state || { chatID: this.chatSyncID(), writerID: this.chatDeviceID() }), archived: true });
+		}
+		catch (e) { this.logError("archive chat sync", e); }
 		let stamp = new Date(history[history.length - 1].ts || Date.now()).toISOString().replace(/[:.]/g, "-");
 		await Zotero.File.putContentsAsync(OS.Path.join(dir, "chat-" + stamp + ".json"), JSON.stringify(history, null, 2));
 	},
 
 	async listArchives(dir) {
+		let synced = await this.syncedChatArchives(dir);
 		let names = [];
 		if (typeof IOUtils !== "undefined") {
 			names = (await IOUtils.getChildren(dir)).map(path => OS.Path.basename(path));
@@ -2374,6 +2380,13 @@ Zusia = {
 				let history = JSON.parse(await Zotero.File.getContentsAsync(path));
 				let first = history.find(m => m.role === "user");
 				let last = history[history.length - 1] || {};
+				if (!name.startsWith("chat-sync-")) {
+					let ctx = this._chatContexts.get(dir), chatID = "archive-" + name.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+					if (ctx && !this.chatNoteParts(ctx).some(p => p.data.chatID === chatID) &&
+						!this.chatNoteHistories(ctx).some(chat => JSON.stringify(chat.history) === JSON.stringify(history))) {
+						await this.saveChatNotes(dir, history, { chatID, writerID: this.chatDeviceID(), archived: true });
+					}
+				}
 				archives.push({
 					path,
 					title: first ? first.text.replace(/\s+/g, " ").trim() : "Empty chat",
@@ -2385,7 +2398,8 @@ Zusia = {
 				this.log("Skipping unreadable archive " + name + ": " + e);
 			}
 		}
-		return archives.sort((a, b) => b.ts - a.ts);
+		let all = [...synced, ...archives.filter(a => !synced.some(s => s.path === a.path))];
+		return all.sort((a, b) => b.ts - a.ts);
 	},
 
 	_chatTransitions: new Set(),
@@ -2398,13 +2412,16 @@ Zusia = {
 		let view = this._views.get(root);
 		if (!view || this._pending.has(view.ctx.dir) || this._chatTransitions.has(view.ctx.dir)) return;
 		let dir = view.ctx.dir;
+		this.registerChatContext(view.ctx);
 		this._chatTransitions.add(dir);
 		root.querySelectorAll(".zs-new-chat, .zs-history, .zs-send, .zs-start-reading").forEach(button => { button.disabled = true; });
 		try {
 			let restored = archive ? JSON.parse(await Zotero.File.getContentsAsync(archive.path)) : [];
 			if (!Array.isArray(restored)) throw new Error("This archive does not contain a chat history.");
 			await this.archiveHistory(dir, await this.loadHistory(dir));
-			await this.saveHistory(dir, restored);
+			await this.writeChatSyncState(dir, { chatID: this.chatSyncID(), writerID: this.chatDeviceID() });
+			let syncWarning = await this.saveHistory(dir, restored);
+			if (syncWarning) this.appendError(view, syncWarning, { title: "Chat sync note could not be saved" });
 			// Replaying the chosen transcript starts a fresh backend session.
 			await this.saveSessions(dir, {});
 			if (archive) await OS.File.remove(archive.path);
@@ -3023,17 +3040,8 @@ Zusia = {
 			}
 			section("sparkle", "Colour", swatches);
 		}
-		else if (name === "buddy") {
-			hero(mascotIcon(), "Your buddy");
-			let heroEl = step.querySelector(".zs-wizard-hero");
-			section("toneFriendly", "Buddy", this.tiles(doc,
-				Object.entries(this.MASCOTS).map(([value, m]) => ({ value, label: m.label, icon: m.icon || "none" })),
-				appearance().mascot, (v) => {
-					setAppearance({ mascot: v });
-					let icon = this.MASCOTS[v].icon || "wave";
-					heroEl.replaceWith(this.svgIcon(doc, icon, icon.startsWith("mascot-") ? "zs-mascot zs-wizard-hero" : "zs-wizard-hero"));
-					heroEl = step.querySelector(".zs-wizard-hero");
-				}));
+		else if (name === "pattern") {
+			hero(mascotIcon(), "Reading backdrop");
 			section("patternMath", "Pattern", this.tiles(doc,
 				Object.entries(this.PATTERNS).map(([value, p]) => ({ value, label: p.label, icon: p.icon })),
 				appearance().pattern, v => setAppearance({ pattern: v })));
@@ -3340,6 +3348,8 @@ Zusia = {
 		let question = asked.text;
 		let images = this.imagePaths(view.ctx.dir, asked);
 		let kept = history.slice(0, index - 1);
+		await this.archiveHistory(view.ctx.dir, history);
+		await this.writeChatSyncState(view.ctx.dir, { chatID: this.chatSyncID(), writerID: this.chatDeviceID() });
 		await this.saveHistory(view.ctx.dir, kept);
 		let sessions = await this.loadSessions(view.ctx.dir);
 		for (let session of Object.values(sessions)) {
@@ -3456,6 +3466,7 @@ Zusia = {
 		else if (result.recordKey) {
 			logEl.appendChild(this.el(doc, "div", "zs-notice", "Reading record saved as a Zotero note (" + result.recordKey + ")."));
 		}
+		if (result.historySyncWarning) this.appendError(view, result.historySyncWarning, { title: "Chat sync note could not be saved" });
 		if (result.recordNotice) logEl.appendChild(this.el(doc, "div", "zs-notice", result.recordNotice));
 		if (result.cancelled && !view.input.value.trim()) {
 			// Nothing was answered: give the question back so it can be edited and resent.
@@ -3478,6 +3489,7 @@ Zusia = {
 	},
 
 	async ask(ctx, question, pending) {
+		this.registerChatContext(ctx);
 		let { backend } = pending;
 		let label = this.BACKENDS[backend].label;
 		try {
@@ -3636,7 +3648,7 @@ Zusia = {
 				if (recordWarning) meta.recordWarning = recordWarning;
 			}
 			if (recordNotice) meta.recordNotice = recordNotice;
-			await this.appendHistory(ctx.dir, [
+			let historySyncWarning = await this.appendHistory(ctx.dir, [
 				Object.assign({ role: "user", text: question, ts: Date.now() },
 					pending.selection ? { selection: pending.selection } : {},
 					images.length ? { images: images.map(p => p.startsWith(ctx.dir) ? p.slice(ctx.dir.length).replace(/^[\/\\]+/, "") : p) } : {},
@@ -3675,7 +3687,7 @@ Zusia = {
 				if (ctx.reading) sessions[backend].evidenceMode = ctx.reading.evidenceMode;
 				await this.saveSessions(ctx.dir, sessions);
 			}
-			return { ...(ctx.reading ? { recordKey, recordWarning, recordNotice, pdfSource, sourceWarning } : {}), ...(modelFallback ? { modelFallback: true } : {}) };
+			return { ...(historySyncWarning ? { historySyncWarning } : {}), ...(ctx.reading ? { recordKey, recordWarning, recordNotice, pdfSource, sourceWarning } : {}), ...(modelFallback ? { modelFallback: true } : {}) };
 		}
 		catch (e) {
 			this.logError("ask", e);
@@ -4110,8 +4122,6 @@ Zusia = {
 
 		card.body.append(
 			row("Style", this.segmented(doc, [["glass", "Glass"], ["flat", "Flat"]], appearance.style, v => update({ style: v }))),
-			row("Buddy", this.tiles(doc, Object.entries(this.MASCOTS).map(([value, m]) => ({ value, label: m.label, icon: m.icon || "none" })),
-				appearance.mascot, v => update({ mascot: v })), null, { stack: true }),
 			row("Pattern", this.tiles(doc, Object.entries(this.PATTERNS).map(([value, p]) => ({ value, label: p.label, icon: p.icon })),
 				appearance.pattern, v => update({ pattern: v })), null, { stack: true }),
 			row("Button labels", this.segmented(doc, [["icons", "Icons only"], ["text", "Icons + text"]], appearance.labels, v => update({ labels: v }))),
@@ -5486,7 +5496,7 @@ Zusia = {
 			dir = OS.Path.join(dir, "reading-" + attachmentItem.key);
 			await Zotero.File.createDirectoryIfMissingAsync(dir);
 		}
-		return { paperItem, attachmentItem, dir, ...(reading ? { reading } : {}) };
+		return this.registerChatContext({ paperItem, attachmentItem, dir, ...(reading ? { reading } : {}) });
 	},
 
 	safeField(item, field) {
@@ -5559,24 +5569,23 @@ Zusia = {
 	// ---------------------------------------------------------------------
 
 	async loadHistory(dir) {
-		let path = OS.Path.join(dir, "chat.json");
+		let path = OS.Path.join(dir, "chat.json"), local = [], exists = false;
 		try {
-			if (!(await OS.File.exists(path))) {
-				return [];
+			exists = await OS.File.exists(path);
+			if (exists) {
+				local = JSON.parse(await Zotero.File.getContentsAsync(path));
+				if (!Array.isArray(local)) throw new Error("Invalid local chat history");
 			}
-			let text = await Zotero.File.getContentsAsync(path);
-			return JSON.parse(text);
 		}
-		catch (e) {
-			this.log("loadHistory failed: " + e);
-			return [];
-		}
+		catch (e) { this.log("loadHistory failed: " + e); return []; }
+		try { return await this.hydrateChatHistory(dir, local, exists); }
+		catch (e) { this.logError("chat sync restore", e); return local; }
 	},
 
 	async appendHistory(dir, messages) {
 		let history = await this.loadHistory(dir);
 		history.push(...messages);
-		await this.saveHistory(dir, history);
+		return await this.saveHistory(dir, history);
 	},
 
 	async saveHistory(dir, history) {
@@ -5584,6 +5593,11 @@ Zusia = {
 			OS.Path.join(dir, "chat.json"),
 			JSON.stringify(history, null, 2)
 		);
+		try { await this.saveChatNotes(dir, history); }
+		catch (e) {
+			this.logError("chat note sync", e);
+			return "Chat saved locally, but its Zotero sync note could not be saved: " + (e.message || e);
+		}
 	},
 
 	// session.json maps each backend to { id, seen }, where `seen` is how many

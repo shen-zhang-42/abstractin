@@ -1,6 +1,159 @@
 "use strict";
 
 Object.assign(Zusia, {
+	_chatContexts: new Map(),
+	_chatArchiveImports: new Set(),
+
+	registerChatContext(ctx) {
+		if (ctx?.paperItem && ctx.dir) this._chatContexts.set(ctx.dir, ctx);
+		return ctx;
+	},
+
+	chatSyncID() { return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); },
+
+	chatDeviceID() {
+		let id = this.getPref("chatDeviceID");
+		if (!id) { id = this.chatSyncID(); this.setPref("chatDeviceID", id); }
+		return id;
+	},
+
+	async chatSyncState(dir) {
+		try { return JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(dir, "chat-sync.json"))); }
+		catch (e) { return null; }
+	},
+
+	async writeChatSyncState(dir, state) {
+		await Zotero.File.putContentsAsync(OS.Path.join(dir, "chat-sync.json"), JSON.stringify(state));
+	},
+
+	chatNoteParts(ctx) {
+		let doc = Zotero.getMainWindow().document, parts = [];
+		for (let id of ctx.paperItem.getNotes?.() || []) {
+			let note = Zotero.Items.get(id);
+			if (!note || note.deleted || !note.getTags().some(t => t.tag === "AbstractIn:Chat")) continue;
+			let template = this.el(doc, "template"); template.innerHTML = note.getNote();
+			for (let pre of template.content.querySelectorAll("pre")) {
+				try {
+					let data = JSON.parse(pre.textContent);
+					if (data.format === "abstractin-chat-v1" && /^[a-z0-9-]{1,100}$/.test(data.chatID) &&
+						/^[a-z0-9-]{1,100}$/.test(data.writerID) && /^[a-z0-9-]{1,100}$/.test(data.revision) &&
+						Number.isFinite(data.updatedAt) && data.total > 0 && data.total <= 10000 && data.itemKey === ctx.paperItem.key &&
+						data.attachmentKey === (ctx.reading ? ctx.attachmentItem?.key : null) &&
+						typeof data.chatID === "string" && typeof data.text === "string" &&
+						Number.isInteger(data.part) && Number.isInteger(data.total) && data.part >= 0 && data.part < data.total) parts.push({ note, data });
+				}
+				catch (e) { /* Keep malformed/edited notes intact; never execute note HTML. */ }
+			}
+		}
+		return parts;
+	},
+
+	chatNoteHistories(ctx) {
+		let groups = new Map();
+		for (let part of this.chatNoteParts(ctx)) {
+			let key = part.data.chatID + ":" + part.data.revision;
+			if (!groups.has(key)) groups.set(key, []);
+			groups.get(key).push(part);
+		}
+		let histories = [];
+		for (let parts of groups.values()) {
+			let data = parts[0].data;
+			let ordered = Array.from({ length: Math.min(data.total, 10000) }, (_, i) => parts.find(p => p.data.part === i && p.data.total === data.total));
+			if (data.total > 10000 || ordered.some(p => !p)) continue; // A sync may still be downloading later parts.
+			try {
+				let history = JSON.parse(ordered.map(p => p.data.text).join(""));
+				if (Array.isArray(history) && history.every(m => ["user", "assistant"].includes(m.role) && typeof m.text === "string")) histories.push({ ...data, history });
+			}
+			catch (e) { this.logError("chat note decoding", e); }
+		}
+		return histories.sort((a, b) => b.updatedAt - a.updatedAt);
+	},
+
+	async saveChatNotes(dir, history, override = null) {
+		let ctx = this._chatContexts.get(dir);
+		if (!ctx) return;
+		let state = override || await this.chatSyncState(dir), writerID = this.chatDeviceID();
+		// A device always writes its own branch, never overwriting another
+		// computer's transcript before Zotero has reconciled its updates.
+		if (!state || state.writerID !== writerID) state = { chatID: this.chatSyncID(), writerID };
+		let text = JSON.stringify(history), revision = this.chatSyncID();
+		let updatedAt = this.chatNoteParts(ctx).reduce((stamp, part) => Math.max(stamp, part.data.updatedAt + 1), Date.now());
+		let total = Math.max(1, Math.ceil(text.length / 20000));
+		let old = this.chatNoteParts(ctx).filter(p => p.data.chatID === state.chatID && p.data.writerID === writerID);
+		for (let part = 0; part < total; part++) {
+			let note = old.find(p => p.data.part === part)?.note || new Zotero.Item("note");
+			note.libraryID = ctx.paperItem.libraryID; note.parentID = ctx.paperItem.id;
+			let wrapper = this.el(Zotero.getMainWindow().document, "div");
+			let title = history.find(m => m.role === "user")?.text?.replace(/\s+/g, " ").slice(0, 100) || "New chat";
+			wrapper.append(this.el(wrapper.ownerDocument, "h1", null, "AbstractIn — Chat: " + title + (total > 1 ? " (" + (part + 1) + "/" + total + ")" : "")),
+				this.el(wrapper.ownerDocument, "p", null, "Complete conversation text with LaTeX; image files and Codex session identifiers stay local."),
+				this.el(wrapper.ownerDocument, "pre", null, JSON.stringify({
+					format: "abstractin-chat-v1", itemKey: ctx.paperItem.key,
+					attachmentKey: ctx.reading ? ctx.attachmentItem?.key : null,
+					chatID: state.chatID, writerID, revision, updatedAt, part, total,
+					archived: !!override?.archived,
+					text: text.slice(part * 20000, (part + 1) * 20000),
+				})));
+			note.setNote(wrapper.outerHTML); note.addTag("AbstractIn"); note.addTag("AbstractIn:Chat");
+			await note.saveTx();
+		}
+		// Extra older parts remain harmless and are ignored by revision. Avoid
+		// deleting notes on another device during partial or concurrent sync.
+		if (!override) await this.writeChatSyncState(dir, { ...state, revision, updatedAt });
+	},
+
+	async hydrateChatHistory(dir, local, exists) {
+		let ctx = this._chatContexts.get(dir);
+		if (!ctx) return local;
+		if (!this._chatArchiveImports.has(dir)) {
+			this._chatArchiveImports.add(dir);
+			try { await this.listArchives(dir); }
+			catch (e) { this._chatArchiveImports.delete(dir); this.logError("legacy chat archive migration", e); }
+		}
+		let remote = this.chatNoteHistories(ctx), state = await this.chatSyncState(dir);
+		if (exists) {
+			// Import existing installations into Zotero without replacing their
+			// local conversation with an unrelated device's newest chat.
+			if (!state && local.length) {
+				try { await this.saveChatNotes(dir, local); }
+				catch (e) { this.logError("chat history migration", e); }
+			}
+			return local;
+		}
+		let chosen = remote.find(chat => chat.chatID === state?.chatID) || remote.find(chat => !chat.archived) || remote[0];
+		if (!chosen) return local;
+		let history = chosen.history.map(message => ({ ...message, ...(message.selection && ctx.attachmentItem ?
+			{ selection: { ...message.selection, attachmentID: ctx.attachmentItem.id } } : {}) }));
+		await Zotero.File.putContentsAsync(OS.Path.join(dir, "chat.json"), JSON.stringify(history, null, 2));
+		await this.writeChatSyncState(dir, { chatID: chosen.chatID, writerID: chosen.writerID, revision: chosen.revision });
+		await this.saveSessions(dir, {}); // Remote CLI thread identifiers are not portable.
+		return history;
+	},
+
+	async syncedChatArchives(dir) {
+		let ctx = this._chatContexts.get(dir);
+		if (!ctx) return [];
+		let state = await this.chatSyncState(dir), archives = [], seen = new Set();
+		let chats = this.chatNoteHistories(ctx);
+		for (let chat of chats) {
+			let key = JSON.stringify(chat.history);
+			if (!chat.history.length || chat.chatID === state?.chatID || seen.has(key)) continue;
+			seen.add(key);
+			// A newer branch already contains this prefix; keep the fuller
+			// version in Previous chats, but never delete the older source note.
+			if (chats.some(other => other.history.length > chat.history.length &&
+				JSON.stringify(other.history.slice(0, chat.history.length)) === key)) continue;
+			let path = OS.Path.join(dir, "chat-sync-" + chat.chatID + ".json");
+			let history = chat.history.map(message => ({ ...message, ...(message.selection && ctx.attachmentItem ?
+				{ selection: { ...message.selection, attachmentID: ctx.attachmentItem.id } } : {}) }));
+			await Zotero.File.putContentsAsync(path, JSON.stringify(history, null, 2));
+			archives.push({ path, title: chat.history.find(m => m.role === "user")?.text?.replace(/\s+/g, " ").trim() || "Chat",
+				count: chat.history.length, ts: chat.updatedAt, synced: true });
+		}
+		return archives;
+	},
+
+
 	_positionBindings: new Map(),
 	_positionWrites: new Map(),
 

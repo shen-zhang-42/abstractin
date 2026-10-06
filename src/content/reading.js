@@ -314,6 +314,7 @@ Object.assign(Zusia, {
 		this._readingStates.set(attachment.id, options);
 		view.ctx = { paperItem: parent, attachmentItem: attachment, dir, reading: options,
 			reader: view.ctx.reader?.itemID === attachment.id ? view.ctx.reader : this.readerFor({ paperItem: parent, attachmentItem: attachment }, view.doc.defaultView) };
+		this.registerChatContext(view.ctx);
 		this.setPref("backend", "codex");
 		this.updateControls(view.root);
 		this.renderPaperChip(view.root, this.paperInfo(view.ctx));
@@ -359,7 +360,7 @@ Object.assign(Zusia, {
 			let label = mode === "knowledge" ? "Knowledge discussion" : "Source verification";
 			evidence.title = label + " — change reading discussion mode";
 			evidence.setAttribute("aria-label", evidence.title);
-			let icon = mode === "knowledge" ? "effort" : "book";
+			let icon = mode === "knowledge" ? "readingKnowledge" : "readingSource";
 			let current = evidence.querySelector(".zs-i:not(.zs-chevron)");
 			if (current?.dataset.icon !== icon) current?.replaceWith(this.svgIcon(view.doc, icon));
 		}

@@ -19,7 +19,7 @@
 
 AbstractIn is a Zotero reading assistant built from [Zusia](https://github.com/firekern/zusia).
 
-Version 0.2.8 supports **Start Reading → choose the exact PDF and book/paper type → verified source access → local Codex → rendered answer → editable Zotero child notes**. Answers follow the existing plugin language setting.
+Version 0.2.13 supports **Start Reading → choose the exact PDF and book/paper type → verified source access → local Codex → rendered answer → editable Zotero child notes**. Answers follow the existing plugin language setting.
 
 The original `book-reading`, `scientific-paper-reading` and the paper skill's local extraction dependency are bundled without modification. Local skills may be used from your `.codex/skills` directory; `scientific-book-reading` is recognized as the folder alias for `book-reading`.
 
@@ -31,7 +31,9 @@ Books initialize their actual table of contents from a bounded source excerpt wi
 
 Current-page discussions receive text directly from the open reader at the page captured when you send the question, independently of the whole-document index. Page text is cached per loaded PDF; verified quotations can produce physical-page links even when global mapping is unavailable. Blank edge pages are restored only after comparing native reader pages with extracted text. In **Reading workspace → View contents**, each **Open** button resolves its chapter on demand from a unique PDF bookmark, verified page label or mapped heading. It never assumes a fixed printed-page offset.
 
-The icon dropdown beside **AbstractIn** offers **Knowledge discussion** and **Source verification**. Knowledge discussion reuses saved notes, conversation and cached page text, skipping full-text extraction and disabling Codex command execution, apps and web search for ordinary follow-ups. An explicit current-page question reads only that page. Numbered document references (such as theorem 1.1) or an explicit request to inspect a section automatically verify the requested passage; the assistant can also request one source-verification pass when document-specific evidence is missing. Verification uses cached source text first and must report an unfound passage instead of guessing. An explicit prohibition on reading/searching the document prevents both new page reads and automatic verification for that turn. The selected mode persists; initial contents and explicit paper-summary actions always verify their sources. New chat and Previous chats preserve document-level contents, summaries and notes while resetting backend sessions. Replies and workspace recaps use bundled KaTeX, including multiline formulas and bare array environments. Copying selected reply text keeps formulas as TeX; the answer-copy action preserves Markdown and LaTeX. An undefined `\ThetaSpace` is displayed as its literal symbol name, without inferring its definition.
+AbstractIn uses a red marmoset avatar as its app icon and a matching book-reading marmoset as its sole companion. No companion selection is required.
+
+The icon dropdown beside **AbstractIn** uses dedicated Lucide brain-circuit and file-search symbols and offers **Knowledge discussion** and **Source verification**. Knowledge discussion reuses saved notes, conversation and cached page text, skipping full-text extraction and disabling Codex command execution, apps and web search for ordinary follow-ups. An explicit current-page question reads only that page. Numbered document references (such as theorem 1.1) or an explicit request to inspect a section automatically verify the requested passage; the assistant can also request one source-verification pass when document-specific evidence is missing. Verification uses cached source text first and must report an unfound passage instead of guessing. An explicit prohibition on reading/searching the document prevents both new page reads and automatic verification for that turn. The selected mode persists; initial contents and explicit paper-summary actions always verify their sources. New chat and Previous chats preserve document-level contents, summaries and notes while resetting backend sessions. Replies and workspace recaps use bundled KaTeX, including multiline formulas and bare array environments. Copying selected reply text keeps formulas as TeX; the answer-copy action preserves Markdown and LaTeX. An undefined `\ThetaSpace` is displayed as its literal symbol name, without inferring its definition.
 
 The local workspace contains a PDF copy and text extracted by Zotero, with physical page boundaries when verified. Codex reads relevant portions as needed; the full text is not inserted into every prompt. Missing files and image-only PDFs produce explicit errors; OCR and QMD/HTML report export are not included. The demos below show the inherited Zusia interface.
 
@@ -56,7 +58,7 @@ The local workspace contains a PDF copy and text extracted by Zotero, with physi
 
 ## 2. Make it yours
 
-> **Settings → Zusia.** Style, buddy, pattern, accent colour, background image and button labels, all updating live in the sidebar. Glass, corners, font, answer length, level and tone are there too.
+> **Settings → Zusia.** Style, pattern, accent colour, background image and button labels, all updating live in the sidebar. Glass, corners, font, answer length, level and tone are there too.
 
 <p align="center"><img src="docs/videos/zusia-style.gif" alt="In Zotero Settings, switch glass and flat, buddy and pattern, pick the red accent and a background illustration while the sidebar updates live to red and black" width="100%"></p>
 
@@ -113,11 +115,21 @@ The local workspace contains a PDF copy and text extracted by Zotero, with physi
 
 The plugin update feed points at this AbstractIn repository. In-place updates become available after an AbstractIn release is published.
 
+## Sync across computers
+
+Saved discussion notes, contents, summaries, the last recorded reading position and complete conversation text are Zotero child notes attached to the exact item/PDF identity. Zotero data sync carries them independently of PDF file downloads. Install AbstractIn on another computer, sync the same library and use Start Reading for that PDF: a fresh local workspace restores the latest complete chat and its saved notes; other synced conversations are available under Previous chats. If a local workspace already has an active chat, it is preserved and other computers' conversations are offered under Previous chats. Existing local current/archived chats migrate when that document is used again. New chat and Retry retain earlier conversations.
+
+Long transcripts are stored in text chunks without truncation. Partial sync never restores an incomplete transcript. When another computer continues an imported chat it writes a separate branch, preserving the source computer's notes. Note-save failures preserve local conversation text and show a sync warning.
+
+Choose **Download files: As needed** in Zotero's file-sync settings to download only PDFs you open. All notes/metadata in the enabled library still data-sync; Zotero does not limit note sync to just the downloaded PDF. PDF availability depends on file syncing or the attachment's local availability. Recorded position does not represent completion or mastery.
+
+Plugin settings, Codex session identifiers, screenshots/image files and extracted PDF caches remain local. The synced history contains message text, LaTeX and message metadata; an image-only question needs its image supplied again on another computer. The local `reading.json` activation/type setting is not synced. Syncing notes does not automatically activate Start Reading on a new computer.
+
 ## Privacy
 
 - 🖥️ The assistants run **on your computer** with your own login. No server, no API keys.
 - 📄 Codex receives document metadata, annotations, the selected passage, the explicitly named reading skill, derived copies of saved reading notes, and any page image you attach. The reading workspace includes a local PDF copy and extracted text that Codex can inspect. Document content read by Codex is sent to the model through your signed-in account.
-- 📁 PDF/text copies, chat caches and images stay in `abstractin/` inside Zotero's data folder. Concise reading records are Zotero child notes, the authoritative editable representation. Their synchronization still needs local verification.
+- 📁 PDF/text copies, chat caches and images stay in `abstractin/` inside Zotero's data folder. Reading records and full chat text are saved as Zotero child notes and are uploaded through Zotero data sync when enabled. Screenshots, PDF/text caches, plugin settings and backend session identifiers stay local. Two-computer synchronization still needs actual Zotero verification.
 
 <p align="center"><img src="docs/rule.svg" alt="" width="100%"></p>
 

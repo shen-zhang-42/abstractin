@@ -86,10 +86,10 @@ Object.assign(Zusia, {
 		button.setAttribute("data-tabstop", "1");
 		button.tabIndex = -1;
 		button.style.cssText = "display:inline-flex;align-items:center;justify-content:center;align-self:center;line-height:normal;gap:4px;width:auto;min-width:32px;min-height:28px;padding:4px 6px;color:inherit;";
-		let icon = this.svgIcon(doc, "book");
+		let icon = this.svgIcon(doc, "app");
 		icon.style.cssText = "display:block;width:20px;height:20px;";
 		// The reader toolbar is in its own document without the chat stylesheet.
-		this.loadIcon(doc, "book").then(() => {
+		this.loadIcon(doc, "app").then(() => {
 			let svg = icon.querySelector("svg");
 			if (!svg) icon.style.display = "none";
 			if (svg) {

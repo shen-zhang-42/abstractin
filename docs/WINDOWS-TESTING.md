@@ -116,3 +116,13 @@ Choose **Knowledge discussion** from the icon dropdown beside AbstractIn. Ordina
 Switch to **Source verification** to check exact source details; contents initialization and explicit paper summaries must still inspect their sources, regardless of the discussion preference. Save a note containing inline and display math and open the reading workspace: recap formulas and open questions should render with KaTeX.
 
 Use **New chat**, then **Previous chats**: the selected attachment, contents, summary, saved notes and mode remain available. Agent sessions reset and the chosen transcript is replayed on the next request. Sending or switching chats during a pending answer/transition must not mix histories. Opening the same attachment in another window should display the same changed chat after a transition.
+
+## Verify full conversation sync (0.2.11)
+
+On computer A, ask several questions in one PDF and use New chat to start a second conversation. Confirm the parent item has AbstractIn:Chat notes holding full message text/LaTeX; long conversations use multiple parts. After Zotero data sync, open the same item on computer B with AbstractIn installed and PDF file downloads set to As needed. Download/open only this PDF and select Start Reading. In a fresh workspace the latest complete chat should restore and Previous chats should include earlier conversations. Existing local chats remain selected; remote conversations appear in Previous chats. Plugin settings and Codex thread identifiers must remain local.
+
+Continue on computer B, sync both computers, and confirm the original transcript remains available. Try Retry and confirm the replaced conversation remains archived. Interrupt synchronization of a multi-part transcript: the plugin must not restore a truncated chat or overwrite local text. Image files are not stored in transcript notes; image-only questions need the image supplied again. In a read-only library, a failed transcript-note write should display a warning while preserving chat.json and the answer. This workflow needs an actual two-computer Zotero verification; unit tests simulate note transfer.
+
+## Verify the single marmoset companion (0.2.13)
+
+Install and restart. The PDF toolbar entry and native item-pane entry should use the red marmoset avatar, while Start Reading keeps its book icon. Empty chat and onboarding show the matching red marmoset with ear tufts, a ringed tail and a book. Appearance has no Buddy selector and onboarding offers only the backdrop pattern at its corresponding step. Existing cat/owl/robot/none preferences must fall back to the same marmoset. Verify red artwork remains visible in both light and dark themes.

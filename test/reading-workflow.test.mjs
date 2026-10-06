@@ -66,7 +66,7 @@ test("paper summary choices require a click; update and view reuse the same edit
 	let text = '## Research question\nA tested hypothesis with $x$.\n<abstractin-workspace>{"kind":"summary","coverage":"All 3 PDF pages"}</abstractin-workspace>';
 	await p.saveReadingAction(ctx, "summary", text);
 	await p.saveReadingAction(ctx, "summary", text.replace("A tested", "An updated"));
-	assert.equal(notes.length, 1);
+	assert.equal(notes.filter(n => !n.tags.includes("AbstractIn:Chat")).length, 1);
 	assert.ok(notes[0].tags.includes("AbstractIn:Summary"));
 	notes[0].html = notes[0].html.replace("updated", "corrected");
 	await p.exportReadingWorkspace(ctx);
@@ -138,7 +138,7 @@ test("summary transport passes local PDF text and saves a summary without a seco
 	const result = await p.ask(ctx, "Summarize", { backend: "codex", readingAction: "summary", progress() {} });
 	assert.equal(result.error, undefined);
 	assert.equal(result.recordKey, notes[0].key);
-	assert.equal(notes.length, 1);
+	assert.equal(notes.filter(n => !n.tags.includes("AbstractIn:Chat")).length, 1);
 	assert.ok(notes[0].tags.includes("AbstractIn:Summary"));
 	assert.ok(!(await p.loadHistory(ctx.dir))[1].text.includes("abstractin-workspace"));
 });
@@ -413,12 +413,15 @@ test("knowledge discussion skips full PDF extraction, supplies corrected notes i
  assert.equal(button.dataset.mode, 'knowledge');
  assert.equal(button.previousElementSibling.textContent, 'AbstractIn');
  assert.ok(button.closest('.zs-header')); assert.equal(view.root.querySelector('.zs-reading-bar .zs-reading-evidence-mode'), null);
- assert.equal(button.querySelector('.zs-i').dataset.icon, 'effort');
+ assert.equal(button.querySelector('.zs-i').dataset.icon, 'readingKnowledge');
  button.click(); assert.equal(button.getAttribute('aria-expanded'), 'true');
  const choices = [...view.root.querySelectorAll('.zs-menu-item')];
+ assert.ok(choices[0].closest('.zs-reading-mode-menu'));
+ assert.equal(choices[0].querySelector('.zs-reading-menu-icon').parentElement, choices[0]);
+ assert.equal(choices[0].querySelector('.zs-menu-text').children.length, 2);
  assert.equal(choices[0].getAttribute('aria-checked'), 'true'); choices[1].click();
  assert.equal(p.getReadingEvidenceMode(), 'source'); assert.equal(button.dataset.mode, 'source');
- assert.equal(button.querySelector('.zs-i').dataset.icon, 'book');
+ assert.equal(button.querySelector('.zs-i').dataset.icon, 'readingSource');
  assert.equal(button.getAttribute('aria-expanded'), 'false'); assert.equal(view.root.querySelector('.zs-menu'), null);
 });
 
@@ -448,10 +451,10 @@ test("New chat and Previous chat preserve reading artifacts/mode while resetting
  let archived; p.archiveHistory = async (_, messages) => { if (messages.length) archived = messages; };
  await p.newChat(view.root);
  assert.equal((await p.loadHistory(dir)).length, 0); assert.equal(Object.keys(await p.loadSessions(dir)).length, 0);
- assert.equal(notes.length, 2); assert.equal(ctx.reading.type, 'book'); assert.equal(p.getReadingEvidenceMode(), 'knowledge');
+ assert.equal(notes.filter(n => !n.tags.includes('AbstractIn:Chat')).length, 2); assert.equal(ctx.reading.type, 'book'); assert.equal(p.getReadingEvidenceMode(), 'knowledge');
  const path = join(dir, 'previous.json'); await writeFile(path, JSON.stringify(archived));
  await p.restoreChat(view.root, { path });
- assert.equal((await p.loadHistory(dir))[0].text, 'Previous question'); assert.equal(Object.keys(await p.loadSessions(dir)).length, 0); assert.equal(notes.length, 2);
+ assert.equal((await p.loadHistory(dir))[0].text, 'Previous question'); assert.equal(Object.keys(await p.loadSessions(dir)).length, 0); assert.equal(notes.filter(n => !n.tags.includes('AbstractIn:Chat')).length, 2);
 });
 
 test("a chat transition blocks a concurrent send or second transition", async () => {
@@ -554,4 +557,88 @@ test("a current-page question reads only that page in knowledge mode", async () 
  p.runBackend = async (_, request) => { assert.match(request.question, /Current-page statement/); return { text: 'From the supplied page' }; };
  const result = await p.ask(ctx, '解释当前页的这个推导', { backend: 'codex', progress() {} });
  assert.equal(result.error, undefined); assert.equal(reads, 1);
+});
+
+test("complete chat text migrates to chunked Zotero notes and restores on a new computer without a PDF", async () => {
+ const { plugin: p, ctx, notes, window, dir } = await setup(); p.registerChatContext(ctx);
+ const messages = [{ role: 'user', text: 'Question about $x$' }, { role: 'assistant', text: '<script>inert</script>\n$$\\Theta$$\n' + '全文中文'.repeat(15000), ts: 100 }];
+ assert.equal(await p.saveHistory(dir, messages), undefined);
+ const chatNotes = notes.filter(n => n.tags.includes('AbstractIn:Chat')); assert.ok(chatNotes.length > 2);
+ assert.ok(chatNotes.every(n => n.html.length < 150000)); assert.ok(!chatNotes.some(n => /<script>/.test(n.html)));
+ const remoteDir = await mkdtemp(join(tmpdir(), 'abstractin-remote-'));
+ p.registerChatContext({ ...ctx, dir: remoteDir, paperItem: { ...ctx.paperItem, id: 90, libraryID: 12 } });
+ window.Zotero.PDFWorker = { getFullText: async () => { throw new Error('Restoring chats must not access PDF'); } };
+ await p.saveSessions(remoteDir, { codex: { id: 'local-unrelated-thread' } });
+ const restored = await p.loadHistory(remoteDir); assert.equal(JSON.stringify(restored), JSON.stringify(messages));
+ assert.equal(Object.keys(await p.loadSessions(remoteDir)).length, 0);
+ assert.equal(JSON.stringify(await p.loadHistory(remoteDir)), JSON.stringify(messages));
+});
+
+test("another device continues on its own chat branch and keeps original notes intact", async () => {
+ const { plugin: p, prefs, ctx, dir } = await setup(); p.registerChatContext(ctx);
+ const old = [{ role: 'user', text: 'Original' }, { role: 'assistant', text: 'Answer' }]; await p.saveHistory(dir, old);
+ const prior = p.chatNoteParts(ctx).map(part => part.note.html);
+ const remoteDir = await mkdtemp(join(tmpdir(), 'abstractin-other-writer-')); p.registerChatContext({ ...ctx, dir: remoteDir });
+ await p.loadHistory(remoteDir); prefs['extensions.abstractin.chatDeviceID'] = 'other-device';
+ await p.appendHistory(remoteDir, [{ role: 'user', text: 'Follow-up' }, { role: 'assistant', text: 'New answer' }]);
+ assert.ok(prior.every(html => p.chatNoteParts(ctx).some(part => part.note.html === html)));
+ assert.equal(new Set(p.chatNoteParts(ctx).map(part => part.data.chatID)).size, 2);
+ assert.equal((await p.loadHistory(remoteDir)).length, 4); assert.equal((await p.loadHistory(dir)).length, 2);
+});
+
+test("New chat archives and synced Previous chats restore texts without losing the current document", async () => {
+ const { plugin: p, ctx, view, window, dir } = await setup(); p.registerChatContext(ctx);
+ window.Zotero.File.iterateDirectory = async () => {}; window.OS.File.remove = async () => {};
+ await p.saveHistory(dir, [{ role: 'user', text: 'First chat' }, { role: 'assistant', text: 'First answer' }]);
+ await p.newChat(view.root); assert.equal((await p.loadHistory(dir)).length, 0);
+ let archives = await p.listArchives(dir); assert.equal(archives.length, 1); assert.equal(archives[0].synced, true);
+ await p.restoreChat(view.root, archives[0]); assert.equal((await p.loadHistory(dir))[1].text, 'First answer');
+ const remoteDir = await mkdtemp(join(tmpdir(), 'abstractin-new-chat-')); p.registerChatContext({ ...ctx, dir: remoteDir });
+ assert.equal((await p.loadHistory(remoteDir))[0].text, 'First chat');
+ assert.ok(p.chatNoteHistories(ctx).some(chat => chat.archived));
+});
+
+test("incomplete synced notes never restore a truncated history or overwrite local text", async () => {
+ const { plugin: p, ctx, dir } = await setup(); p.registerChatContext(ctx);
+ const text = 'long'.repeat(20000); await p.saveHistory(dir, [{ role: 'assistant', text }]);
+ const parts = p.chatNoteParts(ctx); parts[parts.length - 1].note.deleted = true;
+ const remoteDir = await mkdtemp(join(tmpdir(), 'abstractin-incomplete-chat-')); p.registerChatContext({ ...ctx, dir: remoteDir });
+ assert.equal((await p.loadHistory(remoteDir)).length, 0); assert.equal((await p.loadHistory(dir))[0].text, text);
+});
+
+test("a failed chat note write preserves local history and reports a sync warning", async () => {
+ const { plugin: p, ctx, dir, window } = await setup(); p.registerChatContext(ctx);
+ window.Zotero.Item = class { setNote() {} addTag() {} async saveTx() { throw new Error('Library is read-only'); } };
+ const warning = await p.saveHistory(dir, [{ role: 'user', text: 'Keep local answer' }]);
+ assert.match(warning, /saved locally/); assert.match(warning, /read-only/);
+ assert.equal((await p.loadHistory(dir))[0].text, 'Keep local answer');
+});
+
+test("synced chat notes remain isolated by exact attachment identity", async () => {
+ const { plugin: p, ctx, dir } = await setup(); p.registerChatContext(ctx);
+ await p.saveHistory(dir, [{ role: 'user', text: 'PDF A' }]);
+ const otherDir = await mkdtemp(join(tmpdir(), 'abstractin-other-pdf-'));
+ p.registerChatContext({ ...ctx, dir: otherDir, attachmentItem: { ...ctx.attachmentItem, key: 'PDF-B' } });
+ assert.equal((await p.loadHistory(otherDir)).length, 0);
+});
+
+test("legacy Previous chats migrate alongside the active chat without changing its selection", async () => {
+ const { plugin: p, ctx, dir, window } = await setup(); p.registerChatContext(ctx);
+ const current = [{ role: 'user', text: 'Current' }], old = [{ role: 'user', text: 'Archived legacy chat' }];
+ await writeFile(join(dir, 'chat.json'), JSON.stringify(current));
+ await writeFile(join(dir, 'chat-legacy.json'), JSON.stringify(old));
+ window.Zotero.File.iterateDirectory = async (_, visit) => { visit({ name: 'chat.json' }); visit({ name: 'chat-legacy.json' }); };
+ assert.equal((await p.loadHistory(dir))[0].text, 'Current');
+ assert.ok(p.chatNoteHistories(ctx).some(chat => chat.history[0]?.text === 'Archived legacy chat' && chat.archived));
+ const remoteDir = await mkdtemp(join(tmpdir(), 'abstractin-legacy-chat-')); p.registerChatContext({ ...ctx, dir: remoteDir });
+ window.Zotero.File.iterateDirectory = async () => {};
+ assert.equal((await p.loadHistory(remoteDir))[0].text, 'Current');
+});
+
+test("restored selected passages use the new computer's attachment ID", async () => {
+ const { plugin: p, ctx, dir } = await setup(); p.registerChatContext(ctx);
+ await p.saveHistory(dir, [{ role: 'user', text: 'Passage', selection: { attachmentID: 7, text: 'Quoted', position: { pageIndex: 2 } } }]);
+ const remoteDir = await mkdtemp(join(tmpdir(), 'abstractin-selection-chat-'));
+ p.registerChatContext({ ...ctx, dir: remoteDir, attachmentItem: { ...ctx.attachmentItem, id: 200 } });
+ assert.equal((await p.loadHistory(remoteDir))[0].selection.attachmentID, 200);
 });
