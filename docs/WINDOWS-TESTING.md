@@ -143,3 +143,8 @@ The toolbar, chat header and native item entry use the same minimal gray marmose
 ## Verify the discussion companion (0.2.16)
 
 Start or restore a discussion: a stationary 40px red marmoset should sit below the reading controls and above the messages. It stays outside the message scroll area; neither floating nor twinkling runs during discussion. New chat hides this small companion and restores the existing empty-chat illustration.
+
+
+## Verify the reference-based avatar and inline companion (0.2.17)
+
+The gray app avatar has a rounded, tufted face, large dark eyes and a pale muzzle inspired by the reference marmoset. The chat header, PDF toolbar and native item entry use the same artwork. During discussion, the red companion sits in the unused right-hand space beside Start Reading and the reading workspace controls. It scales from 32px to 80px with the panel width, remains stationary, and adds no row or height. Verify it does not overlap buttons at narrow widths.

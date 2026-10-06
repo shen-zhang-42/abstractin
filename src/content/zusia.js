@@ -209,12 +209,15 @@ Zusia = {
 	// Brand artwork is available immediately, including in reader iframes.
 	// Keep these SVGs in sync with content/icons (verified by resource tests).
 	BRAND_ICONS: {
-		"app": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="#808088" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-  <path d="m8 10-5-2 2 8 3 1m16-7 5-2-2 8-3 1"/>
-  <path d="M8 12a8 8 0 0 1 16 0v7a8 8 0 0 1-16 0z"/>
-  <circle cx="12" cy="16" r="1.4" fill="#808088" stroke="none"/>
-  <circle cx="20" cy="16" r="1.4" fill="#808088" stroke="none"/>
-  <path d="M12 21q4 4 8 0"/>
+		"app": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="#808088" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M16 4 13 2l-1 3C8 5 5 8 5 11l-3 1 2 4-2 3 4 2c1 6 5 9 10 9s9-3 10-9l4-2-2-3 2-4-3-1c0-3-3-6-7-6l-1-3z" fill="#808088" stroke="none"/>
+  <path d="M7 16c0-5 5-7 9-3 4-4 9-2 9 3v5c0 5-4 8-9 8s-9-3-9-8z" fill="#f1f1f3" stroke="none"/>
+  <ellipse cx="11.5" cy="18" rx="3" ry="3.4" fill="#4b4b53" stroke="none"/>
+  <ellipse cx="20.5" cy="18" rx="3" ry="3.4" fill="#4b4b53" stroke="none"/>
+  <circle cx="10.7" cy="16.9" r="0.85" fill="#fff" stroke="none"/>
+  <circle cx="19.7" cy="16.9" r="0.85" fill="#fff" stroke="none"/>
+  <path d="m14.5 23 1.5 1 1.5-1"/>
+  <path d="M13.5 26q2.5 1.4 5 0"/>
 </svg>`,
 		"mascot-marmoset": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M43 45c13-3 15 6 9 11-3 3-8 2-8-1 0-2 3-3 4-1"/>
@@ -1267,7 +1270,8 @@ Zusia = {
 		readingBar.append(this.el(doc, "span", "zs-reading-source-status", ""));
 		let companion = this.el(doc, "div", "zs-discussion-companion");
 		companion.appendChild(this.svgIcon(doc, "mascot-marmoset", "zs-mascot"));
-		root.append(header, readingBar, companion, logWrap, quick, composer);
+		readingBar.appendChild(companion);
+		root.append(header, readingBar, logWrap, quick, composer);
 		root.addEventListener("keydown", event => {
 			if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
 				this.copyAnswerSelection(root, event);

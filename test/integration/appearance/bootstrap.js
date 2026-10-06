@@ -80,16 +80,29 @@ async function run() {
    check('companion returns to original position', Math.abs(start - returned) < 0.5, { start, returned });
    float.play();
   }
-  p.renderMessages(view, [{ role: 'user', text: 'Explain this passage.' }, { role: 'assistant', backend: 'codex', text: 'Here is the explanation.' }]);
-  const dock = root.querySelector('.zs-discussion-companion');
-  const dockSvg = dock.querySelector('svg');
-  check('discussion companion is above messages', rect(dock).bottom <= rect(root.querySelector('.zs-log-wrap')).top);
-  check('discussion companion is outside scrolling messages', !view.logEl.contains(dock));
-  check('discussion companion is small', Math.abs(rect(dockSvg).width - 40) < 0.5);
-  check('discussion companion is stationary', win.getComputedStyle(dockSvg).animationName === 'none' && win.getComputedStyle(dock.querySelector('.zs-mascot-spark')).animationName === 'none');
-  await snapshot(win, p, panel, PathUtils.join(out, 'discussion-companion.png'));
-  p.renderMessages(view, []);
-  check('new chat hides the discussion companion', win.getComputedStyle(dock).display === 'none');
+  for (const width of [280, 380, 520, 900]) {
+   panel.style.width = width + 'px';
+   p.renderMessages(view, []);
+   const bar = root.querySelector('.zs-reading-bar');
+   const emptyHeight = rect(bar).height;
+   p.renderMessages(view, [{ role: 'user', text: 'Explain this passage.' }, { role: 'assistant', backend: 'codex', text: 'Here is the explanation.' }]);
+   const dock = root.querySelector('.zs-discussion-companion');
+   const dockSvg = dock.querySelector('svg');
+   const tag = 'discussion-' + width;
+   check(tag + ' companion uses reading control area', dock.parentElement === bar);
+   check(tag + ' no extra row', Math.abs(rect(bar).height - emptyHeight) < 0.5);
+   check(tag + ' companion fits controls', rect(dock).right <= rect(bar).right && rect(dock).bottom <= rect(bar).bottom);
+   check(tag + ' companion scales to space', rect(dockSvg).width >= 32 && rect(dockSvg).width <= 80);
+   check(tag + ' companion is stationary', win.getComputedStyle(dockSvg).animationName === 'none' && win.getComputedStyle(dock.querySelector('.zs-mascot-spark')).animationName === 'none');
+   for (const button of bar.querySelectorAll('button')) {
+    const r = rect(button), d = rect(dock);
+    if (!r.width || !r.height) continue;
+    check(tag + ' no button overlap ' + button.textContent, r.right <= d.left || r.left >= d.right || r.bottom <= d.top || r.top >= d.bottom, { button: r, companion: d });
+   }
+   await snapshot(win, p, panel, PathUtils.join(out, tag + '.png'));
+   p.renderMessages(view, []);
+   check(tag + ' new chat hides small companion', win.getComputedStyle(dock).display === 'none');
+  }
   Zotero.Prefs.set('ui.prefersReducedMotion', 1, true);
   await Zotero.Promise.delay(100);
   check('reduced motion stops companion floating', win.getComputedStyle(root.querySelector('.zs-empty .zs-mascot > svg')).animationName === 'none');

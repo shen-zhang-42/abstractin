@@ -2811,19 +2811,26 @@
 .zs-mascot[data-icon="mascot-marmoset"] .zs-mascot-spark { fill: currentColor; }
 
 
-/* A small, stationary companion above the conversation, outside the scroll area. */
-.zs-discussion-companion {
- display: flex;
- flex: 0 0 auto;
- justify-content: center;
- padding: 2px 0;
+/* The companion uses the spare space beside the reading controls, without
+   changing their width or adding height to the conversation. */
+.zs-reading-bar {
+	position: relative;
+	container-type: inline-size;
 }
-.zs-root:not([data-chatting="true"]) > .zs-discussion-companion { display: none; }
+.zs-discussion-companion {
+	position: absolute;
+	top: 4px;
+	inset-inline-end: 8px;
+	width: clamp(32px, 10cqw, 80px);
+	aspect-ratio: 1;
+	pointer-events: none;
+}
+.zs-root:not([data-chatting="true"]) .zs-discussion-companion { display: none; }
 .zs-root .zs-discussion-companion .zs-mascot {
- width: 40px;
- height: 40px;
- margin: 0;
- animation: none;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	animation: none;
 }
 .zs-root .zs-discussion-companion .zs-mascot > svg,
 .zs-root .zs-discussion-companion .zs-mascot .zs-mascot-spark { animation: none; }
