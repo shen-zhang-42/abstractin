@@ -47,7 +47,7 @@ async function run() {
     await Zotero.Promise.delay(350);
     const menu = root.querySelector('.zs-reading-mode-menu');
     const rows = [...menu.querySelectorAll('.zs-menu-item')];
-    for (const selector of ['.zs-header-icon svg', '.zs-mascot svg', '.zs-start-reading svg']) {
+    for (const selector of ['.zs-header-icon svg', '.zs-empty .zs-mascot svg', '.zs-start-reading svg']) {
      const svg = root.querySelector(selector), r = svg && rect(svg);
      check(tag + ' visible ' + selector, !!r && r.width > 0 && r.height > 0, r);
     }
@@ -68,7 +68,7 @@ async function run() {
   }
 
   p.closeMenu(root);
-  const companion = root.querySelector('.zs-mascot > svg');
+  const companion = root.querySelector('.zs-empty .zs-mascot > svg');
   const float = companion.getAnimations().find(animation => animation.animationName === 'zs-mascot-float');
   check('companion has continuous float animation', !!float && float.effect.getTiming().iterations === Infinity);
   if (float) {
@@ -80,9 +80,19 @@ async function run() {
    check('companion returns to original position', Math.abs(start - returned) < 0.5, { start, returned });
    float.play();
   }
+  p.renderMessages(view, [{ role: 'user', text: 'Explain this passage.' }, { role: 'assistant', backend: 'codex', text: 'Here is the explanation.' }]);
+  const dock = root.querySelector('.zs-discussion-companion');
+  const dockSvg = dock.querySelector('svg');
+  check('discussion companion is above messages', rect(dock).bottom <= rect(root.querySelector('.zs-log-wrap')).top);
+  check('discussion companion is outside scrolling messages', !view.logEl.contains(dock));
+  check('discussion companion is small', Math.abs(rect(dockSvg).width - 40) < 0.5);
+  check('discussion companion is stationary', win.getComputedStyle(dockSvg).animationName === 'none' && win.getComputedStyle(dock.querySelector('.zs-mascot-spark')).animationName === 'none');
+  await snapshot(win, p, panel, PathUtils.join(out, 'discussion-companion.png'));
+  p.renderMessages(view, []);
+  check('new chat hides the discussion companion', win.getComputedStyle(dock).display === 'none');
   Zotero.Prefs.set('ui.prefersReducedMotion', 1, true);
   await Zotero.Promise.delay(100);
-  check('reduced motion stops companion floating', win.getComputedStyle(companion).animationName === 'none');
+  check('reduced motion stops companion floating', win.getComputedStyle(root.querySelector('.zs-empty .zs-mascot > svg')).animationName === 'none');
 
  }
  catch(e) { results.errors.push(String(e) + '\n' + e.stack); }

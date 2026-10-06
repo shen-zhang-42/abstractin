@@ -62,7 +62,7 @@ test("marmoset artwork renders in the header and empty chat even when resource r
  const root = body.querySelector(".zs-root");
  p.renderEmptyState({ doc, root, logEl: root.querySelector(".zs-log"), ctx: { dir: "/tmp/reading" } });
  const avatar = root.querySelector(".zs-header-icon svg");
- const companion = root.querySelector(".zs-mascot svg");
+ const companion = root.querySelector(".zs-empty .zs-mascot svg");
  assert.equal(avatar?.namespaceURI, "http://www.w3.org/2000/svg");
  assert.equal(companion?.namespaceURI, "http://www.w3.org/2000/svg");
  assert.equal(avatar.getAttribute("stroke"), "#808088");

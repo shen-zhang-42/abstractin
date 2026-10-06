@@ -138,3 +138,8 @@ For the native visual regression checks in an isolated profile, run `ZOTERO_BIN=
 ## Verify the simplified app icon and companion motion (0.2.15)
 
 The toolbar, chat header and native item entry use the same minimal gray marmoset outline, without a colored background or decorative detail. The red book-reading companion gently rises six pixels and returns over a four-second loop, in both the empty chat and onboarding. The float is applied to the SVG so it runs independently of the onboarding entrance transition. The system's reduced-motion preference disables floating and twinkling. The native appearance checks sample the animation at the start, midpoint and end, and verify reduced-motion behavior.
+
+
+## Verify the discussion companion (0.2.16)
+
+Start or restore a discussion: a stationary 40px red marmoset should sit below the reading controls and above the messages. It stays outside the message scroll area; neither floating nor twinkling runs during discussion. New chat hides this small companion and restores the existing empty-chat illustration.

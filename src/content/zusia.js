@@ -1265,7 +1265,9 @@ Zusia = {
 		readingTools.hidden = true;
 		readingBar.append(readingTools);
 		readingBar.append(this.el(doc, "span", "zs-reading-source-status", ""));
-		root.append(header, readingBar, logWrap, quick, composer);
+		let companion = this.el(doc, "div", "zs-discussion-companion");
+		companion.appendChild(this.svgIcon(doc, "mascot-marmoset", "zs-mascot"));
+		root.append(header, readingBar, companion, logWrap, quick, composer);
 		root.addEventListener("keydown", event => {
 			if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
 				this.copyAnswerSelection(root, event);
@@ -1555,6 +1557,7 @@ Zusia = {
 	},
 
 	appendUser(view, text, images = [], modes = []) {
+		view.root.dataset.chatting = "true";
 		let card = this.el(view.doc, "div", "zs-msg zs-user");
 		card.dataset.text = text;
 		card.images = images;
