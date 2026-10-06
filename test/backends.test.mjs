@@ -347,3 +347,66 @@ test("knowledge discussion disables command execution and web/app tools, includi
  const sourceArgs = p.codexArgs({ ...request, ctx: { ...request.ctx, reading: { evidenceMode: 'source' } } });
  assert.ok(!sourceArgs.includes('features.shell_tool=false'));
 });
+
+test("Codex catalog populates account model names, filters hidden entries and preserves manual IDs", async () => {
+ const { plugin: p, window } = loadPlugin({ prefs: { 'extensions.abstractin.codex.models': 'my-custom-model', 'extensions.abstractin.codex.model': 'gpt-6.1-sol' } });
+ p.findBinary = async () => '/bin/codex'; p.getDataDir = () => '/tmp/catalog';
+ window.Zotero.File = { createDirectoryIfMissingAsync: async () => {} };
+ let reads = 0;
+ p.queryCodexModels = async () => { reads++; return [
+  { id: 'catalog-key', model: 'gpt-6.1-sol', displayName: 'GPT-6.1 Sol', supportedReasoningEfforts: [{ reasoningEffort: 'max' }, { reasoningEffort: 'low' }] },
+  { id: 'private', model: 'hidden-model', hidden: true },
+ ]; };
+ await Promise.all([p.loadCodexModels(), p.loadCodexModels()]);
+ assert.equal(reads, 1);
+ assert.deepEqual([...p.getModels('codex')].map(m => m.id), ['', 'gpt-6.1-sol', 'my-custom-model']);
+ assert.equal(p.modelLabel('codex', 'gpt-6.1-sol'), 'GPT-6.1 Sol');
+ assert.deepEqual([...p.getEfforts('codex')], ['', 'max', 'low']);
+ await p.loadCodexModels(); assert.equal(reads, 1);
+ await p.loadCodexModels(true); assert.equal(reads, 2);
+ p.queryCodexModels = async () => { throw new Error('Old CLI'); };
+ await p.loadCodexModels(true);
+ assert.ok(p._codexModelsError);
+ assert.ok(p.getModels('codex').some(m => m.id === 'gpt-6.1-sol'));
+ p.queryCodexModels = async () => [];
+ await p.loadCodexModels(true); assert.equal(p._codexModelsError, null);
+});
+
+function catalogProcess(window, responder) {
+ const sent = []; let pending, chunks = [], stopped = false, killed = 0, closed = 0;
+ const enqueue = text => { if (pending) { const resolve = pending; pending = null; resolve(text); } else chunks.push(text); };
+ const proc = {
+  stdin: { write: async bytes => {
+   const msg = JSON.parse(new TextDecoder().decode(bytes)); sent.push(msg);
+   const response = responder(msg, sent);
+   if (response) { const line = JSON.stringify(response) + '\n'; enqueue(line.slice(0, 9)); enqueue(line.slice(9)); }
+  }, close: async () => { closed++; } },
+  stdout: { readString: async () => chunks.length ? chunks.shift() : stopped ? '' : new Promise(resolve => { pending = resolve; }) },
+  stderr: { readString: async () => '' },
+  kill: () => { killed++; stopped = true; enqueue(''); }, wait: async () => ({ exitCode: 0 }),
+ };
+ window.Subprocess.call = async opts => { assert.deepEqual([...opts.arguments], ['app-server']); return proc; };
+ return { sent, cleanup: () => ({ killed, closed }) };
+}
+
+test("Codex model RPC waits for initialize, reads split JSON, follows pages, and closes the process", async () => {
+ const { plugin: p, window } = loadPlugin(); p.buildChildEnvironment = () => ({});
+ const fake = catalogProcess(window, m => m.method === 'initialize' ? { id: 0, result: {} }
+  : m.method === 'model/list' ? { id: 1, result: { data: [{ model: m.params.cursor ? 'second' : 'first' }], nextCursor: m.params.cursor ? null : 'next' } } : null);
+ const models = await p.queryCodexModels('/bin/codex', '/tmp/catalog');
+ assert.deepEqual([...models].map(m => m.model), ['first', 'second']);
+ assert.deepEqual(fake.sent.map(m => m.method), ['initialize', 'initialized', 'model/list', 'model/list']);
+ assert.equal(fake.sent[3].params.cursor, 'next');
+ assert.equal(fake.sent[2].params.includeHidden, false);
+ assert.deepEqual(fake.cleanup(), { killed: 1, closed: 1 });
+});
+
+test("Codex model RPC releases the process on protocol errors and timeouts", async () => {
+ for (const timeout of [false, true]) {
+  const { plugin: p, window } = loadPlugin(); p.buildChildEnvironment = () => ({});
+  const fake = catalogProcess(window, m => !timeout && m.method === 'initialize' ? { id: 0, error: { message: 'Unavailable' } } : null);
+  if (timeout) window.setTimeout = fn => { queueMicrotask(fn); return 1; };
+  await assert.rejects(p.queryCodexModels('/bin/codex', '/tmp/catalog'), timeout ? /timed out/ : /Unavailable/);
+  assert.deepEqual(fake.cleanup(), { killed: 1, closed: 1 });
+ }
+});

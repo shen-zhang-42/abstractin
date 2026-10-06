@@ -46,8 +46,8 @@ test("extra Codex models appear in its model list", () => {
 	const { container, window, plugin } = pane();
 	const codex = card(container, "Assistants").querySelector('[data-backend="codex"]');
 	change(window, codex.querySelector('input[type="text"]'), "gpt-5.5, gpt-5.5-mini");
-	assert.deepEqual([...codex.querySelector(".zs-select").options].map(o => o.value), ["", "gpt-6-sol", "gpt-5.5", "gpt-5.5-mini"]);
-	assert.deepEqual([...plugin.getModels("codex").map(m => m.id)], ["", "gpt-6-sol", "gpt-5.5", "gpt-5.5-mini"]);
+	assert.deepEqual([...codex.querySelector(".zs-select").options].map(o => o.value), ["", "gpt-5.5", "gpt-5.5-mini"]);
+	assert.deepEqual([...plugin.getModels("codex").map(m => m.id)], ["", "gpt-5.5", "gpt-5.5-mini"]);
 });
 
 test("Claude user-settings switch toggles the pref", () => {

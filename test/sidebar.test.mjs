@@ -29,10 +29,12 @@ function sidebar(prefs = {}) {
 }
 const menuLabels = root => [...root.querySelectorAll(".zs-menu .zs-menu-label")].map(n => n.textContent);
 
-test("reading model menu offers GPT-6 and saves a custom model ID", () => {
+test("reading model menu uses the Codex catalog and saves a custom model ID", () => {
 	const { root, view, plugin, prefs } = sidebar();
 	view.ctx.reading = { type: "book", language: "English" };
 	root._installed.codex = "/bin/codex";
+	plugin._codexModels = [{ id: "gpt-6-sol", label: "GPT-6 Sol" }];
+	plugin._codexModelsLoadedAt = Date.now();
 	root.querySelector(".zs-model-btn").click();
 	assert.ok(menuLabels(root).includes("GPT-6 Sol"));
 	const sol = [...root.querySelectorAll(".zs-menu-item")].find(n => n.textContent.includes("GPT-6 Sol"));

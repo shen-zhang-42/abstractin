@@ -17,8 +17,7 @@ Zusia = {
 		"in plain words, then build up step by step, define every symbol before you use it, work " +
 		"through one concrete example, and point out the most common confusion. Use LaTeX for all maths.",
 	// Agent CLIs the sidebar can drive. Each runs on the user's own subscription login.
-	// `models` are the fixed choices; Codex adds the ones listed in Settings and
-	// Antigravity adds whatever `agy models` reports.
+	// Codex discovers its catalog through app-server; Antigravity uses `agy models`.
 	BACKENDS: {
 		claude: {
 			label: "Claude",
@@ -42,7 +41,6 @@ Zusia = {
 			pathPref: "codexPath",
 			models: [
 				{ id: "", label: "Default", desc: "Your local Codex configuration" },
-				{ id: "gpt-6-sol", label: "GPT-6 Sol", desc: "Requires access in your Codex account" },
 			],
 			efforts: ["", "low", "medium", "high", "xhigh"],
 			images: true,
@@ -333,14 +331,19 @@ Zusia = {
 
 	getEffort(backend) {
 		let effort = this.getPref(backend + ".effort") || "";
-		return this.BACKENDS[backend].efforts.includes(effort) ? effort : "";
+		return this.getEfforts(backend).includes(effort) ? effort : "";
 	},
 
-	// The models offered for a backend: fixed ones, the Codex models listed in
-	// Settings, and Antigravity's own catalogue once it has been fetched.
+	getEfforts(backend) {
+		let model = backend === "codex" && this._codexModels?.find(m => m.id === this.getModel(backend));
+		return model?.efforts?.length ? ["", ...model.efforts] : this.BACKENDS[backend].efforts;
+	},
+
+	// Keep local defaults and manually entered IDs alongside the CLI catalog.
 	getModels(backend) {
 		let models = this.BACKENDS[backend].models.slice();
 		if (backend === "codex") {
+			models.push(...(this._codexModels || []));
 			for (let id of (this.getPref("codex.models") || "").split(/[,\n]/).map(m => m.trim()).filter(Boolean)) {
 				models.push({ id, label: id, desc: "" });
 			}
@@ -358,6 +361,82 @@ Zusia = {
 	modelLabel(backend, id) {
 		let model = this.getModels(backend).find(m => m.id === id);
 		return model ? model.label : id;
+	},
+
+	async loadCodexModels(force = false) {
+		if (this._codexModelsPromise) return this._codexModelsPromise;
+		if (!force && this._codexModels && Date.now() - this._codexModelsLoadedAt < 300000) return this._codexModels;
+		this._codexModelsError = null;
+		let task = (async () => {
+			try {
+				let command = await this.findBinary("codex");
+				await Zotero.File.createDirectoryIfMissingAsync(this.getDataDir());
+				let catalog = await this.queryCodexModels(command, this.getDataDir());
+				this._codexModels = catalog.filter(m => !m.hidden && (m.model || m.id)).map(m => ({
+					id: m.model || m.id, label: m.displayName || m.model || m.id,
+					desc: m.description || "",
+					efforts: (m.supportedReasoningEfforts || []).map(e => e.reasoningEffort).filter(e => this.EFFORTS[e]),
+				}));
+				this._codexModelsLoadedAt = Date.now();
+			}
+			catch (e) {
+				this._codexModelsError = "Could not read Codex models. Update your local Codex CLI and check its sign-in, then refresh. Default and manual model IDs remain available.";
+				this.log("Could not list Codex models: " + e);
+			}
+			return this._codexModels || [];
+		})();
+		this._codexModelsPromise = task;
+		try { return await task; }
+		finally { this._codexModelsPromise = null; }
+	},
+
+	// A short-lived stdio connection reads only the catalog, never starts a turn.
+	async queryCodexModels(command, workdir) {
+		let proc = await Subprocess.call({ command, arguments: ["app-server"],
+			environment: this.buildChildEnvironment(), workdir, stderr: "pipe" });
+		let win = Zotero.getMainWindow();
+		let send = message => proc.stdin.write(new TextEncoder().encode(JSON.stringify(message) + "\n").buffer);
+		let catalog = [], cursorSet = new Set(), buffer = "", done = false, timer;
+		let stderr = (async () => { while (await proc.stderr.readString()) {} })().catch(() => {});
+		let read = (async () => {
+			await send({ id: 0, method: "initialize", params: { clientInfo: { name: "abstractin", title: "AbstractIn", version: this.version || "dev" } } });
+			while (!done) {
+				let chunk = await proc.stdout.readString();
+				if (!chunk) throw new Error("Codex closed before returning its model catalog");
+				buffer += chunk;
+				let lines = buffer.split("\n"); buffer = lines.pop();
+				for (let line of lines) {
+					if (!line.trim()) continue;
+					let message; try { message = JSON.parse(line); } catch { continue; }
+					if (message.id !== 0 && message.id !== 1) continue;
+					if (message.error) throw new Error(message.error.message || "Codex catalog request failed");
+					if (message.id === 0) {
+						await send({ method: "initialized", params: {} });
+						await send({ id: 1, method: "model/list", params: { limit: 100, includeHidden: false } });
+					}
+					else {
+						if (!Array.isArray(message.result?.data)) throw new Error("Invalid Codex model catalog");
+						catalog.push(...message.result.data);
+						let cursor = message.result.nextCursor;
+						if (!cursor) { done = true; return catalog; }
+						if (cursorSet.has(cursor)) throw new Error("Repeated Codex model catalog cursor");
+						cursorSet.add(cursor);
+						await send({ id: 1, method: "model/list", params: { limit: 100, includeHidden: false, cursor } });
+					}
+				}
+			}
+		})();
+		try {
+			return await Promise.race([read, new Promise((_, reject) => {
+				timer = win.setTimeout(() => reject(new Error("Codex model catalog timed out")), 15000);
+			})]);
+		}
+		finally {
+			done = true; win.clearTimeout(timer);
+			try { await proc.stdin.close(); } catch {}
+			try { proc.kill(); } catch {}
+			await Promise.allSettled([proc.wait(), stderr]);
+		}
 	},
 
 	// agy keeps its login in the Secret Service keyring. Zotero's Flatpak has no
@@ -1343,6 +1422,10 @@ Zusia = {
 					});
 				}
 				if (key === "codex") {
+					if (this._codexModelsPromise) menu.appendChild(this.el(doc, "div", "zs-menu-note", "Loading Codex models…"));
+					if (this._codexModelsError) menu.appendChild(this.el(doc, "div", "zs-menu-note", this._codexModelsError));
+					this.menuItem(doc, menu, { label: "Refresh Codex models", desc: "Read models from your local Codex",
+						onSelect: () => { let task = this.loadCodexModels(true); menu.refresh(); task.then(() => { if (menu.isConnected) { menu.refresh(); this.updateControls(root); } }); } });
 					this.menuItem(doc, menu, { label: "Choose another model…", desc: "Enter a model ID from Codex /model",
 						onSelect: () => { this.closeMenu(root); this.openCodexModelSetup(root); } });
 				}
@@ -1354,6 +1437,10 @@ Zusia = {
 				}
 			}
 		});
+		if (menu && root._installed?.codex !== null) {
+			let task = this.loadCodexModels(); menu.refresh();
+			task.then(() => { if (menu.isConnected) { menu.refresh(); this.updateControls(root); } });
+		}
 		if (menu && !this._views.get(root)?.ctx.reading && !Array.isArray(this._agyModels)) {
 			this.loadAgyModels().then(() => menu.isConnected && menu.refresh());
 		}
@@ -1456,7 +1543,7 @@ Zusia = {
 			let backend = this._views.get(root)?.ctx.reading ? "codex" : this.getBackend();
 			let current = this.getEffort(backend);
 			this.menuSection(doc, menu, "Reasoning effort · " + this.BACKENDS[backend].label);
-			for (let effort of this.BACKENDS[backend].efforts) {
+			for (let effort of this.getEfforts(backend)) {
 				this.menuItem(doc, menu, {
 					label: this.EFFORTS[effort].label,
 					desc: this.EFFORTS[effort].desc,

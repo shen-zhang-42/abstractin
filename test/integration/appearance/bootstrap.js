@@ -17,6 +17,16 @@ async function run() {
   for (let i = 0; i < 200 && !p; i++) { p = Zotero.AbstractIn; if (!p) await Zotero.Promise.delay(100); }
   if (!p) throw new Error('Plugin startup timed out');
   const win = Zotero.getMainWindow(), doc = win.document;
+  const catalogFixture = Zotero.Prefs.get('extensions.zusia-tester.catalogFixture', true);
+  if (catalogFixture) {
+   const findBinary = p.findBinary;
+   try {
+    p.findBinary = async key => key === 'codex' ? catalogFixture : findBinary.call(p, key);
+    await p.loadCodexModels(true);
+    check('native subprocess reads paginated Codex model catalog', p.getModels('codex').some(m => m.id === 'fixture-sol') && p.getModels('codex').some(m => m.id === 'fixture-second'), p._codexModelsError);
+    check('hidden Codex models excluded', !p.getModels('codex').some(m => m.id === 'fixture-hidden'));
+   } finally { p.findBinary = findBinary; }
+  }
   win.resizeTo(1000, 900);
   const panel = p.el(doc, 'section', 'zs-reader-panel');
   panel.style.cssText = 'position:fixed;top:10px;left:10px;height:800px;z-index:10000;max-width:none;';
