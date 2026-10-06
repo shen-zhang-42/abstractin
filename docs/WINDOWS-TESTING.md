@@ -133,3 +133,8 @@ Install and restart. The PDF toolbar entry and native item-pane entry should use
 After installing the new XPI, confirm version 0.2.14 in Zotero's add-on manager and restart. The PDF toolbar and chat header should show the red marmoset avatar; Start Reading should show a separate book. The empty chat should show the red book-reading marmoset. Open the reading mode menu at narrow and wide panel widths: the checkmark and mode symbol must sit beside the label, with the description below it and each mode in its own row. Updates register a fresh resource address, and marmoset artwork is inserted synchronously without an external resource request.
 
 For the native visual regression checks in an isolated profile, run `ZOTERO_BIN=/path/to/zotero bash test/integration/appearance.sh`. Results and screenshots are written to `test/integration/out/appearance/`.
+
+
+## Verify the simplified app icon and companion motion (0.2.15)
+
+The toolbar, chat header and native item entry use the same minimal gray marmoset outline, without a colored background or decorative detail. The red book-reading companion gently rises six pixels and returns over a four-second loop, in both the empty chat and onboarding. The float is applied to the SVG so it runs independently of the onboarding entrance transition. The system's reduced-motion preference disables floating and twinkling. The native appearance checks sample the animation at the start, midpoint and end, and verify reduced-motion behavior.

@@ -19,7 +19,7 @@
 
 AbstractIn is a Zotero reading assistant built from [Zusia](https://github.com/firekern/zusia).
 
-Version 0.2.14 supports **Start Reading → choose the exact PDF and book/paper type → verified source access → local Codex → rendered answer → editable Zotero child notes**. Answers follow the existing plugin language setting.
+Version 0.2.15 supports **Start Reading → choose the exact PDF and book/paper type → verified source access → local Codex → rendered answer → editable Zotero child notes**. Answers follow the existing plugin language setting.
 
 The original `book-reading`, `scientific-paper-reading` and the paper skill's local extraction dependency are bundled without modification. Local skills may be used from your `.codex/skills` directory; `scientific-book-reading` is recognized as the folder alias for `book-reading`.
 
@@ -31,7 +31,7 @@ Books initialize their actual table of contents from a bounded source excerpt wi
 
 Current-page discussions receive text directly from the open reader at the page captured when you send the question, independently of the whole-document index. Page text is cached per loaded PDF; verified quotations can produce physical-page links even when global mapping is unavailable. Blank edge pages are restored only after comparing native reader pages with extracted text. In **Reading workspace → View contents**, each **Open** button resolves its chapter on demand from a unique PDF bookmark, verified page label or mapped heading. It never assumes a fixed printed-page offset.
 
-AbstractIn uses a red marmoset avatar as its app icon and a matching book-reading marmoset as its sole companion. No companion selection is required.
+AbstractIn uses a minimal gray marmoset outline as its app icon and a red book-reading marmoset as its sole companion. The companion floats gently up and down; reduced-motion preferences disable the animation. No companion selection is required.
 
 The icon dropdown beside **AbstractIn** uses dedicated Lucide brain-circuit and file-search symbols and offers **Knowledge discussion** and **Source verification**. Knowledge discussion reuses saved notes, conversation and cached page text, skipping full-text extraction and disabling Codex command execution, apps and web search for ordinary follow-ups. An explicit current-page question reads only that page. Numbered document references (such as theorem 1.1) or an explicit request to inspect a section automatically verify the requested passage; the assistant can also request one source-verification pass when document-specific evidence is missing. Verification uses cached source text first and must report an unfound passage instead of guessing. An explicit prohibition on reading/searching the document prevents both new page reads and automatic verification for that turn. The selected mode persists; initial contents and explicit paper-summary actions always verify their sources. New chat and Previous chats preserve document-level contents, summaries and notes while resetting backend sessions. Replies and workspace recaps use bundled KaTeX, including multiline formulas and bare array environments. Copying selected reply text keeps formulas as TeX; the answer-copy action preserves Markdown and LaTeX. An undefined `\ThetaSpace` is displayed as its literal symbol name, without inferring its definition.
 

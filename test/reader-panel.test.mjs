@@ -39,7 +39,7 @@ test("reader toolbar uses the public append hook and toggles a panel outside ite
 	const button = toolbar.querySelector(".zs-reader-toggle");
 	assert.equal(button.getAttribute("aria-label"), "Toggle AbstractIn panel");
 	assert.ok(button.querySelector('.zs-i[data-icon="app"] svg'));
-	assert.equal(button.querySelector("svg rect").getAttribute("fill"), "#b84459");
+	assert.equal(button.querySelector("svg").getAttribute("stroke"), "#808088");
 	await p.openReaderPanel(a);
 	const panel = doc.querySelector(".zs-reader-panel");
 	assert.equal(panel.hidden, false);

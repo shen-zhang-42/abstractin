@@ -29,6 +29,7 @@ async function run() {
   const view = { doc, root, ctx: { dir: '/tmp/appearance', paperItem: { getField: () => 'Theory of Statistics', getCreators: () => [] }, reading: { type: 'book', language: 'English' } }, logEl: root.querySelector('.zs-log'), input: root.querySelector('.zs-input') };
   p._views.set(root, view);
   Zotero.Prefs.set('extensions.abstractin.readingEvidenceMode', 'knowledge', true);
+  Zotero.Prefs.set('ui.prefersReducedMotion', 0, true);
   p.renderMessages(view, []); p.updateReadingControls(view);
   const rect = node => { const r = node.getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:r.width, height:r.height }; };
   for (const dark of [false, true]) {
@@ -50,7 +51,7 @@ async function run() {
      const svg = root.querySelector(selector), r = svg && rect(svg);
      check(tag + ' visible ' + selector, !!r && r.width > 0 && r.height > 0, r);
     }
-    check(tag + ' toolbar avatar', !!toolbar.querySelector('svg rect[fill="#b84459"]'));
+    check(tag + ' toolbar avatar', !!toolbar.querySelector('svg[stroke="#808088"]'));
     check(tag + ' distinct app and reading icons', root.querySelector('.zs-header-icon').dataset.icon === 'app' && root.querySelector('.zs-start-reading .zs-i').dataset.icon === 'book');
     check(tag + ' separated menu rows', rect(rows[1]).top >= rect(rows[0]).bottom, rows.map(rect));
     for (const row of rows) {
@@ -65,6 +66,24 @@ async function run() {
     await snapshot(win, p, panel, PathUtils.join(out, tag + '.png'));
    }
   }
+
+  p.closeMenu(root);
+  const companion = root.querySelector('.zs-mascot > svg');
+  const float = companion.getAnimations().find(animation => animation.animationName === 'zs-mascot-float');
+  check('companion has continuous float animation', !!float && float.effect.getTiming().iterations === Infinity);
+  if (float) {
+   float.pause();
+   float.currentTime = 0; const start = companion.getBoundingClientRect().top;
+   float.currentTime = 2000; const raised = companion.getBoundingClientRect().top;
+   float.currentTime = 4000; const returned = companion.getBoundingClientRect().top;
+   check('companion moves vertically by six pixels', Math.abs(start - raised - 6) < 0.5, { start, raised });
+   check('companion returns to original position', Math.abs(start - returned) < 0.5, { start, returned });
+   float.play();
+  }
+  Zotero.Prefs.set('ui.prefersReducedMotion', 1, true);
+  await Zotero.Promise.delay(100);
+  check('reduced motion stops companion floating', win.getComputedStyle(companion).animationName === 'none');
+
  }
  catch(e) { results.errors.push(String(e) + '\n' + e.stack); }
  await IOUtils.writeUTF8(PathUtils.join(out, 'results.json'), JSON.stringify(results, null, 2));

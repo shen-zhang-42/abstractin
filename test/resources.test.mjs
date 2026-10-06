@@ -65,7 +65,11 @@ test("marmoset artwork renders in the header and empty chat even when resource r
  const companion = root.querySelector(".zs-mascot svg");
  assert.equal(avatar?.namespaceURI, "http://www.w3.org/2000/svg");
  assert.equal(companion?.namespaceURI, "http://www.w3.org/2000/svg");
- assert.equal(avatar.querySelector("rect").getAttribute("fill"), "#b84459");
+ assert.equal(avatar.getAttribute("stroke"), "#808088");
+ for (const size of [16, 20]) {
+  const native = p.parseIcon(doc, readFileSync(new URL("../src/icons/icon" + size + ".svg", import.meta.url), "utf8"));
+  assert.ok(native.isEqualNode(avatar), "native app entry matches the chat avatar");
+ }
  assert.ok(companion.querySelectorAll("path").length > 10);
  for (const [name, artwork] of Object.entries(p.BRAND_ICONS)) {
   assert.equal(artwork, readFileSync(new URL("../src/content/icons/" + p.ICON_FILES[name], import.meta.url), "utf8").trim());

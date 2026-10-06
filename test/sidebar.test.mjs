@@ -340,7 +340,7 @@ test("every icon shown anywhere maps to a bundled icon file", async () => {
 		// Phosphor (256), original mascots (64), or Lucide mode icons (24).
 		let svg = new document.defaultView.DOMParser().parseFromString(readFileSync(url, "utf8"), "image/svg+xml").documentElement;
 		assert.equal(svg.namespaceURI, "http://www.w3.org/2000/svg");
-		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 24 24"].includes(svg.getAttribute("viewBox")));
+		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24"].includes(svg.getAttribute("viewBox")));
 	}
 });
 

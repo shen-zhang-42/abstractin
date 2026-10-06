@@ -267,10 +267,10 @@
 	height: 72px;
 	margin: 0 auto 4px;
 	color: var(--zs-muted);
-	animation: zs-mascot-float 4s ease-in-out infinite;
 }
 .zs-mascot > svg {
 	stroke-width: 1.6;
+	animation: zs-mascot-float 4s ease-in-out infinite;
 }
 .zs-mascot .zs-mascot-spark {
 	fill: var(--zs-accent);
@@ -283,7 +283,7 @@
 }
 @keyframes zs-mascot-float {
 	0%, 100% { transform: translateY(0); }
-	50% { transform: translateY(-3px); }
+	50% { transform: translateY(-6px); }
 }
 @keyframes zs-mascot-twinkle {
 	0%, 100% { transform: scale(0.7); opacity: 0.6; }
@@ -1678,6 +1678,7 @@
 	.zs-spinner { animation-duration: 2.4s; }
 	.zs-shimmer,
 	.zs-mascot,
+	.zs-mascot > svg,
 	.zs-mascot .zs-mascot-spark,
 	.zs-live-content > .zs-enter,
 	.zs-menu,
