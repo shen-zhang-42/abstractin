@@ -14,7 +14,7 @@ test("startup registers resources before loading scripts and releases them on sh
 			events.push({ name: "register", uri, entries }); return { destruct: () => events.push({ name: "destruct" }) };
 		} }) } },
 		Ci: { amIAddonManagerStartup: {} },
-		Services: { io: { newURI: uri => uri }, scriptloader: { loadSubScript: url => { events.push({ name: "load", url }); scope.Zusia = plugin; } } },
+		Services: { io: { newURI: uri => uri }, scriptloader: { loadSubScript: url => { events.push({ name: "load", url }); scope.AbstractIn = plugin; } } },
 	};
 	runInNewContext(readFileSync(new URL("../src/bootstrap.js", import.meta.url), "utf8"), scope);
 	await scope.startup({ id: "abstractin@test", version: "test", rootURI });
@@ -23,7 +23,7 @@ test("startup registers resources before loading scripts and releases them on sh
 	assert.equal(events[0].entries[0][1], "abstractin");
 	const resourcePackage = events[0].entries[1][1];
 	assert.match(resourcePackage, /^abstractin-test-\d+$/);
-	assert.equal(events.find(e => e.name === "load").url, "chrome://" + resourcePackage + "/content/content/zusia.js");
+	assert.equal(events.find(e => e.name === "load").url, "chrome://" + resourcePackage + "/content/content/abstractin.js");
 	assert.equal(events.find(e => e.name === "init").arg.resourceURI, "chrome://" + resourcePackage + "/content/");
 	assert.ok(events.findIndex(e => e.name === "getKatex") < events.findIndex(e => e.name === "addToAllWindows"));
 	assert.ok(events.findIndex(e => e.name === "registerReaderHooks") < events.findIndex(e => e.name === "restoreReaderToolbarEntries"));
@@ -36,7 +36,7 @@ test("registered resources supply KaTeX, styles and icons while preserving the s
 	p.init({ id: "test", version: "test", rootURI: "file:///checkout/src/", resourceURI: "chrome://abstractin/content/" });
 	assert.equal(p.rootURI, "file:///checkout/src/");
 	assert.equal(p.iconBase, "chrome://abstractin/content/content/icons/");
-	assert.ok(p.stylesheetURL.startsWith("chrome://abstractin/content/content/zusia.css"));
+	assert.ok(p.stylesheetURL.startsWith("chrome://abstractin/content/content/abstractin.css"));
 	assert.equal(typeof p.getKatex().renderToString, "function");
 });
 
@@ -60,10 +60,10 @@ test("all bundled artwork and control icons render even when resource reads fail
  window.fetch = async () => { throw new Error("Iframe fetch blocked"); };
  const body = doc.createElement("div"); doc.body.append(body);
  p.renderSkeleton(doc, body);
- const root = body.querySelector(".zs-root");
- p.renderEmptyState({ doc, root, logEl: root.querySelector(".zs-log"), ctx: { dir: "/tmp/reading" } });
- const avatar = root.querySelector(".zs-header-icon svg");
- const companion = root.querySelector(".zs-discussion-companion .zs-mascot svg");
+ const root = body.querySelector(".abstractin-root");
+ p.renderEmptyState({ doc, root, logEl: root.querySelector(".abstractin-log"), ctx: { dir: "/tmp/reading" } });
+ const avatar = root.querySelector(".abstractin-header-icon svg");
+ const companion = root.querySelector(".abstractin-discussion-companion .abstractin-mascot svg");
  assert.equal(avatar?.namespaceURI, "http://www.w3.org/2000/svg");
  assert.equal(companion?.namespaceURI, "http://www.w3.org/2000/svg");
  assert.equal(avatar.getAttribute("stroke"), "#808088");
@@ -75,7 +75,7 @@ test("all bundled artwork and control icons render even when resource reads fail
  for (const file of new Set(Object.values(p.ICON_FILES))) {
   assert.equal(p.BUNDLED_ICONS[file], readFileSync(new URL("../src/content/icons/" + file, import.meta.url), "utf8").trim());
  }
- for (const icon of root.querySelectorAll(".zs-i")) {
+ for (const icon of root.querySelectorAll(".abstractin-i")) {
   if (icon.dataset.icon !== "stop") assert.ok(icon.querySelector("svg"), "control icon immediately available: " + icon.dataset.icon);
  }
 });

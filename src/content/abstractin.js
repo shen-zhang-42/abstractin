@@ -3,19 +3,23 @@
 var { OS } = ChromeUtils.importESModule("chrome://zotero/content/osfile.mjs");
 var { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 
-Zusia = {
+AbstractIn = {
 	PREF_PREFIX: "extensions.abstractin.",
 	PREFS_PANE_ID: "abstractin-prefs",
-	DEFAULT_PROMPTS: [
-		{ label: "Summarize", prompt: "Summarize this paper" },
-		{ label: "Key points", prompt: "What are the key contributions?" },
-		{ label: "Methodology", prompt: "Explain the method simply" },
-		{ label: "Limitations", prompt: "What are the limitations of this paper?" },
-	],
-	DEFAULT_EXPLAIN_PROMPT:
-		"That explanation didn't click for me. Explain it again, better: start from the intuition " +
-		"in plain words, then build up step by step, define every symbol before you use it, work " +
-		"through one concrete example, and point out the most common confusion. Use LaTeX for all maths.",
+	DEFAULT_PROMPTS: {
+		book: [
+			{ label: "Explain this passage", prompt: "Explain the selected passage, or the current page if no passage is selected, in clear terms." },
+			{ label: "Concepts and symbols", prompt: "Explain the concepts and symbols in the selected passage, or the current page if no passage is selected." },
+			{ label: "Expand the reasoning", prompt: "Expand the derivation or argument in the selected passage, or the current page if no passage is selected, step by step without skipping assumptions." },
+			{ label: "Give an example", prompt: "Give a concrete example that helps explain the selected passage, or the current page if no passage is selected. Distinguish your example from the book's own claims." },
+		],
+		paper: [
+			{ label: "Research question", prompt: "What problem does this paper aim to solve? If a passage is selected, focus on the research problem discussed there." },
+			{ label: "Core method", prompt: "Explain the paper's core method. If a passage is selected, focus on the method described there." },
+			{ label: "Evidence for conclusions", prompt: "What evidence supports this paper's conclusions? If a passage is selected, focus on the claims made there." },
+			{ label: "Assumptions and limitations", prompt: "What are the assumptions and limitations of this paper's method? If a passage is selected, focus on that part." },
+		],
+	},
 	// Agent CLIs the sidebar can drive. Each runs on the user's own subscription login.
 	// Codex discovers its catalog through app-server; Antigravity uses `agy models`.
 	BACKENDS: {
@@ -77,50 +81,12 @@ Zusia = {
 	ZOTERO_ACCENT: "#4072e5",
 	// Toggle buttons in the message box that shape the answer. Settings → Chat chooses
 	// which are shown; each one's on/off state is remembered (pref "mode.<id>").
-	MODES: {
-		drawing: {
-			label: "Drawing",
-			icon: "drawing",
-			key: "D",
-			title: "Ask for a drawing in the answer",
-			instruction: "Include at least one drawing that illustrates the answer, as an ```svg block " +
-				"following the drawing rules. It renders directly in the sidebar: never save it to a file " +
-				"or tell the user to open it elsewhere.",
-		},
-		latex: {
-			label: "LaTeX",
-			icon: "latex",
-			key: "L",
-			title: "Ask for a rigorous answer written in LaTeX",
-			instruction: "Write the answer as rigorous mathematics in LaTeX: every formula in $...$ or " +
-				"$$...$$, formal statements in \\begin{definition}, theorem, lemma and proof " +
-				"environments, and a derivation step by step with numbered displayed equations.",
-		},
-	},
 	// Answer languages offered in Settings → Chat; "" answers in the language of the question.
 	LANGUAGES: ["", "English", "Italiano", "Français", "Deutsch", "Español", "Português", "Nederlands",
 		"Polski", "Русский", "Türkçe", "中文", "日本語", "한국어"],
 	FONT_SIZES: { small: "12px", default: "13px", large: "14.5px" },
 	FONTS: { zotero: "Zotero", sans: "Sans", serif: "Serif", mono: "Mono" },
-	// How answers are written (Settings → Behaviour). Each choice adds one line to the prompt.
-	BEHAVIOUR: {
-		length: {
-			short: { label: "Short", icon: "lengthShort", prompt: "Keep answers short: the key point in a few sentences, no preamble." },
-			balanced: { label: "Balanced", icon: "lengthBalanced", prompt: "Keep answers focused and reasonably concise." },
-			detailed: { label: "Detailed", icon: "lengthDetailed", prompt: "Give thorough, detailed answers with full derivations and examples." },
-		},
-		level: {
-			beginner: { label: "Beginner", icon: "levelBeginner", prompt: "Explain for a beginner: plain words first, define every term, assume little background." },
-			student: { label: "Student", icon: "levelStudent", prompt: "Explain for a university student: standard background assumed, define anything specialised." },
-			expert: { label: "Expert", icon: "levelExpert", prompt: "Write for an expert: skip basics, be precise and dense." },
-		},
-		tone: {
-			friendly: { label: "Friendly", icon: "toneFriendly", prompt: "Use a warm, encouraging tone, like a patient tutor." },
-			neutral: { label: "Neutral", icon: "toneNeutral", prompt: "" },
-			formal: { label: "Formal", icon: "toneFormal", prompt: "Use a formal, academic tone." },
-		},
-	},
-	WIZARD_STEPS: ["welcome", "assistant", "look", "companion", "answers", "done"],
+	WIZARD_STEPS: ["welcome", "assistant", "companion", "look", "answers", "interaction", "done"],
 	BACKEND_ICONS: { claude: "sparkle", codex: "terminal", agy: "rocket" },
 	// Study buddies share the app header and appear in the empty chat and reading bar.
 	MASCOTS: {
@@ -138,7 +104,7 @@ Zusia = {
 	},
 	// General icons are Phosphor Duotone (MIT, content/icons/PHOSPHOR-LICENSE).
 	// Reading mode icons are Lucide (ISC, content/icons/LUCIDE-LICENSE), bundled and inlined
-	// as SVG so they take the text colour; the soft duotone layer is tinted by CSS (.zs-duo).
+	// as SVG so they take the text colour; the soft duotone layer is tinted by CSS (.abstractin-duo).
 	// mascot*.svg are the plugin's own drawings.
 	ICON_FILES: {
 		settings: "gear-six.svg",
@@ -255,7 +221,7 @@ Zusia = {
 	IMAGE_TYPES: { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" },
 	MAX_IMAGES: 6,
 	ATTACH_KEY: "I",
-	// The live view behind each rendered .zs-root.
+	// The live view behind each rendered .abstractin-root.
 	_views: new WeakMap(),
 
 	init({ id, version, rootURI, resourceURI = rootURI }) {
@@ -269,15 +235,15 @@ Zusia = {
 		this.iconBase = resourceURI + "content/icons/";
 		// Updating the plugin while Zotero keeps running would otherwise reuse the
 		// previous version's cached stylesheet under the same URL.
-		this.stylesheetURL = resourceURI + "content/zusia.css?v=" + encodeURIComponent(version + "-" + Date.now());
+		this.stylesheetURL = resourceURI + "content/abstractin.css?v=" + encodeURIComponent(version + "-" + Date.now());
 		this.initialized = true;
 		this.log("init() version " + version + " with rootURI=" + rootURI);
 	},
 
-	// Logs go to Zotero's debug output and to zusia/debug.log in the
+	// Logs go to Zotero's debug output and to abstractin/debug.log in the
 	// data directory, so problems can be diagnosed without enabling debug output.
 	log(msg) {
-		Zotero.debug("[zusia] " + msg);
+		Zotero.debug("[abstractin] " + msg);
 		this._logLines.push(new Date().toISOString() + " " + msg);
 		if (this._logLines.length > 800) {
 			this._logLines.splice(0, this._logLines.length - 800);
@@ -291,7 +257,7 @@ Zusia = {
 					await Zotero.File.putContentsAsync(this.getLogPath(), this._logLines.join("\n") + "\n");
 				}
 				catch (e) {
-					Zotero.debug("[zusia] could not write debug.log: " + e);
+					Zotero.debug("[abstractin] could not write debug.log: " + e);
 				}
 			});
 		}
@@ -526,13 +492,13 @@ Zusia = {
 		// Retired decorations cannot be re-enabled by older saved preferences or callers.
 		appearance = { ...appearance, style: "flat", bubble: "neutral", corners: "rounded", pattern: "none" };
 		if (appearance.accent) {
-			root.style.setProperty("--zs-accent", appearance.accent);
+			root.style.setProperty("--abstractin-accent", appearance.accent);
 		}
 		else {
-			root.style.removeProperty("--zs-accent");
+			root.style.removeProperty("--abstractin-accent");
 		}
-		root.style.setProperty("--zs-accent-text", this.textOn(appearance.accent || this.ZOTERO_ACCENT));
-		root.style.setProperty("--zs-font-size", this.FONT_SIZES[appearance.size]);
+		root.style.setProperty("--abstractin-accent-text", this.textOn(appearance.accent || this.ZOTERO_ACCENT));
+		root.style.setProperty("--abstractin-font-size", this.FONT_SIZES[appearance.size]);
 		root.dataset.style = appearance.style;
 		root.dataset.bubble = appearance.bubble;
 		root.dataset.corners = "rounded";
@@ -542,68 +508,61 @@ Zusia = {
 		root.dataset.pattern = appearance.pattern;
 		root.dataset.labels = appearance.labels;
 		this.applyBehaviour(root);
-		let headerIcon = root.querySelector(":scope > .zs-header > .zs-header-icon");
+		let headerIcon = root.querySelector(":scope > .abstractin-header > .abstractin-header-icon");
 		let mascot = this.MASCOTS[appearance.mascot];
 		let wanted = mascot.header;
 		if (headerIcon && headerIcon.dataset.icon !== wanted) {
-			headerIcon.replaceWith(this.svgIcon(root.ownerDocument, wanted, "zs-header-icon"));
+			headerIcon.replaceWith(this.svgIcon(root.ownerDocument, wanted, "abstractin-header-icon"));
 		}
-		for (let companion of root.querySelectorAll(".zs-mascot")) {
+		for (let companion of root.querySelectorAll(".abstractin-mascot")) {
 			if (companion.dataset.icon !== mascot.icon) {
 				companion.replaceWith(this.svgIcon(root.ownerDocument, mascot.icon, companion.getAttribute("class")));
 			}
 		}
 		delete root.dataset.bg;
-		for (let property of ["--zs-glass-pct", "--zs-glass-strong-pct", "--zs-blur", "--zs-glow-strength", "--zs-bg-veil", "--zs-bg-blur"]) {
+		for (let property of ["--abstractin-glass-pct", "--abstractin-glass-strong-pct", "--abstractin-blur", "--abstractin-glow-strength", "--abstractin-bg-veil", "--abstractin-bg-blur"]) {
 			root.style.removeProperty(property);
 		}
-		let image = root.querySelector(":scope > .zs-backdrop > .zs-backdrop-image");
+		let image = root.querySelector(":scope > .abstractin-backdrop > .abstractin-backdrop-image");
 		if (image) image.style.backgroundImage = "";
 	},
 
-	getPrompts() {
-		let saved = this.getJSONPref("prompts", null);
+	migrateInstructionPrompts() {
+		if (this.getPref("instructionPromptsMigrated")) return;
+		let saved = this.getJSONPref("behaviour", {}) || {};
+		let prompt = typeof saved.custom === "string" ? saved.custom.slice(0, 2000).trim() : "";
+		if (!prompt) return;
+		// Mark first: preference observers can redraw while the lists are saved.
+		this.setPref("instructionPromptsMigrated", true);
+		for (let type of ["book", "paper"]) {
+			let entries = this.getJSONPref("prompts." + type, null);
+			if (!Array.isArray(entries)) entries = this.getJSONPref("prompts", null);
+			if (!Array.isArray(entries)) entries = this.DEFAULT_PROMPTS[type].map(entry => ({ ...entry }));
+			entries = entries.filter(entry => entry && typeof entry.prompt === "string");
+			if (!entries.some(entry => entry.prompt.trim() === prompt)) entries.push({ label: "My instructions", prompt });
+			this.savePrompts(entries, type);
+		}
+	},
+
+	getPrompts(type = "paper") {
+		this.migrateInstructionPrompts();
+		type = type === "book" ? "book" : "paper";
+		let saved = this.getJSONPref("prompts." + type, null);
+		// Existing custom prompts seed both lists until each is edited separately.
+		if (!Array.isArray(saved)) saved = this.getJSONPref("prompts", null);
 		if (Array.isArray(saved)) {
-			return saved.filter(p => p && typeof p.prompt === "string");
+			return saved.filter(p => p && typeof p.prompt === "string").map(p => ({ label: typeof p.label === "string" ? p.label : "", prompt: p.prompt }));
 		}
-		return this.DEFAULT_PROMPTS.map(p => Object.assign({}, p));
+		return this.DEFAULT_PROMPTS[type].map(p => Object.assign({}, p));
 	},
 
-	savePrompts(prompts) {
-		this.setPref("prompts", JSON.stringify(prompts));
-	},
-
-	// Which mode buttons the message box shows (Settings → Chat).
-	getModeButtons() {
-		let saved = this.getJSONPref("modeButtons", {}) || {};
-		let shown = {};
-		for (let id of Object.keys(this.MODES)) {
-			shown[id] = saved[id] !== false;
-		}
-		return shown;
-	},
-
-	isModeOn(id) {
-		return !!this.getPref("mode." + id) && this.getModeButtons()[id];
-	},
-
-	activeModes() {
-		return Object.keys(this.MODES).filter(id => this.isModeOn(id));
-	},
-
-	modeInstructions(modes) {
-		let lines = (modes || []).filter(id => this.MODES[id]).map(id => this.MODES[id].instruction);
-		return lines.length ? "\n\n[" + lines.join(" ") + "]" : "";
+	savePrompts(prompts, type = "paper") {
+		this.setPref("prompts." + (type === "book" ? "book" : "paper"), JSON.stringify(prompts));
 	},
 
 	getBehaviour() {
 		let saved = this.getJSONPref("behaviour", {}) || {};
-		let pick = (key, fallback) => (this.BEHAVIOUR[key][saved[key]] ? saved[key] : fallback);
 		return {
-			length: pick("length", "balanced"),
-			level: pick("level", "student"),
-			tone: pick("tone", "neutral"),
-			custom: typeof saved.custom === "string" ? saved.custom.slice(0, 2000) : "",
 			sendKey: saved.sendKey === "mod-enter" ? "mod-enter" : "enter",
 			autoScroll: saved.autoScroll !== false,
 			showSteps: saved.showSteps !== false,
@@ -612,22 +571,20 @@ Zusia = {
 	},
 
 	saveBehaviour(behaviour) {
-		this.setPref("behaviour", JSON.stringify(behaviour));
-	},
-
-	behaviourInstructions(behaviour = this.getBehaviour()) {
-		let lines = ["length", "level", "tone"].map(key => this.BEHAVIOUR[key][behaviour[key]].prompt).filter(Boolean);
-		if (behaviour.custom.trim()) {
-			lines.push("User's own instructions: " + behaviour.custom.trim());
-		}
-		return lines.join(" ");
+		this.migrateInstructionPrompts();
+		this.setPref("behaviour", JSON.stringify({
+			sendKey: behaviour.sendKey === "mod-enter" ? "mod-enter" : "enter",
+			autoScroll: behaviour.autoScroll !== false,
+			showSteps: behaviour.showSteps !== false,
+			showQuick: behaviour.showQuick !== false,
+		}));
 	},
 
 	applyBehaviour(root, behaviour = this.getBehaviour()) {
 		root.dataset.steps = behaviour.showSteps ? "shown" : "hidden";
 		root.dataset.quick = behaviour.showQuick ? "shown" : "hidden";
-		let send = root.querySelector(".zs-send");
-		if (send && !send.classList.contains("zs-stop")) {
+		let send = root.querySelector(".abstractin-send");
+		if (send && !send.classList.contains("abstractin-stop")) {
 			send.title = "Send (" + this.sendKeyLabel(behaviour) + ")";
 		}
 	},
@@ -661,7 +618,7 @@ Zusia = {
 		return (Zotero.isMac ? "⌥" : "Alt+") + key;
 	},
 
-	// Keyboard shortcuts anywhere in the sidebar: toggle Drawing/LaTeX, add an image.
+	// Keyboard shortcuts anywhere in the sidebar: return to a reference, add an image.
 	handleShortcut(root, event) {
 		if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.key === "ArrowLeft") {
 			let view = this._views.get(root);
@@ -676,16 +633,8 @@ Zusia = {
 			return false;
 		}
 		let key = event.code.slice(3);
-		for (let [id, mode] of Object.entries(this.MODES)) {
-			if (mode.key === key && this.getModeButtons()[id]) {
-				event.preventDefault();
-				this.setPref("mode." + id, !this.isModeOn(id));
-				this.updateControls(root);
-				return true;
-			}
-		}
 		if (key === this.ATTACH_KEY) {
-			let attach = root.querySelector(".zs-attach");
+			let attach = root.querySelector(".abstractin-attach");
 			if (attach) {
 				event.preventDefault();
 				this.openAttachMenu(root, attach);
@@ -695,16 +644,11 @@ Zusia = {
 		return false;
 	},
 
-	getExplainPrompt() {
-		return (this.getPref("explainPrompt") || "").trim() || this.DEFAULT_EXPLAIN_PROMPT;
-	},
+
 
 	// Settings changed in the Settings window update every open sidebar at once.
 	watchPrefs() {
-		let names = ["agents", "agentValidation", "readingAgent", "appearance", "prompts", "backend", "codex.models", "modeButtons", "language", "behaviour", "onboarded", "readingEvidenceMode"];
-		for (let id of Object.keys(this.MODES)) {
-			names.push("mode." + id);
-		}
+		let names = ["agents", "agentValidation", "readingAgent", "appearance", "prompts", "prompts.book", "prompts.paper", "backend", "codex.models", "language", "behaviour", "onboarded", "readingEvidenceMode"];
 		for (let backend of Object.keys(this.BACKENDS)) {
 			names.push(backend + ".model", backend + ".effort");
 		}
@@ -724,7 +668,7 @@ Zusia = {
 
 	refreshAllSidebars() {
 		for (let win of new Set([...Zotero.getMainWindows(), ...this._readerPanelWindows.keys()])) {
-			for (let root of win.document.querySelectorAll(".zs-root")) {
+			for (let root of win.document.querySelectorAll(".abstractin-root")) {
 				this.refreshRoot(root);
 			}
 		}
@@ -732,11 +676,11 @@ Zusia = {
 
 	refreshRoot(root) {
 		this.applyAppearance(root);
-		if (!this.getPref("onboarded") && !root.querySelector(".zs-wizard")) {
+		if (!this.getPref("onboarded") && root.closest(".abstractin-reader-panel") && !root.querySelector(".abstractin-wizard")) {
 			this.showWizard(root);
 		}
 		this.updateControls(root);
-		let quick = root.querySelector(".zs-quick");
+		let quick = root.querySelector(".abstractin-quick");
 		if (quick) {
 			this.renderQuickPrompts(root, quick);
 		}
@@ -826,10 +770,10 @@ Zusia = {
 				}
 				catch (e) {
 					this.logError("renderContent", e);
-					let logEl = body.querySelector(".zs-log");
+					let logEl = body.querySelector(".abstractin-log");
 					if (logEl) {
 						logEl.textContent = "";
-						logEl.appendChild(this.el(doc, "div", "zs-msg zs-error", "Something went wrong: " + e));
+						logEl.appendChild(this.el(doc, "div", "abstractin-msg abstractin-error", "Something went wrong: " + e));
 					}
 				}
 			},
@@ -881,7 +825,7 @@ Zusia = {
 	},
 
 	svgIcon(doc, name, className) {
-		let icon = this.el(doc, "span", "zs-i" + (className ? " " + className : ""));
+		let icon = this.el(doc, "span", "abstractin-i" + (className ? " " + className : ""));
 		icon.dataset.icon = name;
 		icon.setAttribute("aria-hidden", "true");
 		let source = this.BUNDLED_ICONS[this.ICON_FILES[name]];
@@ -912,7 +856,7 @@ Zusia = {
 		}
 		for (let node of svg.querySelectorAll("[opacity]")) {
 			node.removeAttribute("opacity");
-			node.setAttribute("class", "zs-duo");
+			node.setAttribute("class", "abstractin-duo");
 		}
 		svg.removeAttribute("width");
 		svg.removeAttribute("height");
@@ -952,7 +896,7 @@ Zusia = {
 	},
 
 	iconButton(doc, className, title, icon, onClick) {
-		let button = this.el(doc, "button", "zs-icon " + (className || ""));
+		let button = this.el(doc, "button", "abstractin-icon " + (className || ""));
 		button.type = "button";
 		button.title = title;
 		button.setAttribute("aria-label", title);
@@ -962,15 +906,15 @@ Zusia = {
 	},
 
 	ghostButton(doc, className, icon, label, onClick, { chevron = false } = {}) {
-		let button = this.el(doc, "button", "zs-ghost " + (className || ""));
+		let button = this.el(doc, "button", "abstractin-ghost " + (className || ""));
 		button.type = "button";
 		if (icon) {
 			button.appendChild(this.svgIcon(doc, icon));
 		}
-		let text = this.el(doc, "span", "zs-label", label);
+		let text = this.el(doc, "span", "abstractin-label", label);
 		button.appendChild(text);
 		if (chevron) {
-			button.appendChild(this.svgIcon(doc, "chevron", "zs-chevron"));
+			button.appendChild(this.svgIcon(doc, "chevron", "abstractin-chevron"));
 			button.setAttribute("aria-haspopup", "menu");
 			button.setAttribute("aria-expanded", "false");
 		}
@@ -987,18 +931,18 @@ Zusia = {
 
 	readingButton(doc, className, onClick) {
 		let button = this.ghostButton(doc, className, "book", "Start Reading", onClick);
-		button.classList.remove("zs-ghost");
-		button.classList.add("zs-reading-primary");
+		button.classList.remove("abstractin-ghost");
+		button.classList.add("abstractin-reading-primary");
 		button.setAttribute("aria-label", "Start Reading");
 		return button;
 	},
 
 	// ---------------------------------------------------------------------
-	// Menus (one open at a time, anchored to a button inside .zs-root)
+	// Menus (one open at a time, anchored to a button inside .abstractin-root)
 	// ---------------------------------------------------------------------
 
 	closeMenu(root) {
-		let menu = root.querySelector(".zs-menu");
+		let menu = root.querySelector(".abstractin-menu");
 		if (menu) {
 			menu._cleanup?.();
 			menu.remove();
@@ -1015,13 +959,13 @@ Zusia = {
 		}
 		let doc = root.ownerDocument;
 		let win = doc.defaultView;
-		let menu = this.el(doc, "div", "zs-menu");
+		let menu = this.el(doc, "div", "abstractin-menu");
 		menu.setAttribute("role", "menu");
 		root.appendChild(menu);
 		anchor.setAttribute("aria-expanded", "true");
 
 		// Menus opened from the composer sit above the whole card, not over the text being typed.
-		let verticalAnchor = anchor.closest(".zs-composer") || anchor;
+		let verticalAnchor = anchor.closest(".abstractin-composer") || anchor;
 		let position = () => {
 			let rootRect = root.getBoundingClientRect();
 			// Client rects are in zoomed pixels, style lengths are not: convert.
@@ -1068,7 +1012,7 @@ Zusia = {
 				this.closeMenu(root);
 				return;
 			}
-			let items = [...menu.querySelectorAll(".zs-menu-item:not(:disabled)")];
+			let items = [...menu.querySelectorAll(".abstractin-menu-item:not(:disabled)")];
 			if (!items.length || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
 				return;
 			}
@@ -1086,29 +1030,29 @@ Zusia = {
 			doc.removeEventListener("mousedown", onPointer, true);
 			doc.removeEventListener("keydown", onKey, true);
 		};
-		win.setTimeout(() => (menu.querySelector('.zs-menu-item[aria-checked="true"]:not(:disabled)')
-			|| menu.querySelector(".zs-menu-item:not(:disabled)"))?.focus(), 0);
+		win.setTimeout(() => (menu.querySelector('.abstractin-menu-item[aria-checked="true"]:not(:disabled)')
+			|| menu.querySelector(".abstractin-menu-item:not(:disabled)"))?.focus(), 0);
 		return menu;
 	},
 
 	menuSection(doc, menu, label) {
-		menu.appendChild(this.el(doc, "div", "zs-menu-section", label));
+		menu.appendChild(this.el(doc, "div", "abstractin-menu-section", label));
 	},
 
 	menuItem(doc, menu, { label, desc, checked, disabled, icon, onSelect }) {
-		let item = this.el(doc, "button", "zs-menu-item");
+		let item = this.el(doc, "button", "abstractin-menu-item");
 		item.type = "button";
 		item.setAttribute("role", checked === undefined ? "menuitem" : "menuitemradio");
-		let content = this.el(doc, "span", "zs-menu-content");
+		let content = this.el(doc, "span", "abstractin-menu-content");
 		if (checked !== undefined) {
 			item.setAttribute("aria-checked", String(!!checked));
-			content.appendChild(this.svgIcon(doc, "check", "zs-check"));
+			content.appendChild(this.svgIcon(doc, "check", "abstractin-check"));
 		}
-		if (icon) content.appendChild(this.svgIcon(doc, icon, "zs-reading-menu-icon"));
-		let text = this.el(doc, "span", "zs-menu-text");
-		text.appendChild(this.el(doc, "span", "zs-menu-label", label));
+		if (icon) content.appendChild(this.svgIcon(doc, icon, "abstractin-reading-menu-icon"));
+		let text = this.el(doc, "span", "abstractin-menu-text");
+		text.appendChild(this.el(doc, "span", "abstractin-menu-label", label));
 		if (desc) {
-			text.appendChild(this.el(doc, "span", "zs-menu-desc", desc));
+			text.appendChild(this.el(doc, "span", "abstractin-menu-desc", desc));
 		}
 		content.appendChild(text);
 		item.appendChild(content);
@@ -1123,41 +1067,41 @@ Zusia = {
 	// ---------------------------------------------------------------------
 
 	renderSkeleton(doc, body) {
-		body.querySelector(".zs-root")?.disposeUI?.();
+		body.querySelector(".abstractin-root")?.disposeUI?.();
 		body.textContent = "";
 
-		let root = this.el(doc, "div", "zs-root");
-		if (body.closest(".zs-reader-panel")) root.dataset.readingTheme = "neutral";
+		let root = this.el(doc, "div", "abstractin-root");
+		if (body.closest(".abstractin-reader-panel")) root.dataset.readingTheme = "neutral";
 		let cleanup = [];
 		root.disposeUI = () => { for (let dispose of cleanup.splice(0)) dispose(); };
-		// Background image, veil and glow, behind everything else (see .zs-backdrop).
-		let backdrop = this.el(doc, "div", "zs-backdrop");
+		// Background image, veil and glow, behind everything else (see .abstractin-backdrop).
+		let backdrop = this.el(doc, "div", "abstractin-backdrop");
 		backdrop.setAttribute("aria-hidden", "true");
-		backdrop.appendChild(this.el(doc, "div", "zs-backdrop-image"));
+		backdrop.appendChild(this.el(doc, "div", "abstractin-backdrop-image"));
 		root.appendChild(backdrop);
 		this.applyAppearance(root);
 
-		let header = this.el(doc, "div", "zs-header");
-		let identity = this.el(doc, "div", "zs-header-identity");
-		let evidence = this.ghostButton(doc, "zs-reading-evidence-mode", "readingSource", "", () =>
+		let header = this.el(doc, "div", "abstractin-header");
+		let identity = this.el(doc, "div", "abstractin-header-identity");
+		let evidence = this.ghostButton(doc, "abstractin-reading-evidence-mode", "readingSource", "", () =>
 			this.openReadingEvidenceMenu(root, evidence), { chevron: true });
 		evidence.hidden = true;
-		identity.append(this.el(doc, "span", "zs-header-title", "AbstractIn"));
+		identity.append(this.el(doc, "span", "abstractin-header-title", "AbstractIn"));
 		header.append(
-			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "zs-header-icon"),
+			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "abstractin-header-icon"),
 			identity,
-			this.iconButton(doc, "zs-clarifications", "Clarifications of highlighted text", "clarifications",
+			this.iconButton(doc, "abstractin-clarifications", "Clarifications of highlighted text", "clarifications",
 				() => this.openClarifications(root).catch(e => this.logError("openClarifications", e))),
-			this.iconButton(doc, "zs-search", "Search all chats", "search", () => this.openSearchMenu(root)),
-			this.iconButton(doc, "zs-history", "Previous chats", "history", () => this.openHistoryMenu(root)),
-			this.iconButton(doc, "zs-new-chat", "New chat", "newChat", () => this.newChat(root)),
-			this.iconButton(doc, "zs-open-settings", "Settings", "settings", () => this.openSettings()),
+			this.iconButton(doc, "abstractin-search", "Search all chats", "search", () => this.openSearchMenu(root)),
+			this.iconButton(doc, "abstractin-history", "Previous chats", "history", () => this.openHistoryMenu(root)),
+			this.iconButton(doc, "abstractin-new-chat", "New chat", "newChat", () => this.newChat(root)),
+			this.iconButton(doc, "abstractin-open-settings", "Settings", "settings", () => this.openSettings()),
 		);
 
-		let log = this.el(doc, "div", "zs-log");
-		log.appendChild(this.el(doc, "div", "zs-notice", "Loading…"));
-		let logWrap = this.el(doc, "div", "zs-log-wrap");
-		let jump = this.iconButton(doc, "zs-jump", "Scroll to latest", "jump", () => {
+		let log = this.el(doc, "div", "abstractin-log");
+		log.appendChild(this.el(doc, "div", "abstractin-notice", "Loading…"));
+		let logWrap = this.el(doc, "div", "abstractin-log-wrap");
+		let jump = this.iconButton(doc, "abstractin-jump", "Scroll to latest", "jump", () => {
 			log.scrollTo({ top: log.scrollHeight, behavior: "smooth" });
 		});
 		jump.hidden = true;
@@ -1185,10 +1129,10 @@ Zusia = {
 			resize.observe(log);
 			cleanup.push(() => { resize.disconnect(); win.cancelAnimationFrame(pendingFit); });
 		}
-		let back = this.ghostButton(doc, "zs-back", "back", "Back", () => this.goBack(root));
+		let back = this.ghostButton(doc, "abstractin-back", "back", "Back", () => this.goBack(root));
 		back.hidden = true;
 		log.addEventListener("click", (event) => {
-			let ref = event.target.closest && event.target.closest(".zs-ref-ok");
+			let ref = event.target.closest && event.target.closest(".abstractin-ref-ok");
 			if (ref) {
 				event.preventDefault();
 				this.followRef(root, ref);
@@ -1196,10 +1140,10 @@ Zusia = {
 		});
 		logWrap.append(log, jump, back);
 
-		let quick = this.el(doc, "div", "zs-quick");
+		let quick = this.el(doc, "div", "abstractin-quick");
 
-		let composer = this.el(doc, "div", "zs-composer");
-		let input = this.el(doc, "textarea", "zs-input");
+		let composer = this.el(doc, "div", "abstractin-composer");
+		let input = this.el(doc, "textarea", "abstractin-input");
 		input.rows = 2;
 		input.disabled = true;
 		composer.addEventListener("mousedown", (event) => {
@@ -1209,40 +1153,31 @@ Zusia = {
 			}
 		});
 
-		let controls = this.el(doc, "div", "zs-controls");
-		let attachButton = this.iconButton(doc, "zs-attach", "Add an image or screenshot (" + this.shortcutLabel(this.ATTACH_KEY) + ")", "attach", () => this.openAttachMenu(root, attachButton));
-		let modelButton = this.ghostButton(doc, "zs-model-btn", null, "", () => this.openModelMenu(root, modelButton), { chevron: true });
+		let controls = this.el(doc, "div", "abstractin-controls");
+		let attachButton = this.iconButton(doc, "abstractin-attach", "Add an image or screenshot (" + this.shortcutLabel(this.ATTACH_KEY) + ")", "attach", () => this.openAttachMenu(root, attachButton));
+		let modelButton = this.ghostButton(doc, "abstractin-model-btn", null, "", () => this.openModelMenu(root, modelButton), { chevron: true });
 		modelButton.title = "Assistant and model";
-		let effortButton = this.ghostButton(doc, "zs-effort-btn", "effort", "", () => this.openEffortMenu(root, effortButton), { chevron: true });
+		let effortButton = this.ghostButton(doc, "abstractin-effort-btn", "effort", "", () => this.openEffortMenu(root, effortButton), { chevron: true });
 		effortButton.title = "Reasoning effort";
-		let send = this.iconButton(doc, "zs-send", "Send (" + this.sendKeyLabel() + ")", "send", () => this.sendOrStop(root));
-		send.className = "zs-send";
+		let send = this.iconButton(doc, "abstractin-send", "Send (" + this.sendKeyLabel() + ")", "send", () => this.sendOrStop(root));
+		send.className = "abstractin-send";
 		send.disabled = true;
-		let modeButtons = Object.entries(this.MODES).map(([id, mode]) => {
-			let button = this.ghostButton(doc, "zs-mode zs-mode-" + id, mode.icon, mode.label, () => {
-				this.setPref("mode." + id, !this.isModeOn(id));
-				this.updateControls(root);
-			});
-			button.dataset.mode = id;
-			button.title = mode.title + " (" + this.shortcutLabel(mode.key) + ")";
-			return button;
-		});
-		controls.append(evidence, attachButton, ...modeButtons, modelButton, effortButton, this.el(doc, "span", "zs-spacer"), send);
+		controls.append(evidence, attachButton, modelButton, effortButton, this.el(doc, "span", "abstractin-spacer"), send);
 
-		let context = this.el(doc, "div", "zs-context");
+		let context = this.el(doc, "div", "abstractin-context");
 		context.hidden = true;
-		let attachments = this.el(doc, "div", "zs-attachments");
+		let attachments = this.el(doc, "div", "abstractin-attachments");
 		attachments.hidden = true;
 		composer.append(context, attachments, input, controls);
-		let readingBar = this.el(doc, "div", "zs-reading-bar");
+		let readingBar = this.el(doc, "div", "abstractin-reading-bar");
 
-		let companion = this.el(doc, "div", "zs-discussion-companion");
-		companion.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "zs-mascot"));
-		let assistantRow = this.el(doc, "div", "zs-reading-assistant");
-		assistantRow.append(companion, this.el(doc, "span", "zs-reading-invitation", "ask me a question!"), quick);
+		let companion = this.el(doc, "div", "abstractin-discussion-companion");
+		companion.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"));
+		let assistantRow = this.el(doc, "div", "abstractin-reading-assistant");
+		assistantRow.append(companion, this.el(doc, "span", "abstractin-reading-invitation", "Ask me a question?"), quick);
 		readingBar.prepend(assistantRow);
-		let statusBar = this.el(doc, "div", "zs-reading-statusbar");
-		statusBar.append(this.el(doc, "span", "zs-reading-status", ""), this.el(doc, "span", "zs-reading-source-status", ""));
+		let statusBar = this.el(doc, "div", "abstractin-reading-statusbar");
+		statusBar.append(this.el(doc, "span", "abstractin-reading-status", ""), this.el(doc, "span", "abstractin-reading-source-status", ""));
 		root.append(header, logWrap, readingBar, composer, statusBar);
 		root.addEventListener("keydown", event => {
 			if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
@@ -1258,7 +1193,7 @@ Zusia = {
 		this.updateControls(root);
 		this.renderQuickPrompts(root, quick);
 		this.checkInstalledBackends(root);
-		if (!this.getPref("onboarded")) {
+		if (!this.getPref("onboarded") && root.closest(".abstractin-reader-panel")) {
 			this.showWizard(root);
 		}
 	},
@@ -1268,27 +1203,21 @@ Zusia = {
 		let info = this.BACKENDS[backend];
 		let model = this.getModel(backend);
 		let effort = this.getEffort(backend);
-		let modelButton = root.querySelector(".zs-model-btn");
+		let modelButton = root.querySelector(".abstractin-model-btn");
 		if (modelButton) {
 			let full = model ? info.label + " · " + this.modelLabel(backend, model) : info.label;
 			// Long model names drop the assistant prefix, as Beaver drops the vendor name.
 			modelButton.setLabel(full.length > 22 && model ? this.modelLabel(backend, model) : full);
 			modelButton.title = full + " — choose assistant and model";
 		}
-		let effortButton = root.querySelector(".zs-effort-btn");
+		let effortButton = root.querySelector(".abstractin-effort-btn");
 		if (effortButton) {
 			effortButton.hidden = this.getEfforts(backend).length < 2;
 			effortButton.setLabel(this.EFFORTS[effort].label);
 		}
-		let attachment = root.querySelector(".zs-attach");
+		let attachment = root.querySelector(".abstractin-attach");
 		if (attachment) attachment.hidden = !info.images;
-		let shown = this.getModeButtons();
-		for (let button of root.querySelectorAll(".zs-mode")) {
-			let id = button.dataset.mode;
-			button.hidden = !shown[id];
-			button.setAttribute("aria-pressed", String(this.isModeOn(id)));
-		}
-		let input = root.querySelector(".zs-input");
+		let input = root.querySelector(".abstractin-input");
 		if (input) {
 			input.placeholder = "Ask " + info.label + " about this paper…";
 		}
@@ -1297,7 +1226,7 @@ Zusia = {
 			input.placeholder = "Ask " + info.label + " about this " + (view.ctx.reading.type === "book" ? "book" : "paper") + "…";
 		}
 		if (view?.readingSetup) input.placeholder = "Reply to your reading companion…";
-		root.querySelector(".zs-menu")?.refresh?.();
+		root.querySelector(".abstractin-menu")?.refresh?.();
 		if (view) this.updateReadingControls(view);
 	},
 
@@ -1306,7 +1235,7 @@ Zusia = {
 		for (let key of Object.keys(this.BACKENDS)) {
 			root._installed[key] = await this.probeBinary(key);
 		}
-		root.querySelector(".zs-menu")?.refresh?.();
+		root.querySelector(".abstractin-menu")?.refresh?.();
 	},
 
 	async probeBinary(key) {
@@ -1328,7 +1257,7 @@ Zusia = {
 				let installed = root._installed ? root._installed[key] : undefined;
 				this.menuSection(doc, menu, backend.fullName);
 				if (installed === null) {
-					menu.appendChild(this.el(doc, "div", "zs-menu-note",
+					menu.appendChild(this.el(doc, "div", "abstractin-menu-note",
 						"Not installed. Install the " + backend.command + " CLI or set its path in Settings."));
 					continue;
 				}
@@ -1347,18 +1276,18 @@ Zusia = {
 					});
 				}
 				if (key === "codex") {
-					if (this._codexModelsPromise) menu.appendChild(this.el(doc, "div", "zs-menu-note", "Loading Codex models…"));
-					if (this._codexModelsError) menu.appendChild(this.el(doc, "div", "zs-menu-note", this._codexModelsError));
+					if (this._codexModelsPromise) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading Codex models…"));
+					if (this._codexModelsError) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", this._codexModelsError));
 					this.menuItem(doc, menu, { label: "Refresh Codex models", desc: "Read models from your local Codex",
 						onSelect: () => { let task = this.loadCodexModels(true); menu.refresh(); task.then(() => { if (menu.isConnected) { menu.refresh(); this.updateControls(root); } }); } });
 					this.menuItem(doc, menu, { label: "Choose another model…", desc: "Enter a model ID from Codex /model",
 						onSelect: () => { this.closeMenu(root); this.openCodexModelSetup(root); } });
 				}
 				if (key === "agy" && !Array.isArray(this._agyModels)) {
-					menu.appendChild(this.el(doc, "div", "zs-menu-note", "Loading models…"));
+					menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading models…"));
 				}
 				if (key === "agy" && this._agyModelsError) {
-					menu.appendChild(this.el(doc, "div", "zs-menu-note", "Sign-in not reachable from Zotero, so only the default model is listed. See Settings."));
+					menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Sign-in not reachable from Zotero, so only the default model is listed. See Settings."));
 				}
 			}
 		});
@@ -1372,13 +1301,13 @@ Zusia = {
 	},
 
 	codexModelInput(doc) {
-		let control = this.el(doc, "div", "zs-codex-model-control");
-		let input = this.el(doc, "input", "zs-codex-model-input");
+		let control = this.el(doc, "div", "abstractin-codex-model-control");
+		let input = this.el(doc, "input", "abstractin-codex-model-input");
 		input.type = "text";
 		input.value = this.getModel("codex");
 		input.placeholder = "Default, or a model ID such as gpt-6-sol";
 		let list = this.el(doc, "datalist");
-		list.id = "zs-models-" + Math.random().toString(36).slice(2);
+		list.id = "abstractin-models-" + Math.random().toString(36).slice(2);
 		input.setAttribute("list", list.id);
 		input.setAttribute("aria-label", "Codex model ID");
 		for (let model of this.getModels("codex").filter(m => m.id)) {
@@ -1403,20 +1332,20 @@ Zusia = {
 
 	openCodexModelSetup(root) {
 		let doc = root.ownerDocument;
-		root.querySelector(".zs-panel")?.remove();
-		let panel = this.el(doc, "div", "zs-panel");
+		root.querySelector(".abstractin-panel")?.remove();
+		let panel = this.el(doc, "div", "abstractin-panel");
 		panel.setAttribute("role", "dialog");
 		panel.setAttribute("aria-label", "Choose Codex model");
-		let head = this.el(doc, "div", "zs-panel-head");
-		head.append(this.el(doc, "div", "zs-panel-title", "Choose Codex model"),
-			this.iconButton(doc, "zs-small", "Close", "close", () => panel.remove()));
-		let body = this.el(doc, "div", "zs-panel-body zs-reading-form");
-		let label = this.el(doc, "label", "zs-reading-field");
+		let head = this.el(doc, "div", "abstractin-panel-head");
+		head.append(this.el(doc, "div", "abstractin-panel-title", "Choose Codex model"),
+			this.iconButton(doc, "abstractin-small", "Close", "close", () => panel.remove()));
+		let body = this.el(doc, "div", "abstractin-panel-body abstractin-reading-form");
+		let label = this.el(doc, "label", "abstractin-reading-field");
 		let control = this.codexModelInput(doc);
 		label.append(this.el(doc, "span", null, "Model ID"), control);
-		let status = this.el(doc, "div", "zs-notice");
+		let status = this.el(doc, "div", "abstractin-notice");
 		status.setAttribute("role", "status");
-		let save = this.ghostButton(doc, "zs-model-save", "check", "Use model", () => {
+		let save = this.ghostButton(doc, "abstractin-model-save", "check", "Use model", () => {
 			try {
 				this.saveCodexModel(control.querySelector("input").value);
 				this.updateControls(root);
@@ -1424,8 +1353,8 @@ Zusia = {
 			}
 			catch (e) { status.textContent = e.message || String(e); }
 		});
-		save.classList.remove("zs-ghost");
-		save.classList.add("zs-reading-primary");
+		save.classList.remove("abstractin-ghost");
+		save.classList.add("abstractin-reading-primary");
 		body.append(label, this.el(doc, "p", null,
 			"Use the exact model ID available in your local Codex /model menu. Leave empty to use config.toml defaults. Uses your existing Codex sign-in."), save, status);
 		panel.append(head, body);
@@ -1436,7 +1365,7 @@ Zusia = {
 	openReadingEvidenceMenu(root, anchor) {
 		let doc = root.ownerDocument;
 		this.openMenu(root, anchor, menu => {
-			menu.classList.add("zs-reading-mode-menu");
+			menu.classList.add("abstractin-reading-mode-menu");
 			this.menuSection(doc, menu, "Reading discussion mode");
 			for (let [value, label, desc] of [
 				["knowledge", "Knowledge discussion", "Use existing context and knowledge without PDF searches."],
@@ -1451,7 +1380,7 @@ Zusia = {
 						this.closeMenu(root);
 						let roots = new Set([root]);
 						for (let win of new Set([...(Zotero.getMainWindows?.() || [Zotero.getMainWindow()]), ...this._readerPanelWindows.keys()])) {
-							for (let node of win.document.querySelectorAll(".zs-root")) roots.add(node);
+							for (let node of win.document.querySelectorAll(".abstractin-root")) roots.add(node);
 						}
 						for (let node of roots) {
 							let view = this._views.get(node); if (view) this.updateReadingControls(view);
@@ -1486,22 +1415,32 @@ Zusia = {
 
 	renderQuickPrompts(root, quick) {
 		let doc = root.ownerDocument;
-		quick.textContent = "";
-		for (let { label, prompt } of this.getPrompts()) {
-			if (!prompt.trim()) {
-				continue;
-			}
-			let pill = this.el(doc, "button", "zs-pill", label.trim() || prompt);
-			pill.type = "button";
-			pill.title = prompt;
-			pill.addEventListener("click", () => this._views.get(root)?.send(prompt));
-			quick.appendChild(pill);
-		}
-		quick.hidden = !quick.childElementCount;
 		let view = this._views.get(root);
-		if (view) {
-			this.setBusy(view, this._pending.has(view.ctx.dir));
+		let type = view?.ctx.reading?.type === "book" ? "book" : "paper";
+		quick.dataset.materialType = type;
+		quick.textContent = "";
+		let prompts = this.getPrompts(type).filter(p => p.prompt.trim());
+		if (prompts.length) {
+			let button = this.ghostButton(doc, "abstractin-prompt-menu", null, "Quick questions", () => {
+				this.openMenu(root, button, menu => {
+					let currentView = this._views.get(root);
+					this.menuSection(doc, menu, type === "book" ? "Book questions" : "Paper questions");
+					for (let { label, prompt } of this.getPrompts(type).filter(p => p.prompt.trim())) {
+						this.menuItem(doc, menu, {
+							label: label.trim() || prompt,
+							desc: prompt,
+							disabled: !currentView || this._pending.has(currentView.ctx.dir),
+							onSelect: () => { this.closeMenu(root); let current = this._views.get(root); if (current) this.editPrompt(current, prompt); },
+						});
+					}
+				});
+			}, { chevron: true });
+			button.title = type === "book" ? "Choose a book question" : "Choose a paper question";
+			button.setAttribute("aria-label", button.title);
+			quick.appendChild(button);
 		}
+		quick.hidden = !prompts.length;
+		if (view) this.setBusy(view, this._pending.has(view.ctx.dir));
 	},
 
 	scrollToEnd(logEl) {
@@ -1509,8 +1448,8 @@ Zusia = {
 	},
 
 	updateJump(root) {
-		let log = root.querySelector(".zs-log");
-		let jump = root.querySelector(".zs-jump");
+		let log = root.querySelector(".abstractin-log");
+		let jump = root.querySelector(".abstractin-jump");
 		if (log && jump) {
 			jump.hidden = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
 		}
@@ -1519,14 +1458,14 @@ Zusia = {
 	// Renders Markdown/LaTeX into `node`, falling back to plain text if the
 	// renderer throws, so one odd answer cannot blank the whole conversation.
 	renderRich(doc, node, text) {
-		node.classList.add("zs-rich");
+		node.classList.add("abstractin-rich");
 		try {
 			this.renderMarkdown(doc, node, text);
 		}
 		catch (e) {
 			this.logError("renderMarkdown", e);
 			node.textContent = text;
-			node.classList.add("zs-plain");
+			node.classList.add("abstractin-plain");
 		}
 	},
 
@@ -1539,7 +1478,7 @@ Zusia = {
 			this.renderAttachments(view);
 		}
 		if (!this._pending.has(view.ctx.dir)) {
-			view.root.querySelector(".zs-send").disabled = !this.canSend(view);
+			view.root.querySelector(".abstractin-send").disabled = !this.canSend(view);
 		}
 		view.input.focus();
 		view.input.setSelectionRange(text.length, text.length);
@@ -1548,11 +1487,11 @@ Zusia = {
 	appendUser(view, text, images = [], modes = []) {
 		view.root.dataset.chatting = "true";
 		this.updateReadingControls(view);
-		let card = this.el(view.doc, "div", "zs-msg zs-user");
+		let card = this.el(view.doc, "div", "abstractin-msg abstractin-user");
 		card.dataset.text = text;
 		card.images = images;
 		if (images.length) {
-			let strip = this.el(view.doc, "div", "zs-user-images");
+			let strip = this.el(view.doc, "div", "abstractin-user-images");
 			for (let path of images) {
 				strip.appendChild(this.imageThumb(view.doc, path, {
 					onOpen: () => Zotero.launchFile(path),
@@ -1561,7 +1500,7 @@ Zusia = {
 			card.appendChild(strip);
 		}
 		if (text) {
-			let body = this.el(view.doc, "div", "zs-user-text");
+			let body = this.el(view.doc, "div", "abstractin-user-text");
 			try {
 				this.renderInline(view.doc, body, text);
 			}
@@ -1571,29 +1510,19 @@ Zusia = {
 			}
 			card.appendChild(body);
 		}
-		let tags = modes.filter(id => this.MODES[id]);
-		if (tags.length) {
-			let row = this.el(view.doc, "div", "zs-user-modes");
-			for (let id of tags) {
-				let tag = this.el(view.doc, "span", "zs-user-mode");
-				tag.append(this.svgIcon(view.doc, this.MODES[id].icon), this.el(view.doc, "span", null, this.MODES[id].label));
-				row.appendChild(tag);
-			}
-			card.appendChild(row);
-		}
-		let edit = this.iconButton(view.doc, "zs-small zs-user-edit", "Edit and resend", "edit", (event) => {
+		let edit = this.iconButton(view.doc, "abstractin-small abstractin-user-edit", "Edit and resend", "edit", (event) => {
 			event.stopPropagation();
 			this.editPrompt(view, text, images);
 		});
 		card.appendChild(edit);
 		view.logEl.appendChild(card);
 		if (card.scrollHeight > 150) {
-			card.classList.add("zs-clamped");
+			card.classList.add("abstractin-clamped");
 			card.title = "Click to show the whole message";
 			card.addEventListener("click", () => {
 				if (!view.doc.defaultView.getSelection().toString()) {
-					card.classList.toggle("zs-clamped");
-					card.title = card.classList.contains("zs-clamped") ? "Click to show the whole message" : "";
+					card.classList.toggle("abstractin-clamped");
+					card.title = card.classList.contains("abstractin-clamped") ? "Click to show the whole message" : "";
 				}
 			});
 		}
@@ -1603,20 +1532,20 @@ Zusia = {
 
 	appendError(view, text, { title, retry } = {}) {
 		let { doc } = view;
-		let card = this.el(doc, "div", "zs-msg zs-error");
+		let card = this.el(doc, "div", "abstractin-msg abstractin-error");
 		card.setAttribute("role", "alert");
-		let head = this.el(doc, "button", "zs-error-head");
+		let head = this.el(doc, "button", "abstractin-error-head");
 		head.type = "button";
 		head.setAttribute("aria-expanded", "false");
-		let icon = this.el(doc, "span", "zs-error-icon");
+		let icon = this.el(doc, "span", "abstractin-error-icon");
 		icon.appendChild(this.svgIcon(doc, "alert"));
-		head.append(icon, this.el(doc, "span", "zs-error-title", title || "Something went wrong"),
-			this.svgIcon(doc, "chevronRight", "zs-error-chevron"));
-		let details = this.el(doc, "div", "zs-error-details");
-		details.appendChild(this.el(doc, "div", "zs-error-text", text));
-		let actions = this.el(doc, "div", "zs-error-actions");
+		head.append(icon, this.el(doc, "span", "abstractin-error-title", title || "Something went wrong"),
+			this.svgIcon(doc, "chevronRight", "abstractin-error-chevron"));
+		let details = this.el(doc, "div", "abstractin-error-details");
+		details.appendChild(this.el(doc, "div", "abstractin-error-text", text));
+		let actions = this.el(doc, "div", "abstractin-error-actions");
 		if (retry) {
-			actions.appendChild(this.ghostButton(doc, "zs-error-retry", "retry", "Try again", retry));
+			actions.appendChild(this.ghostButton(doc, "abstractin-error-retry", "retry", "Try again", retry));
 		}
 		let copy = this.ghostButton(doc, "", "copy", "Copy details", () => {
 			Zotero.Utilities.Internal.copyTextToClipboard(text);
@@ -1630,7 +1559,7 @@ Zusia = {
 			open = value;
 			details.hidden = !open;
 			head.setAttribute("aria-expanded", String(open));
-			card.classList.toggle("zs-open", open);
+			card.classList.toggle("abstractin-open", open);
 		};
 		head.addEventListener("click", () => setOpen(!open));
 		setOpen(open);
@@ -1712,7 +1641,7 @@ Zusia = {
 		this._staged.set(view.ctx.dir, staged);
 		this.renderAttachments(view);
 		if (!this._pending.has(view.ctx.dir)) {
-			view.root.querySelector(".zs-send").disabled = !this.canSend(view);
+			view.root.querySelector(".abstractin-send").disabled = !this.canSend(view);
 		}
 	},
 
@@ -1722,7 +1651,7 @@ Zusia = {
 		this._staged.set(view.ctx.dir, staged.filter(a => a !== entry));
 		this.renderAttachments(view);
 		if (!this._pending.has(view.ctx.dir)) {
-			view.root.querySelector(".zs-send").disabled = !this.canSend(view);
+			view.root.querySelector(".abstractin-send").disabled = !this.canSend(view);
 		}
 		// Only files never sent are deleted; sent ones belong to the conversation.
 		if (entry && !entry.sent) {
@@ -1731,7 +1660,7 @@ Zusia = {
 	},
 
 	renderAttachments(view) {
-		let tray = view.root.querySelector(".zs-attachments");
+		let tray = view.root.querySelector(".abstractin-attachments");
 		if (!tray) {
 			return;
 		}
@@ -1744,14 +1673,14 @@ Zusia = {
 	},
 
 	imageThumb(doc, path, { onOpen, onRemove } = {}) {
-		let thumb = this.el(doc, "span", "zs-thumb");
+		let thumb = this.el(doc, "span", "abstractin-thumb");
 		let img = doc.createElementNS("http://www.w3.org/1999/xhtml", "img");
 		img.alt = "Attached image";
 		img.src = Zotero.File.pathToFileURI(path);
-		img.addEventListener("error", () => thumb.classList.add("zs-thumb-missing"));
+		img.addEventListener("error", () => thumb.classList.add("abstractin-thumb-missing"));
 		thumb.appendChild(img);
 		if (onOpen) {
-			thumb.classList.add("zs-thumb-open");
+			thumb.classList.add("abstractin-thumb-open");
 			thumb.title = "Open image";
 			thumb.addEventListener("click", (event) => {
 				event.stopPropagation();
@@ -1759,7 +1688,7 @@ Zusia = {
 			});
 		}
 		if (onRemove) {
-			let remove = this.iconButton(doc, "zs-small zs-thumb-remove", "Remove image", "remove", (event) => {
+			let remove = this.iconButton(doc, "abstractin-small abstractin-thumb-remove", "Remove image", "remove", (event) => {
 				event.stopPropagation();
 				onRemove();
 			});
@@ -1806,7 +1735,7 @@ Zusia = {
 					},
 				});
 			}
-			menu.appendChild(this.el(doc, "div", "zs-menu-note", "You can also paste or drop an image into the message box."));
+			menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "You can also paste or drop an image into the message box."));
 		});
 	},
 
@@ -1857,7 +1786,7 @@ Zusia = {
 	},
 
 	renderPaperChip(root, info) {
-		let holder = root.querySelector(".zs-context");
+		let holder = root.querySelector(".abstractin-context");
 		if (!holder) {
 			return;
 		}
@@ -1867,11 +1796,11 @@ Zusia = {
 			return;
 		}
 		let doc = root.ownerDocument;
-		let chip = this.el(doc, "span", "zs-context-chip");
+		let chip = this.el(doc, "span", "abstractin-context-chip");
 		chip.title = (info.title ? info.title + "\n" : "") + (info.reading ?
 			"Answers use the selected passage, attached page images and saved Zotero reading notes" :
 			"Answers use the title, authors, abstract and your annotations, not the PDF text");
-		chip.append(this.svgIcon(doc, "paper", "zs-context-icon"), this.el(doc, "span", "zs-context-label", info.label));
+		chip.append(this.svgIcon(doc, "paper", "abstractin-context-icon"), this.el(doc, "span", "abstractin-context-label", info.label));
 		holder.appendChild(chip);
 	},
 
@@ -1901,10 +1830,10 @@ Zusia = {
 	},
 
 	renderStepRow(doc, step) {
-		let row = this.el(doc, "div", "zs-step");
+		let row = this.el(doc, "div", "abstractin-step");
 		let icon = { read: "paper", search: "search", thought: "thought" }[step.kind] || "terminal";
-		row.appendChild(this.svgIcon(doc, icon, "zs-step-icon"));
-		let label = this.el(doc, "span", "zs-step-label", step.label);
+		row.appendChild(this.svgIcon(doc, icon, "abstractin-step-icon"));
+		let label = this.el(doc, "span", "abstractin-step-label", step.label);
 		label.title = step.label;
 		row.appendChild(label);
 		return row;
@@ -1916,12 +1845,12 @@ Zusia = {
 		if (!summary) {
 			return null;
 		}
-		let box = this.el(doc, "div", "zs-activity");
-		let head = this.el(doc, "button", "zs-activity-head");
+		let box = this.el(doc, "div", "abstractin-activity");
+		let head = this.el(doc, "button", "abstractin-activity-head");
 		head.type = "button";
 		head.setAttribute("aria-expanded", "false");
-		head.append(this.svgIcon(doc, "chevronRight", "zs-activity-chevron"), this.el(doc, "span", "zs-activity-summary", summary));
-		let list = this.el(doc, "div", "zs-activity-list");
+		head.append(this.svgIcon(doc, "chevronRight", "abstractin-activity-chevron"), this.el(doc, "span", "abstractin-activity-summary", summary));
+		let list = this.el(doc, "div", "abstractin-activity-list");
 		list.hidden = true;
 		for (let step of activity.steps || []) {
 			list.appendChild(this.renderStepRow(doc, step));
@@ -1932,29 +1861,29 @@ Zusia = {
 		head.addEventListener("click", () => {
 			list.hidden = !list.hidden;
 			head.setAttribute("aria-expanded", String(!list.hidden));
-			box.classList.toggle("zs-open", !list.hidden);
+			box.classList.toggle("abstractin-open", !list.hidden);
 		});
 		box.append(head, list);
 		return box;
 	},
 
 	appendAssistant(view, msg, options = {}) {
-		let turn = this.el(view.doc, "div", "zs-turn");
+		let turn = this.el(view.doc, "div", "abstractin-turn");
 		let activity = msg.activity ? this.renderActivity(view.doc, msg.activity) : null;
 		if (activity) {
 			turn.appendChild(activity);
 		}
-		let bubble = this.el(view.doc, "div", "zs-msg zs-assistant");
+		let bubble = this.el(view.doc, "div", "abstractin-msg abstractin-assistant");
 		this.renderRich(view.doc, bubble, msg.text);
 		if (msg.stopped) {
-			bubble.appendChild(this.el(view.doc, "div", "zs-stopped", "Stopped"));
+			bubble.appendChild(this.el(view.doc, "div", "abstractin-stopped", "Stopped"));
 		}
 		turn.appendChild(bubble);
 		if (options.footer) {
 			turn.appendChild(this.renderFooter(view, msg, options));
 		}
 		if (msg.recordKey || msg.recordWarning) {
-			let saved = this.el(view.doc, "div", "zs-reading-record", msg.recordKey ? "Note saved · " + msg.recordKey : "Note not saved");
+			let saved = this.el(view.doc, "div", "abstractin-reading-record", msg.recordKey ? "Note saved · " + msg.recordKey : "Note not saved");
 			saved.title = msg.recordKey ? "Zotero reading note: " + msg.recordKey : msg.recordWarning;
 			turn.appendChild(saved);
 		}
@@ -1969,13 +1898,13 @@ Zusia = {
 		if (!selection || selection.isCollapsed || !selection.rangeCount) return;
 		let node = selection.anchorNode;
 		let element = node?.nodeType === 1 ? node : node?.parentElement;
-		if (!element?.closest(".zs-rich") || !root.contains(selection.focusNode)) return;
+		if (!element?.closest(".abstractin-rich") || !root.contains(selection.focusNode)) return;
 		let fragment = selection.getRangeAt(0).cloneContents();
 		// Native MathML clipboard text can include both glyphs and its TeX
 		// annotation. Replace each formula with a single reusable TeX source.
-		for (let formula of fragment.querySelectorAll(".zs-math, .zs-math-block")) {
+		for (let formula of fragment.querySelectorAll(".abstractin-math, .abstractin-math-block")) {
 			let tex = formula.dataset.tex || formula.querySelector('annotation[encoding="application/x-tex"]')?.textContent;
-			if (tex) formula.replaceWith(root.ownerDocument.createTextNode(formula.classList.contains("zs-math-block") ? "\n$$" + tex + "$$\n" : "$" + tex + "$"));
+			if (tex) formula.replaceWith(root.ownerDocument.createTextNode(formula.classList.contains("abstractin-math-block") ? "\n$$" + tex + "$$\n" : "$" + tex + "$"));
 		}
 		for (let math of fragment.querySelectorAll("math")) {
 			let tex = math.querySelector('annotation[encoding="application/x-tex"]')?.textContent;
@@ -1994,26 +1923,17 @@ Zusia = {
 
 	renderFooter(view, msg, { byline, question, isLast, index }) {
 		let { doc } = view;
-		let footer = this.el(doc, "div", "zs-footer");
+		let footer = this.el(doc, "div", "abstractin-footer");
 
-		let explain = this.ghostButton(doc, "zs-explain", "sparkle", "Explain better", () => {
-			let prompt = this.getExplainPrompt();
-			if (!isLast) {
-				let excerpt = msg.text.replace(/\s+/g, " ").slice(0, 300);
-				prompt = "About your earlier answer that begins \"" + excerpt + "…\": " + prompt;
-			}
-			view.send(prompt);
-		});
-		explain.title = "Ask for a clearer, step-by-step explanation";
-		footer.append(explain, this.el(doc, "span", "zs-spacer"));
+		footer.appendChild(this.el(doc, "span", "abstractin-spacer"));
 
 		if (byline) {
-			footer.appendChild(this.el(doc, "span", "zs-by", byline));
+			footer.appendChild(this.el(doc, "span", "abstractin-by", byline));
 		}
 		if (isLast && question) {
-			footer.appendChild(this.iconButton(doc, "zs-small zs-retry", "Retry", "retry", () => this.retry(view, index)));
+			footer.appendChild(this.iconButton(doc, "abstractin-small abstractin-retry", "Retry", "retry", () => this.retry(view, index)));
 		}
-		let copy = this.iconButton(doc, "zs-small zs-copy", "Copy answer (Markdown + LaTeX)", "copy", () => {
+		let copy = this.iconButton(doc, "abstractin-small abstractin-copy", "Copy answer (Markdown + LaTeX)", "copy", () => {
 			Zotero.Utilities.Internal.copyTextToClipboard(msg.text);
 			copy.title = "Copied";
 			doc.defaultView.setTimeout(() => {
@@ -2022,7 +1942,7 @@ Zusia = {
 		});
 		footer.appendChild(copy);
 
-		let more = this.iconButton(doc, "zs-small zs-more", "More actions", "more", () => {
+		let more = this.iconButton(doc, "abstractin-small abstractin-more", "More actions", "more", () => {
 			let root = view.root;
 			this.openMenu(root, more, (menu) => {
 				this.menuItem(doc, menu, {
@@ -2058,20 +1978,20 @@ Zusia = {
 
 	renderEmptyState(view) {
 		let { doc } = view;
-		let empty = this.el(doc, "div", "zs-empty");
+		let empty = this.el(doc, "div", "abstractin-empty");
 		view.root.dataset.readingIntro = String(!view.ctx?.reading);
 		if (!view.ctx?.reading) {
-			empty.classList.add("zs-reading-welcome");
-			empty.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "zs-mascot"));
-			empty.appendChild(this.el(doc, "div", "zs-empty-title", "let's start reading"));
-			empty.appendChild(this.readingButton(doc, "zs-start-reading", () => this.openReadingSetup(view.root).catch(e => this.appendError(view, e.message || String(e)))));
+			empty.classList.add("abstractin-reading-welcome");
+			empty.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"));
+			empty.appendChild(this.el(doc, "div", "abstractin-empty-title", "let's start reading"));
+			empty.appendChild(this.readingButton(doc, "abstractin-start-reading", () => this.openReadingSetup(view.root).catch(e => this.appendError(view, e.message || String(e)))));
 		}
-		if (view.ctx?.reading) empty.appendChild(this.el(doc, "div", "zs-empty-title", "Ask about this passage"));
+		if (view.ctx?.reading) empty.appendChild(this.el(doc, "div", "abstractin-empty-title", "Ask about this passage"));
 		let title = view.ctx && view.ctx.paperItem ? this.safeField(view.ctx.paperItem, "title") : "";
 		if (title) {
-			empty.appendChild(this.el(doc, "div", "zs-empty-paper", title));
+			empty.appendChild(this.el(doc, "div", "abstractin-empty-paper", title));
 		}
-		if (view.ctx?.reading) empty.appendChild(this.el(doc, "div", "zs-empty-sub",
+		if (view.ctx?.reading) empty.appendChild(this.el(doc, "div", "abstractin-empty-sub",
 			"Select text in the PDF and ask a question. Completed discussions are saved as concise Zotero notes."));
 		view.logEl.appendChild(empty);
 	},
@@ -2096,7 +2016,7 @@ Zusia = {
 		view.root.dataset.readingIntro = "false";
 		view.root.dataset.chatting = String(history.length > 0);
 		this.updateReadingControls(view);
-		let quick = view.root.querySelector(".zs-quick");
+		let quick = view.root.querySelector(".abstractin-quick");
 		if (quick) {
 			this.markOverflow(quick);
 		}
@@ -2120,7 +2040,7 @@ Zusia = {
 				question: index > 0 && history[index - 1].role === "user" ? history[index - 1].text : "",
 				byline: labelled ? this.describeRun(msg) : null,
 			});
-			turn.classList.toggle("zs-last", index === lastAssistant);
+			turn.classList.toggle("abstractin-last", index === lastAssistant);
 		});
 		this.linkTheorems(view.logEl);
 		this.fitWideContent(view.logEl);
@@ -2130,7 +2050,7 @@ Zusia = {
 	// anything still too wide, formulas or tables, scrolls behind a soft edge fade
 	// instead of showing a permanent scrollbar.
 	fitWideContent(container) {
-		for (let scroller of container.querySelectorAll(".zs-math-scroll")) {
+		for (let scroller of container.querySelectorAll(".abstractin-math-scroll")) {
 			scroller.style.fontSize = "";
 			// Glyph spacing does not scale exactly, so re-measure a few times.
 			let scale = 1;
@@ -2145,7 +2065,7 @@ Zusia = {
 			}
 			this.markOverflow(scroller);
 		}
-		for (let wrap of container.querySelectorAll(".zs-table-wrap")) {
+		for (let wrap of container.querySelectorAll(".abstractin-table-wrap")) {
 			this.markOverflow(wrap);
 		}
 	},
@@ -2153,9 +2073,9 @@ Zusia = {
 	markOverflow(scroller) {
 		let update = () => {
 			let overflow = scroller.scrollWidth > scroller.clientWidth + 1;
-			scroller.classList.toggle("zs-overflow", overflow);
-			scroller.classList.toggle("zs-at-start", scroller.scrollLeft <= 1);
-			scroller.classList.toggle("zs-at-end", scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 1);
+			scroller.classList.toggle("abstractin-overflow", overflow);
+			scroller.classList.toggle("abstractin-at-start", scroller.scrollLeft <= 1);
+			scroller.classList.toggle("abstractin-at-end", scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 1);
 		};
 		if (!scroller._csOverflowWatched) {
 			scroller._csOverflowWatched = true;
@@ -2166,16 +2086,16 @@ Zusia = {
 
 	setBusy(view, busy) {
 		let { root } = view;
-		let send = root.querySelector(".zs-send");
+		let send = root.querySelector(".abstractin-send");
 		if (send) {
-			send.classList.toggle("zs-stop", busy);
+			send.classList.toggle("abstractin-stop", busy);
 			send.replaceChildren(this.svgIcon(view.doc, busy ? "stop" : "send"));
 			send.title = busy ? "Stop" : "Send (" + this.sendKeyLabel() + ")";
 			send.setAttribute("aria-label", send.title);
-			send.disabled = !busy && !this.canSend(view);
+			send.disabled = !busy && (!!root.querySelector(".abstractin-wizard") || !this.canSend(view));
 		}
-		view.input.disabled = false;
-		root.querySelectorAll(".zs-pill, .zs-explain, .zs-retry, .zs-new-chat, .zs-start-reading").forEach((button) => {
+		view.input.disabled = !!root.querySelector(".abstractin-wizard");
+		root.querySelectorAll(".abstractin-prompt-menu, .abstractin-retry, .abstractin-new-chat, .abstractin-start-reading").forEach((button) => {
 			button.disabled = busy;
 		});
 	},
@@ -2200,16 +2120,16 @@ Zusia = {
 	},
 
 	async renderContent(doc, body, item, boundReader = null) {
-		let root = body.querySelector(".zs-root");
-		let logEl = body.querySelector(".zs-log");
-		let input = body.querySelector(".zs-input");
+		let root = body.querySelector(".abstractin-root");
+		let logEl = body.querySelector(".abstractin-log");
+		let input = body.querySelector(".abstractin-input");
 		if (!logEl) {
 			return;
 		}
 
 		let notice = (text) => {
 			logEl.textContent = "";
-			logEl.appendChild(this.el(doc, "div", "zs-notice", text));
+			logEl.appendChild(this.el(doc, "div", "abstractin-notice", text));
 		};
 
 		if (!item) {
@@ -2255,25 +2175,25 @@ Zusia = {
 		input.addEventListener("input", () => {
 			this.autoGrow(input);
 			if (!this._pending.has(view.ctx.dir)) {
-				root.querySelector(".zs-send").disabled = !this.canSend(view);
+				root.querySelector(".abstractin-send").disabled = !this.canSend(view);
 			}
 		});
 		// A pasted or dropped image is added to the message.
 		input.addEventListener("paste", event => this.onPasteOrDrop(view, event, event.clipboardData));
-		let composer = root.querySelector(".zs-composer");
+		let composer = root.querySelector(".abstractin-composer");
 		composer.addEventListener("dragover", (event) => {
 			if ([...(event.dataTransfer?.types || [])].includes("Files")) {
 				event.preventDefault();
-				composer.classList.add("zs-drop");
+				composer.classList.add("abstractin-drop");
 			}
 		});
 		composer.addEventListener("dragleave", (event) => {
 			if (!composer.contains(event.relatedTarget)) {
-				composer.classList.remove("zs-drop");
+				composer.classList.remove("abstractin-drop");
 			}
 		});
 		composer.addEventListener("drop", (event) => {
-			composer.classList.remove("zs-drop");
+			composer.classList.remove("abstractin-drop");
 			this.onPasteOrDrop(view, event, event.dataTransfer);
 		});
 		input.addEventListener("keydown", (event) => {
@@ -2289,7 +2209,7 @@ Zusia = {
 			}
 			else if (event.key === "ArrowUp" && !input.value) {
 				// Recall the last question, as chat apps do.
-				let last = [...logEl.querySelectorAll(".zs-user")].pop();
+				let last = [...logEl.querySelectorAll(".abstractin-user")].pop();
 				if (last && (last.dataset.text || last.images.length)) {
 					event.preventDefault();
 					this.editPrompt(view, last.dataset.text, last.images);
@@ -2308,7 +2228,9 @@ Zusia = {
 		}
 	},
 
-	startRequest(view, text, images = [], modes = this.activeModes(), { selection = null, readingAction = null } = {}) {
+	startRequest(view, text, images = [], modes = [], { selection = null, readingAction = null, currentPage = undefined } = {}) {
+		// Retired mode flags from old chats cannot change a new answer.
+		modes = [];
 		let question = (text || "").trim();
 		if ((!question && !images.length) || this._pending.has(view.ctx.dir) || this._chatTransitions.has(view.ctx.dir)) {
 			return;
@@ -2336,7 +2258,7 @@ Zusia = {
 			selection,
 			readingAction,
 			evidenceMode: this.getReadingEvidenceMode(),
-			currentPage: this.currentReadingLocation(view.ctx),
+			currentPage: currentPage !== undefined ? currentPage : this.currentReadingLocation(view.ctx),
 			backend,
 			model: this.getModel(backend),
 			effort: this.getEffort(backend),
@@ -2452,7 +2374,7 @@ Zusia = {
 		let dir = view.ctx.dir;
 		this.registerChatContext(view.ctx);
 		this._chatTransitions.add(dir);
-		root.querySelectorAll(".zs-new-chat, .zs-history, .zs-send, .zs-start-reading").forEach(button => { button.disabled = true; });
+		root.querySelectorAll(".abstractin-new-chat, .abstractin-history, .abstractin-send, .abstractin-start-reading").forEach(button => { button.disabled = true; });
 		try {
 			let restored = archive ? JSON.parse(await Zotero.File.getContentsAsync(archive.path)) : [];
 			if (!Array.isArray(restored)) throw new Error("This archive does not contain a chat history.");
@@ -2466,7 +2388,7 @@ Zusia = {
 			this._drafts.delete(dir); this._staged.delete(dir);
 			let roots = new Set([root]);
 			for (let win of new Set([...(Zotero.getMainWindows?.() || [Zotero.getMainWindow()]), ...this._readerPanelWindows.keys()])) {
-				for (let node of win.document.querySelectorAll(".zs-root")) roots.add(node);
+				for (let node of win.document.querySelectorAll(".abstractin-root")) roots.add(node);
 			}
 			for (let node of roots) {
 				let other = this._views.get(node);
@@ -2478,7 +2400,7 @@ Zusia = {
 		}
 		finally {
 			this._chatTransitions.delete(dir);
-			root.querySelector(".zs-history").disabled = false;
+			root.querySelector(".abstractin-history").disabled = false;
 			this.setBusy(view, false);
 		}
 	},
@@ -2521,7 +2443,7 @@ Zusia = {
 		}
 		let label = this.BACKENDS[this.getBackend()].label;
 		let container = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-		container.className = "zs-selection-actions";
+		container.className = "abstractin-selection-actions";
 		container.style.cssText = "display: flex; flex-direction: column; gap: 2px;";
 		let button = (text, send) => {
 			let el = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
@@ -2581,7 +2503,7 @@ Zusia = {
 		catch (e) {
 			this.log("askAboutSelection: could not reveal the sidebar: " + e);
 		}
-		for (let root of win.document.querySelectorAll(".zs-root")) {
+		for (let root of win.document.querySelectorAll(".abstractin-root")) {
 			let view = this._views.get(root);
 			if (view && view.ctx.dir === dir) {
 				this.applyDraft(view);
@@ -2605,7 +2527,7 @@ Zusia = {
 		view.input.value = draft.text + (existing ? existing : "");
 		this.autoGrow(view.input);
 		if (!this._pending.has(view.ctx.dir)) {
-			view.root.querySelector(".zs-send").disabled = !this.canSend(view);
+			view.root.querySelector(".abstractin-send").disabled = !this.canSend(view);
 		}
 		view.input.focus();
 		view.input.setSelectionRange(view.input.value.length, view.input.value.length);
@@ -2680,15 +2602,15 @@ Zusia = {
 		if (this._noteMode) {
 			return doc.createTextNode(text || label);
 		}
-		let ref = this.el(doc, "span", "zs-ref");
+		let ref = this.el(doc, "span", "abstractin-ref");
 		ref.dataset.ref = label;
 		if (text) {
 			ref.dataset.text = text;
 		}
 		ref.setAttribute("role", "link");
 		ref.tabIndex = 0;
-		ref.appendChild(this.svgIcon(doc, "ref", "zs-ref-icon"));
-		ref.appendChild(this.el(doc, "span", "zs-ref-text", text || label));
+		ref.appendChild(this.svgIcon(doc, "ref", "abstractin-ref-icon"));
+		ref.appendChild(this.el(doc, "span", "abstractin-ref-text", text || label));
 		return ref;
 	},
 
@@ -2697,8 +2619,8 @@ Zusia = {
 	linkTheorems(logEl) {
 		let targets = new Map();
 		let number = 0;
-		for (let box of logEl.querySelectorAll(".zs-env[data-env]")) {
-			let num = box.querySelector(":scope > .zs-env-head .zs-env-num");
+		for (let box of logEl.querySelectorAll(".abstractin-env[data-env]")) {
+			let num = box.querySelector(":scope > .abstractin-env-head .abstractin-env-num");
 			if (!num) {
 				continue;
 			}
@@ -2709,16 +2631,16 @@ Zusia = {
 				targets.set(box.dataset.label, box);
 			}
 		}
-		for (let ref of logEl.querySelectorAll(".zs-ref")) {
+		for (let ref of logEl.querySelectorAll(".abstractin-ref")) {
 			let box = targets.get(ref.dataset.ref);
-			let text = ref.querySelector(".zs-ref-text");
-			ref.classList.toggle("zs-ref-ok", !!box);
-			ref.classList.toggle("zs-ref-missing", !box);
+			let text = ref.querySelector(".abstractin-ref-text");
+			ref.classList.toggle("abstractin-ref-ok", !!box);
+			ref.classList.toggle("abstractin-ref-missing", !box);
 			if (box) {
 				let name = this.BOX_ENVS[box.dataset.env] + " " + box.dataset.number;
-				let title = box.querySelector(":scope > .zs-env-head .zs-env-title");
+				let title = box.querySelector(":scope > .abstractin-env-head .abstractin-env-title");
 				text.textContent = ref.dataset.text || name;
-				let statement = (box.querySelector(".zs-env-body")?.textContent || "").replace(/\s+/g, " ").trim();
+				let statement = (box.querySelector(".abstractin-env-body")?.textContent || "").replace(/\s+/g, " ").trim();
 				ref.title = name + (title ? title.textContent : "") + "\n" +
 					(statement.length > 220 ? statement.slice(0, 220) + "…" : statement) + "\n\nClick to go there";
 			}
@@ -2731,7 +2653,7 @@ Zusia = {
 
 	followRef(root, ref) {
 		let view = this._views.get(root);
-		let box = ref.closest(".zs-log") && [...ref.closest(".zs-log").querySelectorAll(".zs-env[data-label]")]
+		let box = ref.closest(".abstractin-log") && [...ref.closest(".abstractin-log").querySelectorAll(".abstractin-env[data-label]")]
 			.find(b => b.dataset.label === ref.dataset.ref);
 		if (!view || !box) {
 			return;
@@ -2739,10 +2661,10 @@ Zusia = {
 		view.backStack = view.backStack || [];
 		view.backStack.push({ top: view.logEl.scrollTop, ref });
 		this.scrollLogTo(view, box);
-		box.classList.remove("zs-flash");
+		box.classList.remove("abstractin-flash");
 		void box.offsetWidth;
-		box.classList.add("zs-flash");
-		view.doc.defaultView.setTimeout(() => box.classList.remove("zs-flash"), 1800);
+		box.classList.add("abstractin-flash");
+		view.doc.defaultView.setTimeout(() => box.classList.remove("abstractin-flash"), 1800);
 		this.updateBack(view);
 	},
 
@@ -2754,10 +2676,10 @@ Zusia = {
 		}
 		view.logEl.scrollTo({ top: entry.top, behavior: "smooth" });
 		if (entry.ref && entry.ref.isConnected) {
-			entry.ref.classList.remove("zs-flash");
+			entry.ref.classList.remove("abstractin-flash");
 			void entry.ref.offsetWidth;
-			entry.ref.classList.add("zs-flash");
-			view.doc.defaultView.setTimeout(() => entry.ref.classList.remove("zs-flash"), 1800);
+			entry.ref.classList.add("abstractin-flash");
+			view.doc.defaultView.setTimeout(() => entry.ref.classList.remove("abstractin-flash"), 1800);
 			entry.ref.focus({ preventScroll: true });
 		}
 		this.updateBack(view);
@@ -2771,7 +2693,7 @@ Zusia = {
 	},
 
 	updateBack(view) {
-		let back = view.root && view.root.querySelector(".zs-back");
+		let back = view.root && view.root.querySelector(".abstractin-back");
 		if (!back) {
 			return;
 		}
@@ -2817,17 +2739,17 @@ Zusia = {
 			return;
 		}
 		let doc = root.ownerDocument;
-		root.querySelector(".zs-panel")?.remove();
-		let panel = this.el(doc, "div", "zs-panel");
+		root.querySelector(".abstractin-panel")?.remove();
+		let panel = this.el(doc, "div", "abstractin-panel");
 		panel.setAttribute("role", "dialog");
 		panel.setAttribute("aria-label", "Clarifications");
-		let head = this.el(doc, "div", "zs-panel-head");
-		let back = this.iconButton(doc, "zs-small zs-panel-back", "All clarifications", "previous", () => showList());
-		let title = this.el(doc, "div", "zs-panel-title");
+		let head = this.el(doc, "div", "abstractin-panel-head");
+		let back = this.iconButton(doc, "abstractin-small abstractin-panel-back", "All clarifications", "previous", () => showList());
+		let title = this.el(doc, "div", "abstractin-panel-title");
 		title.append(this.svgIcon(doc, "clarifications"), this.el(doc, "span", null, "Clarifications"));
-		let close = this.iconButton(doc, "zs-small zs-panel-close", "Close", "remove", () => closePanel());
+		let close = this.iconButton(doc, "abstractin-small abstractin-panel-close", "Close", "remove", () => closePanel());
 		head.append(back, title, close);
-		let body = this.el(doc, "div", "zs-panel-body");
+		let body = this.el(doc, "div", "abstractin-panel-body");
 		panel.append(head, body);
 		let closePanel = () => panel.remove();
 		panel.addEventListener("keydown", (event) => {
@@ -2845,26 +2767,26 @@ Zusia = {
 			back.hidden = true;
 			body.textContent = "";
 			if (!list.length) {
-				let empty = this.el(doc, "div", "zs-clar-empty");
+				let empty = this.el(doc, "div", "abstractin-clar-empty");
 				let mascot = this.MASCOTS[this.getAppearance().mascot].icon;
-				empty.append(this.svgIcon(doc, mascot || "clarifications", mascot ? "zs-mascot" : "zs-clar-empty-icon"),
-					this.el(doc, "div", "zs-clar-empty-title", "Nothing saved yet"),
-					this.el(doc, "div", "zs-clar-empty-sub", "Select text in the PDF, then Ask or Explain."));
+				empty.append(this.svgIcon(doc, mascot || "clarifications", mascot ? "abstractin-mascot" : "abstractin-clar-empty-icon"),
+					this.el(doc, "div", "abstractin-clar-empty-title", "Nothing saved yet"),
+					this.el(doc, "div", "abstractin-clar-empty-sub", "Select text in the PDF, then Ask or Explain."));
 				body.appendChild(empty);
 				return;
 			}
 			for (let entry of list) {
-				let item = this.el(doc, "button", "zs-clar-item");
+				let item = this.el(doc, "button", "abstractin-clar-item");
 				item.type = "button";
 				item.title = "Open this clarification";
-				let top = this.el(doc, "div", "zs-clar-item-top");
-				top.append(this.svgIcon(doc, "quote", "zs-clar-quote-icon"), this.el(doc, "span", "zs-clar-passage", entry.passage || ""));
-				let meta = this.el(doc, "div", "zs-clar-meta");
+				let top = this.el(doc, "div", "abstractin-clar-item-top");
+				top.append(this.svgIcon(doc, "quote", "abstractin-clar-quote-icon"), this.el(doc, "span", "abstractin-clar-passage", entry.passage || ""));
+				let meta = this.el(doc, "div", "abstractin-clar-meta");
 				if (entry.pageLabel) {
-					meta.appendChild(this.el(doc, "span", "zs-clar-page", "p. " + entry.pageLabel));
+					meta.appendChild(this.el(doc, "span", "abstractin-clar-page", "p. " + entry.pageLabel));
 				}
-				meta.appendChild(this.el(doc, "span", "zs-clar-when", this.formatWhen(entry.ts)));
-				let backendIcon = this.svgIcon(doc, this.BACKEND_ICONS[entry.backend] || "sparkle", "zs-clar-backend");
+				meta.appendChild(this.el(doc, "span", "abstractin-clar-when", this.formatWhen(entry.ts)));
+				let backendIcon = this.svgIcon(doc, this.BACKEND_ICONS[entry.backend] || "sparkle", "abstractin-clar-backend");
 				backendIcon.title = (this.BACKENDS[entry.backend] || {}).label || "";
 				meta.appendChild(backendIcon);
 				item.append(top, meta);
@@ -2876,62 +2798,62 @@ Zusia = {
 		let showDetail = (entry) => {
 			back.hidden = false;
 			body.textContent = "";
-			let detail = this.el(doc, "div", "zs-clar-detail");
+			let detail = this.el(doc, "div", "abstractin-clar-detail");
 			let section = (icon, label, content, className) => {
-				let box = this.el(doc, "section", "zs-clar-section " + (className || ""));
-				let heading = this.el(doc, "div", "zs-clar-heading");
+				let box = this.el(doc, "section", "abstractin-clar-section " + (className || ""));
+				let heading = this.el(doc, "div", "abstractin-clar-heading");
 				heading.append(this.svgIcon(doc, icon), this.el(doc, "span", null, label));
 				box.append(heading, content);
 				detail.appendChild(box);
 				return box;
 			};
-			let passage = this.el(doc, "blockquote", "zs-clar-passage-full", entry.passage || "");
+			let passage = this.el(doc, "blockquote", "abstractin-clar-passage-full", entry.passage || "");
 			let passageBox = section("quote", entry.pageLabel ? "Passage · p. " + entry.pageLabel : "Passage", passage);
-			passageBox.classList.add("zs-clar-passage-box");
+			passageBox.classList.add("abstractin-clar-passage-box");
 
-			let prompt = this.el(doc, "pre", "zs-clar-prompt", entry.prompt || entry.question || "");
+			let prompt = this.el(doc, "pre", "abstractin-clar-prompt", entry.prompt || entry.question || "");
 			section("prompt", "Prompt sent", prompt);
 			if (entry.instructions) {
 				let details = doc.createElementNS("http://www.w3.org/1999/xhtml", "details");
-				details.className = "zs-clar-instructions";
+				details.className = "abstractin-clar-instructions";
 				let summary = doc.createElementNS("http://www.w3.org/1999/xhtml", "summary");
 				summary.textContent = "Instructions given to the assistant";
 				details.append(summary, this.el(doc, "pre", null, entry.instructions));
 				detail.appendChild(details);
 			}
-			let answer = this.el(doc, "div", "zs-msg zs-rich zs-clar-answer");
+			let answer = this.el(doc, "div", "abstractin-msg abstractin-rich abstractin-clar-answer");
 			this.renderRich(doc, answer, entry.answer || "");
 			let run = [(this.BACKENDS[entry.backend] || {}).label, entry.model && this.modelLabel(entry.backend, entry.model)].filter(Boolean).join(" · ");
 			section("answer", run ? "Answer · " + run : "Answer", answer);
 
-			let actions = this.el(doc, "div", "zs-clar-actions");
-			let chat = this.iconButton(doc, "zs-clar-chat", "Show in the chat", "newChat", () => {
+			let actions = this.el(doc, "div", "abstractin-clar-actions");
+			let chat = this.iconButton(doc, "abstractin-clar-chat", "Show in the chat", "newChat", () => {
 				closePanel();
 				this._jump = { dir: view.ctx.dir, index: entry.messageIndex };
 				this.applyJump(view);
 			});
-			let pdf = this.iconButton(doc, "zs-clar-pdf", "Open the passage in the PDF", "openPdf", () => {
+			let pdf = this.iconButton(doc, "abstractin-clar-pdf", "Open the passage in the PDF", "openPdf", () => {
 				let location = entry.position ? { position: entry.position } : entry.pageLabel ? { pageLabel: entry.pageLabel } : undefined;
 				Promise.resolve(Zotero.Reader.open(entry.attachmentID, location)).catch(e => this.logError("open PDF", e));
 			});
 			pdf.disabled = !entry.attachmentID;
-			let copy = this.iconButton(doc, "zs-clar-copy", "Copy the prompt", "copy", () => {
+			let copy = this.iconButton(doc, "abstractin-clar-copy", "Copy the prompt", "copy", () => {
 				Zotero.Utilities.Internal.copyTextToClipboard(entry.prompt || entry.question || "");
 				copy.title = "Copied";
 			});
-			let remove = this.iconButton(doc, "zs-clar-delete", "Delete this clarification", "trash", async () => {
+			let remove = this.iconButton(doc, "abstractin-clar-delete", "Delete this clarification", "trash", async () => {
 				list = list.filter(e => e !== entry);
 				showList();
 				await this.saveClarifications(view.ctx.dir, [...list].sort((a, b) => (a.ts || 0) - (b.ts || 0)));
 			});
-			actions.append(chat, pdf, copy, this.el(doc, "span", "zs-spacer"), remove);
+			actions.append(chat, pdf, copy, this.el(doc, "span", "abstractin-spacer"), remove);
 			detail.insertBefore(actions, detail.firstChild);
 			body.appendChild(detail);
 			this.fitWideContent(answer);
 		};
 
 		showList();
-		doc.defaultView.setTimeout(() => (body.querySelector(".zs-clar-item") || close).focus(), 0);
+		doc.defaultView.setTimeout(() => (body.querySelector(".abstractin-clar-item") || close).focus(), 0);
 		return panel;
 	},
 
@@ -2940,18 +2862,19 @@ Zusia = {
 	// ---------------------------------------------------------------------
 
 	showWizard(root) {
+		if (!root.closest(".abstractin-reader-panel")) return;
 		let doc = root.ownerDocument;
-		root.querySelector(".zs-wizard")?.remove();
-		let wizard = this.el(doc, "div", "zs-wizard");
+		root.querySelector(".abstractin-wizard")?.remove();
+		let wizard = this.el(doc, "div", "abstractin-wizard");
 		wizard.setAttribute("role", "dialog");
-		wizard.setAttribute("aria-label", "Set up the sidebar");
-		let panel = this.el(doc, "div", "zs-wizard-panel");
-		let skip = this.iconButton(doc, "zs-small zs-wizard-skip", "Skip setup", "remove", () => this.finishWizard(root));
-		let stage = this.el(doc, "div", "zs-wizard-stage");
-		let nav = this.el(doc, "div", "zs-wizard-nav");
-		let prev = this.iconButton(doc, "zs-wizard-prev", "Back", "previous", () => go(index - 1));
-		let dots = this.el(doc, "div", "zs-wizard-dots");
-		let next = this.iconButton(doc, "zs-wizard-next", "Next", "next", () => {
+		wizard.setAttribute("aria-label", "Set up AbstractIn");
+		let panel = this.el(doc, "div", "abstractin-wizard-panel");
+		let skip = this.iconButton(doc, "abstractin-small abstractin-wizard-skip", "Skip setup", "remove", () => this.finishWizard(root));
+		let stage = this.el(doc, "div", "abstractin-wizard-stage");
+		let nav = this.el(doc, "div", "abstractin-wizard-nav");
+		let prev = this.iconButton(doc, "abstractin-wizard-prev", "Back", "previous", () => go(index - 1));
+		let dots = this.el(doc, "div", "abstractin-wizard-dots");
+		let next = this.iconButton(doc, "abstractin-wizard-next", "Next", "next", () => {
 			if (index === this.WIZARD_STEPS.length - 1) {
 				this.finishWizard(root);
 			}
@@ -2960,7 +2883,7 @@ Zusia = {
 			}
 		});
 		for (let i = 0; i < this.WIZARD_STEPS.length; i++) {
-			dots.appendChild(this.el(doc, "span", "zs-wizard-dot"));
+			dots.appendChild(this.el(doc, "span", "abstractin-wizard-dot"));
 		}
 		nav.append(prev, dots, next);
 		panel.append(skip, stage, nav);
@@ -2985,7 +2908,7 @@ Zusia = {
 			next.title = last ? "Start chatting" : index === 0 ? "Start" : "Next";
 			next.setAttribute("aria-label", next.title);
 			[...dots.children].forEach((dot, i) => {
-				dot.classList.toggle("zs-wizard-dot-done", i < index);
+				dot.classList.toggle("abstractin-wizard-dot-done", i < index);
 				if (i === index) {
 					dot.setAttribute("aria-current", "step");
 				}
@@ -2993,122 +2916,119 @@ Zusia = {
 					dot.removeAttribute("aria-current");
 				}
 			});
-			stage.classList.remove("zs-wizard-enter");
+			stage.classList.remove("abstractin-wizard-enter");
 			void stage.offsetWidth;
-			stage.classList.add("zs-wizard-enter");
+			stage.classList.add("abstractin-wizard-enter");
 		};
-		root.appendChild(wizard);
+		root.querySelector(".abstractin-log-wrap").appendChild(wizard);
 		go(0);
 		doc.defaultView.setTimeout(() => next.focus(), 0);
 		return wizard;
 	},
 
 	finishWizard(root) {
+		root.querySelector(".abstractin-wizard")?.remove();
+		this.setPref("backend", this.readingAgent());
 		this.setPref("onboarded", true);
-		root.querySelector(".zs-wizard")?.remove();
-		root.querySelector(".zs-input")?.focus();
+		let roots = new Set([root]);
+		for (let win of new Set([...(Zotero.getMainWindows?.() || [Zotero.getMainWindow()]), ...this._readerPanelWindows.keys()])) {
+			for (let node of win.document.querySelectorAll(".abstractin-root")) roots.add(node);
+		}
+		for (let node of roots) {
+			node.querySelector(".abstractin-wizard")?.remove();
+			let view = this._views.get(node);
+			if (view) this.setBusy(view, this._pending.has(view.ctx.dir));
+		}
+		root.querySelector(".abstractin-input")?.focus();
 	},
 
-	// One wizard step: a big picture, a one- or two-word title, and visual choices.
 	wizardStep(root, name) {
 		let doc = root.ownerDocument;
-		let step = this.el(doc, "div", "zs-wizard-step");
-		let hero = (icon, title) => {
-			let big = this.svgIcon(doc, icon, icon.startsWith("mascot-") ? "zs-mascot zs-wizard-hero" : "zs-wizard-hero");
-			step.append(big, this.el(doc, "div", "zs-wizard-title", title));
+		let step = this.el(doc, "div", "abstractin-wizard-step");
+		let hero = (icon, title) => step.append(this.svgIcon(doc, icon, "abstractin-wizard-hero" + (icon.startsWith("mascot-") ? " abstractin-mascot" : "")), this.el(doc, "div", "abstractin-wizard-title", title));
+		let section = (label, control) => {
+			let box = this.el(doc, "div", "abstractin-wizard-section");
+			box.append(this.el(doc, "div", "abstractin-wizard-section-label", label), control);
+			step.appendChild(box);
 		};
-		let section = (icon, label, control) => {
-			let row = this.el(doc, "div", "zs-wizard-section");
-			let head = this.el(doc, "div", "zs-wizard-section-head");
-			head.append(this.svgIcon(doc, icon), this.el(doc, "span", null, label));
-			row.append(head, control);
-			step.appendChild(row);
-		};
+		let hint = text => step.appendChild(this.el(doc, "p", "abstractin-wizard-sub", text));
 		let appearance = () => this.getAppearance();
-		let setAppearance = (changes) => {
-			let next = Object.assign({}, appearance(), changes);
-			this.saveAppearance(next);
-			this.applyAppearance(root, next);
-		};
-		let mascotIcon = () => this.MASCOTS[appearance().mascot].icon || "wave";
-
+		let setAppearance = changes => { this.saveAppearance({ ...appearance(), ...changes }); this.applyAppearance(root); };
+		let mascot = () => this.MASCOTS[appearance().mascot].icon;
 		if (name === "welcome") {
-			hero(mascotIcon(), "Hi, study buddy!");
-			step.appendChild(this.el(doc, "div", "zs-wizard-sub", "Five quick picks and you're set."));
+			hero(mascot(), "Welcome to AbstractIn");
+			hint("Choose your reading agent, companion and a few chat preferences. You can change them later in Settings.");
 		}
 		else if (name === "assistant") {
-			hero("sparkle", "Your AI");
-			let installed = root._installed || {};
-			let tiles = this.tiles(doc, Object.entries(this.BACKENDS).map(([value, b]) => ({ value, label: b.label, icon: this.BACKEND_ICONS[value] })),
-				this.getBackend(), (v) => {
-					this.setPref("backend", v);
-					this.updateControls(root);
-				});
-			for (let tile of tiles.querySelectorAll(".zs-tile")) {
-				if (installed[tile.dataset.value] === null) {
-					// Shown as a small badge; the name stays the tooltip.
-					tile.dataset.missing = "true";
-					tile.setAttribute("aria-description", "not installed");
+			hero("terminal", "Reading agent");
+			let status = this.el(doc, "p", "abstractin-notice"); status.setAttribute("role", "status");
+			let models = this.el(doc, "div", "abstractin-wizard-models");
+			let renderModels = () => {
+				models.replaceChildren();
+				let id = this.readingAgent();
+				let model;
+				if (id === "codex") {
+					model = this.codexModelInput(doc);
+					model.querySelector("input").addEventListener("change", event => {
+						try { this.saveCodexModel(event.target.value); status.textContent = ""; }
+						catch (e) { status.textContent = e.message || String(e); }
+					});
 				}
-			}
-			step.appendChild(tiles);
-		}
-		else if (name === "look") {
-			hero("palette", "Your look");
-			let swatches = this.el(doc, "div", "zs-swatches");
-			swatches.setAttribute("role", "radiogroup");
-			let current = appearance().accent;
-			for (let accent of this.ACCENTS) {
-				let swatch = this.el(doc, "button", "zs-swatch");
-				swatch.type = "button";
-				swatch.setAttribute("role", "radio");
-				swatch.setAttribute("aria-label", accent.name);
-				swatch.title = accent.name;
-				swatch.setAttribute("aria-checked", String(accent.color === current));
-				swatch.style.background = accent.color || "var(--accent-blue, " + this.ZOTERO_ACCENT + ")";
-				swatch.addEventListener("click", () => {
-					swatches.querySelectorAll(".zs-swatch").forEach(s => s.setAttribute("aria-checked", String(s === swatch)));
-					setAppearance({ accent: accent.color });
-				});
-				swatches.appendChild(swatch);
-			}
-			section("sparkle", "Colour", swatches);
+				else model = this.select(doc, this.getModels(id).map(model => [model.id, model.label]), this.getModel(id), value => this.setPref(id + ".model", value));
+				models.append(this.el(doc, "label", null, "Model"), model);
+				let efforts = this.getEfforts(id);
+				if (efforts.length > 1) models.append(this.el(doc, "label", null, "Reasoning effort"),
+					this.select(doc, efforts.map(value => [value, this.EFFORTS[value]?.label || value]), this.getEffort(id), value => this.setPref(id + ".effort", value)));
+			};
+			let agents = this.select(doc, Object.entries(this.agentRegistry()).map(([id, agent]) => [id, agent.fullName]), this.readingAgent(), id => {
+				try { this.selectReadingAgent(id); status.textContent = ""; renderModels(); this.updateControls(root); }
+				catch (e) { agents.value = this.readingAgent(); status.textContent = e.message || String(e); }
+			});
+			agents.setAttribute("aria-label", "Reading agent");
+			section("Agent", agents); renderModels(); section("Model settings", models);
+			hint("Codex is the default. Other agents must pass connection and skill checks before selection.");
+			let settings = this.el(doc, "button", "abstractin-button", "Add or test agents in Settings"); settings.type = "button";
+			settings.addEventListener("click", () => this.openSettings()); step.append(settings, status);
 		}
 		else if (name === "companion") {
-			hero(mascotIcon(), "Reading companion");
-			section(mascotIcon(), "Companion", this.tiles(doc,
-				Object.entries(this.MASCOTS).map(([value, p]) => ({ value, label: p.label, icon: p.icon })),
-				appearance().mascot, v => setAppearance({ mascot: v })));
+			hero(mascot(), "Reading companion");
+			section("Companion", this.tiles(doc, Object.entries(this.MASCOTS).map(([value, option]) => ({ value, label: option.label, icon: option.icon })), appearance().mascot, value => setAppearance({ mascot: value })));
+		}
+		else if (name === "look") {
+			hero("palette", "Reading appearance");
+			let swatches = this.el(doc, "div", "abstractin-swatches"); swatches.setAttribute("role", "radiogroup");
+			for (let accent of this.ACCENTS) {
+				let button = this.el(doc, "button", "abstractin-swatch"); button.type = "button"; button.title = accent.name;
+				button.setAttribute("role", "radio"); button.setAttribute("aria-label", accent.name); button.setAttribute("aria-checked", String(accent.color === appearance().accent));
+				button.style.background = accent.color || this.ZOTERO_ACCENT;
+				button.addEventListener("click", () => { setAppearance({ accent: accent.color }); swatches.querySelectorAll("button").forEach(other => other.setAttribute("aria-checked", String(other === button))); });
+				swatches.appendChild(button);
+			}
+			section("Accent colour", swatches);
+			section("Text size", this.segmented(doc, [["small", "Small"], ["default", "Default"], ["large", "Large"]], appearance().size, value => setAppearance({ size: value })));
+			section("Font", this.select(doc, Object.entries(this.FONTS), appearance().font, value => setAppearance({ font: value })));
+			section("Spacing", this.segmented(doc, [["compact", "Compact"], ["comfortable", "Comfortable"], ["roomy", "Roomy"]], appearance().density, value => setAppearance({ density: value })));
+			section("Button labels", this.segmented(doc, [["icons", "Icons only"], ["text", "Icons + text"]], appearance().labels, value => setAppearance({ labels: value })));
 		}
 		else if (name === "answers") {
-			hero("levelStudent", "Your answers");
-			section("levelStudent", "Level", this.tiles(doc,
-				Object.entries(this.BEHAVIOUR.level).map(([value, o]) => ({ value, label: o.label, icon: o.icon })),
-				this.getBehaviour().level, v => this.saveBehaviour(Object.assign(this.getBehaviour(), { level: v }))));
-			let language = this.select(doc, this.LANGUAGES.map(l => [l, l || "Same as my question"]), this.getLanguage(),
-				v => this.setPref("language", v));
-			language.title = "Answer language";
-			section("language", "Language", language);
-			let modes = this.el(doc, "div", "zs-tiles");
-			for (let [id, mode] of Object.entries(this.MODES)) {
-				let tile = this.el(doc, "button", "zs-tile");
-				tile.type = "button";
-				tile.title = mode.label;
-				tile.setAttribute("aria-pressed", String(this.isModeOn(id)));
-				tile.append(this.svgIcon(doc, mode.icon, "zs-tile-icon"), this.el(doc, "span", "zs-tile-label", mode.label));
-				tile.addEventListener("click", () => {
-					let on = !this.isModeOn(id);
-					this.setPref("mode." + id, on);
-					tile.setAttribute("aria-pressed", String(on));
-					this.updateControls(root);
-				});
-				modes.appendChild(tile);
-			}
-			section("drawing", "Extras", modes);
+			hero("language", "Answer language");
+			let language = this.select(doc, this.LANGUAGES.map(value => [value, value || "Same as my question"]), this.getLanguage(), value => this.setPref("language", value));
+			language.title = "Answer language"; section("Language", language);
+			hint("Explanation depth follows your question. Book and paper quick prompts are edited separately in Settings → Chat and fill the composer before sending.");
 		}
-		else if (name === "done") {
-			hero(mascotIcon(), "Ready!");
-			step.appendChild(this.el(doc, "div", "zs-wizard-sub", "Change anything later in Settings."));
+		else if (name === "interaction") {
+			hero("prompt", "Chat preferences");
+			let behaviour = () => this.getBehaviour();
+			let save = changes => { this.saveBehaviour({ ...behaviour(), ...changes }); this.applyBehaviour(root); };
+			section("Send with", this.segmented(doc, [["enter", "Enter"], ["mod-enter", "⌘/Ctrl + Enter"]], behaviour().sendKey, value => save({ sendKey: value })));
+			for (let [key, label] of [["autoScroll", "Follow the answer"], ["showSteps", "Show execution activity"], ["showQuick", "Show quick questions"]]) {
+				let toggle = this.switchControl(doc, behaviour()[key], value => save({ [key]: value }));
+				toggle.setAttribute("aria-label", label); section(label, toggle);
+			}
+		}
+		else {
+			hero(mascot(), "Ready to read");
+			hint("Start Reading will ask about the book or paper in this chat. Select a passage or ask about the current page. Quick questions fill the composer so you can add your own requirements.");
 		}
 		return step;
 	},
@@ -3193,7 +3113,7 @@ Zusia = {
 	},
 
 	openSearchMenu(root) {
-		let anchor = root.querySelector(".zs-search");
+		let anchor = root.querySelector(".abstractin-search");
 		if (!anchor) {
 			return;
 		}
@@ -3204,22 +3124,22 @@ Zusia = {
 		let timer = null;
 		let input = doc.createElementNS("http://www.w3.org/1999/xhtml", "input");
 		input.type = "search";
-		input.className = "zs-search-input";
+		input.className = "abstractin-search-input";
 		input.placeholder = "Search the chats of all papers…";
-		let list = this.el(doc, "div", "zs-search-results");
+		let list = this.el(doc, "div", "abstractin-search-results");
 		let draw = () => {
 			list.textContent = "";
 			if (chats === null) {
-				list.appendChild(this.el(doc, "div", "zs-menu-note", "Loading chats…"));
+				list.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading chats…"));
 				return;
 			}
 			if (!input.value.trim()) {
-				list.appendChild(this.el(doc, "div", "zs-menu-note",
+				list.appendChild(this.el(doc, "div", "abstractin-menu-note",
 					"Searches " + chats.length + " saved chat" + (chats.length === 1 ? "" : "s") + ", current and previous."));
 				return;
 			}
 			if (!results.length) {
-				list.appendChild(this.el(doc, "div", "zs-menu-note", "No messages match."));
+				list.appendChild(this.el(doc, "div", "abstractin-menu-note", "No messages match."));
 				return;
 			}
 			for (let result of results) {
@@ -3244,11 +3164,11 @@ Zusia = {
 		input.addEventListener("keydown", (event) => {
 			if (event.key === "ArrowDown") {
 				event.preventDefault();
-				list.querySelector(".zs-menu-item")?.focus();
+				list.querySelector(".abstractin-menu-item")?.focus();
 			}
 		});
 		let menu = this.openMenu(root, anchor, (menu) => {
-			menu.classList.add("zs-search-menu");
+			menu.classList.add("abstractin-search-menu");
 			menu.append(input, list);
 			draw();
 		}, { placement: "below", align: "end" });
@@ -3314,31 +3234,31 @@ Zusia = {
 			return;
 		}
 		this._jump = null;
-		let target = [...view.logEl.children].filter(n => n.matches(".zs-user, .zs-turn"))[jump.index];
+		let target = [...view.logEl.children].filter(n => n.matches(".abstractin-user, .abstractin-turn"))[jump.index];
 		if (target) {
 			target.scrollIntoView({ block: "center" });
-			target.classList.add("zs-flash");
-			view.doc.defaultView.setTimeout(() => target.classList.remove("zs-flash"), 1800);
+			target.classList.add("abstractin-flash");
+			view.doc.defaultView.setTimeout(() => target.classList.remove("abstractin-flash"), 1800);
 		}
 	},
 
 	openHistoryMenu(root) {
 		let view = this._views.get(root);
-		let anchor = root.querySelector(".zs-history");
+		let anchor = root.querySelector(".abstractin-history");
 		if (!view || !anchor) {
 			return;
 		}
 		let doc = root.ownerDocument;
 		let archives = null;
 		let menu = this.openMenu(root, anchor, (menu) => {
-			menu.classList.add("zs-history-menu");
+			menu.classList.add("abstractin-history-menu");
 			this.menuSection(doc, menu, "Previous chats");
 			if (archives === null) {
-				menu.appendChild(this.el(doc, "div", "zs-menu-note", "Loading…"));
+				menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading…"));
 				return;
 			}
 			if (!archives.length) {
-				menu.appendChild(this.el(doc, "div", "zs-menu-note",
+				menu.appendChild(this.el(doc, "div", "abstractin-menu-note",
 					"No earlier chats for this paper yet. Starting a new chat keeps the current one here."));
 				return;
 			}
@@ -3399,21 +3319,21 @@ Zusia = {
 		let win = doc.defaultView;
 		let label = this.BACKENDS[pending.backend].label;
 
-		logEl.querySelector(".zs-empty")?.remove();
+		logEl.querySelector(".abstractin-empty")?.remove();
 		view.root.dataset.chatting = "true";
-		logEl.querySelectorAll(".zs-turn.zs-last").forEach(turn => turn.classList.remove("zs-last"));
+		logEl.querySelectorAll(".abstractin-turn.abstractin-last").forEach(turn => turn.classList.remove("abstractin-last"));
 		this.appendUser(view, pending.question, pending.images, pending.modes);
 
-		let turn = this.el(doc, "div", "zs-turn");
-		let live = this.el(doc, "div", "zs-msg zs-assistant");
-		let content = this.el(doc, "div", "zs-live-content");
-		let typing = this.el(doc, "div", "zs-typing");
+		let turn = this.el(doc, "div", "abstractin-turn");
+		let live = this.el(doc, "div", "abstractin-msg abstractin-assistant");
+		let content = this.el(doc, "div", "abstractin-live-content");
+		let typing = this.el(doc, "div", "abstractin-typing");
 		typing.setAttribute("aria-busy", "true");
-		let spinner = this.el(doc, "span", "zs-spinner");
-		let elapsed = this.el(doc, "span", "zs-elapsed zs-shimmer");
-		let seconds = this.el(doc, "span", "zs-seconds");
+		let spinner = this.el(doc, "span", "abstractin-spinner");
+		let elapsed = this.el(doc, "span", "abstractin-elapsed abstractin-shimmer");
+		let seconds = this.el(doc, "span", "abstractin-seconds");
 		typing.append(spinner, elapsed, seconds);
-		let steps = this.el(doc, "div", "zs-live-steps");
+		let steps = this.el(doc, "div", "abstractin-live-steps");
 		live.append(steps, content, typing);
 		turn.appendChild(live);
 		logEl.appendChild(turn);
@@ -3454,7 +3374,7 @@ Zusia = {
 			while (renderedSteps < list.length) {
 				steps.appendChild(this.renderStepRow(doc, list[renderedSteps++]));
 			}
-			steps.classList.toggle("zs-thinking", !!pending.thinking && !pending.partial);
+			steps.classList.toggle("abstractin-thinking", !!pending.thinking && !pending.partial);
 		};
 		let listener = () => {
 			tick();
@@ -3492,27 +3412,27 @@ Zusia = {
 		this.updateControls(view.root);
 		if (result.sourceWarning) this.appendError(view, result.sourceWarning, { title: "PDF text unavailable" });
 		if (result.modelFallback) {
-			logEl.appendChild(this.el(doc, "div", "zs-notice", "Selected model unavailable. Answered using your local Codex defaults."));
+			logEl.appendChild(this.el(doc, "div", "abstractin-notice", "Selected model unavailable. Answered using your local Codex defaults."));
 		}
 		if (result.recordWarning) {
 			this.appendError(view, result.recordWarning, { title: "Reading record was not saved" });
 		}
 		else if (result.recordKey) {
-			logEl.appendChild(this.el(doc, "div", "zs-notice", "Reading record saved as a Zotero note (" + result.recordKey + ")."));
+			logEl.appendChild(this.el(doc, "div", "abstractin-notice", "Reading record saved as a Zotero note (" + result.recordKey + ")."));
 		}
 		if (result.historySyncWarning) this.appendError(view, result.historySyncWarning, { title: "Chat sync note could not be saved" });
-		if (result.recordNotice) logEl.appendChild(this.el(doc, "div", "zs-notice", result.recordNotice));
+		if (result.recordNotice) logEl.appendChild(this.el(doc, "div", "abstractin-notice", result.recordNotice));
 		if (result.cancelled && !view.input.value.trim()) {
 			// Nothing was answered: give the question back so it can be edited and resent.
 			this.editPrompt(view, pending.question, pending.images);
 		}
 		if (result.error) {
-			logEl.querySelector(".zs-empty")?.remove();
+			logEl.querySelector(".abstractin-empty")?.remove();
 			this.appendUser(view, pending.question, pending.images, pending.modes);
 			this.appendError(view, result.error, {
 				title: label + " could not answer",
 				retry: () => {
-					logEl.querySelectorAll(".zs-error").forEach(n => n.remove());
+					logEl.querySelectorAll(".abstractin-error").forEach(n => n.remove());
 					this.renderMessages(view, history);
 					this.startRequest(view, pending.question, pending.images, pending.modes, { selection: pending.selection || null, readingAction: pending.readingAction || null });
 				},
@@ -3533,13 +3453,17 @@ Zusia = {
 			if (ctx.reading) {
 				let forbidSource = this.requestsKnowledgeDiscussion(question);
 				let preferred = pending.evidenceMode || this.getReadingEvidenceMode();
-				let sourceLookup = !forbidSource && (pending.sourceLookup || (preferred === "knowledge" && this.agentCanReadSources(backend) && this.requestsReadingSource(question)));
+				let explicitSourceRequest = this.requestsReadingSource(question);
+				let sourceLookup = !forbidSource && (pending.sourceLookup || (preferred === "knowledge" && this.agentCanReadSources(backend) && explicitSourceRequest));
 				let evidenceMode = pending.readingAction ? "source" : forbidSource ? "knowledge" : sourceLookup ? "source" : preferred;
 				await this.assertAgentReadingReady(backend, evidenceMode);
 				ctx = { ...ctx, reading: evidenceMode === "knowledge" ? { ...ctx.reading } : await this.prepareReadingSkills(ctx) };
 				ctx.reading.evidenceMode = evidenceMode;
 				ctx.reading.forbidSource = forbidSource;
 				ctx.reading.sourceLookup = sourceLookup;
+				ctx.reading.explicitSourceRequest = explicitSourceRequest;
+				ctx.reading.sourceQuestion = question;
+				ctx.reading.selectedPageIndex = pending.selection?.position?.pageIndex ?? pending.selection?.pageIndex;
 				ctx.reading.action = pending.readingAction || "discuss";
 				ctx.reading.currentPage = pending.currentPage !== undefined ? pending.currentPage : this.currentReadingLocation(ctx);
 				try { await this.rememberReadingPosition(ctx); }
@@ -3556,6 +3480,7 @@ Zusia = {
 				ctx = { ...ctx, reading: { ...ctx.reading, pdfSource } };
 				if (ctx.reading.evidenceMode === "knowledge") {
 					if (!ctx.reading.forbidSource && this.requestsCurrentReadingPage(question)) await this.prepareCurrentReadingPage(ctx);
+					else if (ctx.discussion) ctx.reading.currentPage = null;
 					else await this.reuseCurrentReadingPage(ctx);
 				}
 				else if (pdfSource.status === "ready") await this.prepareCurrentReadingPage(ctx);
@@ -3572,7 +3497,8 @@ Zusia = {
 			if (ctx.reading && pending.readingAction === "contents") await this.prepareContentsSource(ctx);
 			let history = await this.loadHistory(ctx.dir);
 			let sessions = await this.loadSessions(ctx.dir);
-			let session = sessions[backend] || null;
+			let sessionKey = ctx.discussion ? backend + ":" + ctx.reading.evidenceMode : backend;
+			let session = sessions[sessionKey] || (sessions[backend]?.evidenceMode === ctx.reading?.evidenceMode ? sessions[backend] : null);
 			// A model change starts a fresh thread, preserving history in the prompt.
 			if (session && session.model !== (pending.model || "")) session = null;
 			if (ctx.reading && session && session.sourceSignature !== pdfSource.signature) session = null;
@@ -3586,7 +3512,7 @@ Zusia = {
 			let request = {
 				ctx, files, history: pending.readingAction === "contents" ? [] : history, session, images,
 				question: (question || "Look at the attached image.") + this.imageNote(backend, images) +
-					this.modeInstructions(pending.modes) + (ctx.reading ? "\n\n" + this.readingPrompt(ctx, pending.selection) +
+					(ctx.reading ? "\n\n" + this.readingPrompt(ctx, pending.selection) +
 						(pending.readingAction ? "\n\n" + this.readingActionPrompt(ctx, pending.readingAction) : "") : ""),
 				model: pending.model,
 				effort: pending.effort,
@@ -3617,6 +3543,7 @@ Zusia = {
 				request = { ...request, model: "", effort: "", session: null };
 				session = null;
 				delete sessions.codex;
+				delete sessions[sessionKey];
 				await this.saveSessions(ctx.dir, sessions);
 				pending.progress({ text: "", status: "selected model unavailable; retrying with Codex defaults" });
 				result = await this.runBackend(backend, request);
@@ -3630,7 +3557,7 @@ Zusia = {
 				result = await this.runBackend(backend, Object.assign({}, request, { session: null }));
 			}
 
-			if (ctx.reading?.evidenceMode === "knowledge" && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && !pending.sourceLookup &&
+			if (ctx.reading?.evidenceMode === "knowledge" && !ctx.discussion && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && !pending.sourceLookup &&
 				!pending.cancelled && /<abstractin-source-needed>[\s\S]*?<\/abstractin-source-needed>/.test(result.text || "")) {
 				pending.progress({ text: "", status: "missing document evidence; verifying the requested passage" });
 				pending.evidenceMode = "source";
@@ -3687,7 +3614,6 @@ Zusia = {
 				Object.assign({ role: "user", text: question, ts: Date.now() },
 					pending.selection ? { selection: pending.selection } : {},
 					images.length ? { images: images.map(p => p.startsWith(ctx.dir) ? p.slice(ctx.dir.length).replace(/^[\/\\]+/, "") : p) } : {},
-					pending.modes && pending.modes.length ? { modes: pending.modes } : {},
 					pending.readingAction ? { readingAction: pending.readingAction } : {}),
 				Object.assign({ role: "assistant", text: result.text, ts: Date.now() }, meta, result.stopped ? { stopped: true } : {}),
 			]);
@@ -3720,6 +3646,7 @@ Zusia = {
 					model: pending.model || "" };
 				if (ctx.reading) sessions[backend].sourceSignature = pdfSource.signature;
 				if (ctx.reading) sessions[backend].evidenceMode = ctx.reading.evidenceMode;
+				if (ctx.discussion) sessions[sessionKey] = sessions[backend];
 				await this.saveSessions(ctx.dir, sessions);
 			}
 			return { ...(historySyncWarning ? { historySyncWarning } : {}), ...(ctx.reading ? { recordKey, recordWarning, recordNotice, pdfSource, sourceWarning } : {}), ...(modelFallback ? { modelFallback: true } : {}) };
@@ -3734,12 +3661,12 @@ Zusia = {
 	},
 
 	// ---------------------------------------------------------------------
-	// Settings pane (Zotero Settings → Zusia)
+	// Settings pane (Zotero Settings → AbstractIn)
 	// ---------------------------------------------------------------------
 
 	renderPrefsPane(doc, container) {
 		container.textContent = "";
-		let prefs = this.el(doc, "div", "zs-prefs");
+		let prefs = this.el(doc, "div", "abstractin-prefs");
 		this.applyAppearance(prefs);
 		prefs.append(
 			this.buildAssistantsCard(doc),
@@ -3751,37 +3678,37 @@ Zusia = {
 	},
 
 	card(doc, title, description) {
-		let card = this.el(doc, "section", "zs-card");
-		let head = this.el(doc, "div", "zs-card-head");
-		head.appendChild(this.el(doc, "h2", "zs-card-title", title));
+		let card = this.el(doc, "section", "abstractin-card");
+		let head = this.el(doc, "div", "abstractin-card-head");
+		head.appendChild(this.el(doc, "h2", "abstractin-card-title", title));
 		if (description) {
-			head.appendChild(this.el(doc, "p", "zs-card-desc", description));
+			head.appendChild(this.el(doc, "p", "abstractin-card-desc", description));
 		}
-		let body = this.el(doc, "div", "zs-card-body");
+		let body = this.el(doc, "div", "abstractin-card-body");
 		card.append(head, body);
 		card.body = body;
 		return card;
 	},
 
 	row(doc, label, control, hint, { stack = false } = {}) {
-		let row = this.el(doc, "div", "zs-row" + (stack ? " zs-row-stack" : ""));
-		let labelEl = this.el(doc, "label", "zs-row-label", label);
-		let controlEl = this.el(doc, "div", "zs-row-control");
+		let row = this.el(doc, "div", "abstractin-row" + (stack ? " abstractin-row-stack" : ""));
+		let labelEl = this.el(doc, "label", "abstractin-row-label", label);
+		let controlEl = this.el(doc, "div", "abstractin-row-control");
 		controlEl.append(...[].concat(control));
 		let focusable = controlEl.querySelector("input, select, textarea");
 		if (focusable) {
-			focusable.id = focusable.id || "zs-" + Math.random().toString(36).slice(2, 9);
+			focusable.id = focusable.id || "abstractin-" + Math.random().toString(36).slice(2, 9);
 			labelEl.htmlFor = focusable.id;
 		}
 		row.append(labelEl, controlEl);
 		if (hint) {
-			row.appendChild(this.el(doc, "div", "zs-row-hint", hint));
+			row.appendChild(this.el(doc, "div", "abstractin-row-hint", hint));
 		}
 		return row;
 	},
 
 	select(doc, options, value, onChange) {
-		let select = this.el(doc, "select", "zs-select");
+		let select = this.el(doc, "select", "abstractin-select");
 		let fill = (opts, selected) => {
 			select.textContent = "";
 			for (let [optValue, optLabel] of opts) {
@@ -3799,7 +3726,7 @@ Zusia = {
 	},
 
 	switchControl(doc, checked, onChange) {
-		let button = this.el(doc, "button", "zs-switch");
+		let button = this.el(doc, "button", "abstractin-switch");
 		button.type = "button";
 		button.setAttribute("role", "switch");
 		button.setAttribute("aria-checked", String(!!checked));
@@ -3813,19 +3740,19 @@ Zusia = {
 
 	// A radio group of icon cards: the visual picker used in Settings and the setup wizard.
 	tiles(doc, options, value, onChange) {
-		let group = this.el(doc, "div", "zs-tiles");
+		let group = this.el(doc, "div", "abstractin-tiles");
 		group.setAttribute("role", "radiogroup");
 		for (let option of options) {
-			let tile = this.el(doc, "button", "zs-tile");
+			let tile = this.el(doc, "button", "abstractin-tile");
 			tile.type = "button";
 			tile.setAttribute("role", "radio");
 			tile.setAttribute("aria-checked", String(option.value === value));
 			tile.title = option.label;
 			tile.dataset.value = option.value;
-			tile.appendChild(this.svgIcon(doc, option.icon, "zs-tile-icon"));
-			tile.appendChild(this.el(doc, "span", "zs-tile-label", option.label));
+			tile.appendChild(this.svgIcon(doc, option.icon, "abstractin-tile-icon"));
+			tile.appendChild(this.el(doc, "span", "abstractin-tile-label", option.label));
 			tile.addEventListener("click", () => {
-				group.querySelectorAll(".zs-tile").forEach(t => t.setAttribute("aria-checked", String(t === tile)));
+				group.querySelectorAll(".abstractin-tile").forEach(t => t.setAttribute("aria-checked", String(t === tile)));
 				onChange(option.value);
 			});
 			group.appendChild(tile);
@@ -3834,14 +3761,14 @@ Zusia = {
 	},
 
 	range(doc, { min, max, step = 1, value, unit = "" }, onChange) {
-		let wrap = this.el(doc, "div", "zs-range");
+		let wrap = this.el(doc, "div", "abstractin-range");
 		let input = doc.createElementNS("http://www.w3.org/1999/xhtml", "input");
 		input.type = "range";
 		input.min = String(min);
 		input.max = String(max);
 		input.step = String(step);
 		input.value = String(value);
-		let output = this.el(doc, "span", "zs-range-value", value + unit);
+		let output = this.el(doc, "span", "abstractin-range-value", value + unit);
 		input.addEventListener("input", () => {
 			output.textContent = input.value + unit;
 			onChange(Number(input.value));
@@ -3851,7 +3778,7 @@ Zusia = {
 	},
 
 	segmented(doc, options, value, onChange) {
-		let group = this.el(doc, "div", "zs-segmented");
+		let group = this.el(doc, "div", "abstractin-segmented");
 		group.setAttribute("role", "radiogroup");
 		for (let [optValue, optLabel] of options) {
 			let button = this.el(doc, "button", null, optLabel);
@@ -3868,7 +3795,7 @@ Zusia = {
 	},
 
 	buildChatCard(doc) {
-		let card = this.card(doc, "Chat", "Quick prompts appear as buttons above the message box.");
+		let card = this.card(doc, "Chat", "Book and paper questions have separate lists, available in the dropdown above the message box.");
 
 		let languageSelect = this.select(doc,
 			this.LANGUAGES.map(language => [language, language || "Same as my question"]),
@@ -3876,100 +3803,79 @@ Zusia = {
 		card.body.appendChild(this.row(doc, "Answer language", languageSelect,
 			"The assistants answer in this language whatever language you write in."));
 
-		let prompts = this.getPrompts();
-		let list = this.el(doc, "div", "zs-prompt-list");
-		let save = () => this.savePrompts(prompts);
-		let draw = () => {
-			list.textContent = "";
-			prompts.forEach((entry, index) => {
-				let row = this.el(doc, "div", "zs-prompt-row");
-				let label = doc.createElementNS("http://www.w3.org/1999/xhtml", "input");
-				label.type = "text";
-				label.className = "zs-field";
-				label.placeholder = "Label";
-				label.value = entry.label || "";
-				label.addEventListener("input", () => {
-					entry.label = label.value;
-					save();
+		for (let type of ["book", "paper"]) {
+			let prompts = this.getPrompts(type);
+			let list = this.el(doc, "div", "abstractin-prompt-list");
+			let save = () => this.savePrompts(prompts, type);
+			let draw = () => {
+				list.textContent = "";
+				prompts.forEach((entry, index) => {
+					let row = this.el(doc, "div", "abstractin-prompt-row");
+					let label = doc.createElementNS("http://www.w3.org/1999/xhtml", "input");
+					label.type = "text";
+					label.className = "abstractin-field";
+					label.placeholder = "Label";
+					label.value = entry.label || "";
+					label.addEventListener("input", () => {
+						entry.label = label.value;
+						save();
+					});
+					let text = this.el(doc, "textarea", "abstractin-textarea abstractin-autogrow");
+					text.rows = 1;
+					text.placeholder = "Prompt sent when the question is selected";
+					text.value = entry.prompt;
+					text.addEventListener("input", () => {
+						entry.prompt = text.value;
+						save();
+						this.autoGrow(text);
+					});
+					doc.defaultView.setTimeout(() => this.autoGrow(text), 0);
+					let move = (delta) => {
+						let [moved] = prompts.splice(index, 1);
+						prompts.splice(index + delta, 0, moved);
+						save();
+						draw();
+					};
+					let tools = this.el(doc, "div", "abstractin-prompt-tools");
+					let up = this.iconButton(doc, "", "Move up", "up", () => move(-1));
+					up.disabled = index === 0;
+					let down = this.iconButton(doc, "", "Move down", "down", () => move(1));
+					down.disabled = index === prompts.length - 1;
+					let remove = this.iconButton(doc, "", "Remove", "remove", () => {
+						prompts.splice(index, 1);
+						save();
+						draw();
+					});
+					tools.append(up, down, remove);
+					row.append(label, text, tools);
+					list.appendChild(row);
 				});
-				let text = this.el(doc, "textarea", "zs-textarea zs-autogrow");
-				text.rows = 1;
-				text.placeholder = "Prompt sent when the button is clicked";
-				text.value = entry.prompt;
-				text.addEventListener("input", () => {
-					entry.prompt = text.value;
-					save();
-					this.autoGrow(text);
-				});
-				doc.defaultView.setTimeout(() => this.autoGrow(text), 0);
-				let move = (delta) => {
-					let [moved] = prompts.splice(index, 1);
-					prompts.splice(index + delta, 0, moved);
-					save();
-					draw();
-				};
-				let tools = this.el(doc, "div", "zs-prompt-tools");
-				let up = this.iconButton(doc, "", "Move up", "up", () => move(-1));
-				up.disabled = index === 0;
-				let down = this.iconButton(doc, "", "Move down", "down", () => move(1));
-				down.disabled = index === prompts.length - 1;
-				let remove = this.iconButton(doc, "", "Remove", "remove", () => {
-					prompts.splice(index, 1);
-					save();
-					draw();
-				});
-				tools.append(up, down, remove);
-				row.append(label, text, tools);
-				list.appendChild(row);
+			};
+			draw();
+			let buttons = this.el(doc, "div", "abstractin-button-row");
+			let add = this.el(doc, "button", "abstractin-button", "Add prompt");
+			add.type = "button";
+			add.addEventListener("click", () => {
+				prompts.push({ label: "", prompt: "" });
+				save();
+				draw();
+				list.lastElementChild?.querySelector("input")?.focus();
 			});
-		};
-		draw();
-		let buttons = this.el(doc, "div", "zs-button-row");
-		let add = this.el(doc, "button", "zs-button", "Add prompt");
-		add.type = "button";
-		add.addEventListener("click", () => {
-			prompts.push({ label: "", prompt: "" });
-			save();
-			draw();
-			list.lastElementChild?.querySelector("input")?.focus();
-		});
-		let reset = this.el(doc, "button", "zs-button", "Restore defaults");
-		reset.type = "button";
-		reset.addEventListener("click", () => {
-			prompts = this.DEFAULT_PROMPTS.map(p => Object.assign({}, p));
-			save();
-			draw();
-		});
-		buttons.append(add, reset);
-		card.body.appendChild(this.row(doc, "Quick prompts", [list, buttons], null, { stack: true }));
-
-		let explain = this.el(doc, "textarea", "zs-textarea");
-		explain.rows = 3;
-		explain.value = this.getExplainPrompt();
-		explain.addEventListener("input", () => this.setPref("explainPrompt", explain.value));
-		let restore = this.el(doc, "button", "zs-button", "Restore default");
-		restore.type = "button";
-		restore.addEventListener("click", () => {
-			this.setPref("explainPrompt", "");
-			explain.value = this.DEFAULT_EXPLAIN_PROMPT;
-		});
-		let restoreRow = this.el(doc, "div", "zs-button-row");
-		restoreRow.appendChild(restore);
-		card.body.appendChild(this.row(doc, "“Explain better” request", [explain, restoreRow],
-			"Sent when you click Explain better under an answer.", { stack: true }));
-
-		let shown = this.getModeButtons();
-		for (let [id, mode] of Object.entries(this.MODES)) {
-			card.body.appendChild(this.row(doc, "“" + mode.label + "” button",
-				this.switchControl(doc, shown[id], (on) => {
-					shown[id] = on;
-					this.setPref("modeButtons", JSON.stringify(shown));
-				}),
-				(id === "drawing"
-					? "Shows a Drawing button in the message box. When it is on, answers include a drawing."
-					: "Shows a LaTeX button in the message box. When it is on, answers are rigorous maths with theorem and proof boxes.") +
-				" Shortcut: " + this.shortcutLabel(mode.key) + "."));
+			let reset = this.el(doc, "button", "abstractin-button", "Restore defaults");
+			reset.type = "button";
+			reset.addEventListener("click", () => {
+				prompts = this.DEFAULT_PROMPTS[type].map(p => Object.assign({}, p));
+				save();
+				draw();
+			});
+			buttons.append(add, reset);
+			let editor = this.el(doc, "div", "abstractin-prompt-editor");
+			editor.dataset.materialType = type;
+			editor.appendChild(this.row(doc, type === "book" ? "Book quick prompts" : "Paper quick prompts", [list, buttons],
+				type === "book" ? "Questions and custom instructions for books. Select one to fill the composer, then edit and send." : "Questions and custom instructions for papers. Select one to fill the composer, then edit and send.", { stack: true }));
+			card.body.appendChild(editor);
 		}
+
 		return card;
 	},
 
@@ -3981,7 +3887,7 @@ Zusia = {
 			this.saveAppearance(appearance);
 			this.applyAppearance(prefsRoot, appearance);
 			let isPreset = this.ACCENTS.some(a => a.color === appearance.accent);
-			swatches.querySelectorAll(".zs-swatch").forEach((swatch) => {
+			swatches.querySelectorAll(".abstractin-swatch").forEach((swatch) => {
 				let checked = swatch.dataset.color !== undefined
 					? swatch.dataset.color === appearance.accent
 					: !isPreset;
@@ -3989,10 +3895,10 @@ Zusia = {
 			});
 		};
 
-		let swatches = this.el(doc, "div", "zs-swatches");
+		let swatches = this.el(doc, "div", "abstractin-swatches");
 		swatches.setAttribute("role", "radiogroup");
 		for (let accent of this.ACCENTS) {
-			let swatch = this.el(doc, "button", "zs-swatch");
+			let swatch = this.el(doc, "button", "abstractin-swatch");
 			swatch.type = "button";
 			swatch.setAttribute("role", "radio");
 			swatch.dataset.color = accent.color;
@@ -4002,7 +3908,7 @@ Zusia = {
 			swatch.addEventListener("click", () => update({ accent: accent.color }));
 			swatches.appendChild(swatch);
 		}
-		let custom = this.el(doc, "label", "zs-swatch zs-swatch-custom");
+		let custom = this.el(doc, "label", "abstractin-swatch abstractin-swatch-custom");
 		custom.title = "Custom colour";
 		let picker = doc.createElementNS("http://www.w3.org/1999/xhtml", "input");
 		picker.type = "color";
@@ -4028,28 +3934,15 @@ Zusia = {
 	},
 
 	buildBehaviourCard(doc) {
-		let card = this.card(doc, "Behaviour", "How answers are written and how the chat behaves.");
+		let card = this.card(doc, "Behaviour", "How the chat behaves. Answer detail follows your question; custom instructions belong in Chat quick prompts.");
 		let behaviour = this.getBehaviour();
 		let update = (changes) => {
 			behaviour = Object.assign({}, behaviour, changes);
 			this.saveBehaviour(behaviour);
 		};
 		let row = (...args) => this.row(doc, ...args);
-		let tilesFor = key => this.tiles(doc,
-			Object.entries(this.BEHAVIOUR[key]).map(([value, o]) => ({ value, label: o.label, icon: o.icon })),
-			behaviour[key], v => update({ [key]: v }));
-		let custom = this.el(doc, "textarea", "zs-textarea");
-		custom.rows = 3;
-		custom.maxLength = 2000;
-		custom.placeholder = "e.g. Use SI units. Relate ideas to linear algebra.";
-		custom.value = behaviour.custom;
-		custom.addEventListener("input", () => update({ custom: custom.value }));
 		let toggle = key => this.switchControl(doc, behaviour[key], v => update({ [key]: v }));
 		card.body.append(
-			row("Answer length", tilesFor("length"), null, { stack: true }),
-			row("Level", tilesFor("level"), null, { stack: true }),
-			row("Tone", tilesFor("tone"), null, { stack: true }),
-			row("Your instructions", custom, "Added to every question.", { stack: true }),
 			row("Send with", this.segmented(doc, [["enter", "Enter"], ["mod-enter", "⌘/Ctrl + Enter"]], behaviour.sendKey, v => update({ sendKey: v }))),
 			row("Follow the answer", toggle("autoScroll"), "Scroll along while the answer is written."),
 			row("Thinking steps", toggle("showSteps"), "Show what the assistant read and searched."),
@@ -4062,7 +3955,7 @@ Zusia = {
 	// Zotero notes
 	// ---------------------------------------------------------------------
 
-	// With `drawings` (an array), each drawing becomes an <img data-zs-drawing="i"> placeholder
+	// With `drawings` (an array), each drawing becomes an <img data-abstractin-drawing="i"> placeholder
 	// and its SVG source is pushed to the array; without it drawings stay as code.
 	noteHTML(question, text, drawings = null) {
 		let htmlDoc = Zotero.getMainWindow().document.implementation.createHTMLDocument("");
@@ -4114,7 +4007,7 @@ Zusia = {
 					replacements.push(pre.outerHTML);
 				}
 			}
-			note.setNote(html.replace(/<p><img data-zs-drawing="(\d+)"><\/p>/g, (m, i) => replacements[Number(i)]));
+			note.setNote(html.replace(/<p><img data-abstractin-drawing="(\d+)"><\/p>/g, (m, i) => replacements[Number(i)]));
 			await note.saveTx();
 		}
 		this.log("Saved answer as note " + note.key);
@@ -4289,7 +4182,7 @@ Zusia = {
 				}
 				else if (/^(latex|tex)$/i.test(fence[1]) && /^(?:\\(?:begin\{|\[|\(|frac(?![a-zA-Z])|sum(?![a-zA-Z])|int(?![a-zA-Z]))|\$)/.test(body.trim()) && !/\\(?:documentclass|begin\{document\})/.test(body)) {
 					if (/^(?:\\(?:begin\{|\[|\()|\$)/.test(body.trim())) {
-						node = this.el(doc, "div", "zs-latex-output");
+						node = this.el(doc, "div", "abstractin-latex-output");
 						this.renderMarkdown(doc, node, body);
 					}
 					else node = this.renderMath(doc, body, true);
@@ -4395,7 +4288,7 @@ Zusia = {
 			if (/^\s*>/.test(line)) {
 				let { collected, end } = this.collectUntil(lines, i, l => !/^\s*>/.test(l));
 				i = end - 1;
-				let quote = this.el(doc, "blockquote", "zs-quote");
+				let quote = this.el(doc, "blockquote", "abstractin-quote");
 				this.renderMarkdown(doc, quote, collected.map(l => l.replace(/^\s*>\s?/, "")).join("\n"));
 				block(quote);
 				continue;
@@ -4408,7 +4301,7 @@ Zusia = {
 				let content = (section ? section[2] : heading[2]).replace(/\s*#+\s*$/, "");
 				let h = this._noteMode
 					? doc.createElementNS("http://www.w3.org/1999/xhtml", "h" + Math.min(level + 1, 6))
-					: this.el(doc, "div", "zs-h zs-h" + Math.min(level, 3));
+					: this.el(doc, "div", "abstractin-h abstractin-h" + Math.min(level, 3));
 				this.renderInline(doc, h, content);
 				block(h);
 				continue;
@@ -4501,7 +4394,7 @@ Zusia = {
 		fresh.slice(same).forEach((node, i) => {
 			node._csHTML = node.outerHTML;
 			if (same + i >= old.length) {
-				node.classList.add("zs-enter");
+				node.classList.add("abstractin-enter");
 			}
 			container.appendChild(node);
 		});
@@ -4542,10 +4435,10 @@ Zusia = {
 		if (this._noteMode) {
 			return pre;
 		}
-		let block = this.el(doc, "div", "zs-code");
-		let head = this.el(doc, "div", "zs-code-head");
-		head.appendChild(this.el(doc, "span", "zs-code-lang", language || "text"));
-		let copy = this.ghostButton(doc, "zs-code-copy", "copy", "Copy", () => {
+		let block = this.el(doc, "div", "abstractin-code");
+		let head = this.el(doc, "div", "abstractin-code-head");
+		head.appendChild(this.el(doc, "span", "abstractin-code-lang", language || "text"));
+		let copy = this.ghostButton(doc, "abstractin-code-copy", "copy", "Copy", () => {
 			Zotero.Utilities.Internal.copyTextToClipboard(code);
 			copy.setLabel("Copied");
 			doc.defaultView.setTimeout(() => copy.setLabel("Copy"), 1200);
@@ -4564,7 +4457,7 @@ Zusia = {
 		"line", "polyline", "polygon", "text", "tspan", "textPath", "marker", "linearGradient",
 		"radialGradient", "stop", "clipPath", "mask", "pattern",
 	]),
-	// Colour names the assistant draws with; each maps to a theme colour (--zs-d-*).
+	// Colour names the assistant draws with; each maps to a theme colour (--abstractin-d-*).
 	DRAWING_COLORS: [
 		"ink", "muted", "line", "surface", "accent", "accent-soft", "teal", "teal-soft",
 		"violet", "violet-soft", "orange", "orange-soft", "red", "red-soft", "green", "green-soft",
@@ -4584,7 +4477,7 @@ Zusia = {
 			if (this._noteDrawings) {
 				let p = doc.createElementNS("http://www.w3.org/1999/xhtml", "p");
 				let img = doc.createElementNS("http://www.w3.org/1999/xhtml", "img");
-				img.setAttribute("data-zs-drawing", String(this._noteDrawings.push(source) - 1));
+				img.setAttribute("data-abstractin-drawing", String(this._noteDrawings.push(source) - 1));
 				p.appendChild(img);
 				return p;
 			}
@@ -4594,31 +4487,31 @@ Zusia = {
 		if (!svg) {
 			return this.renderCodeBlock(doc, source, "svg");
 		}
-		let figure = this.el(doc, "div", "zs-figure");
-		let canvas = this.el(doc, "div", "zs-figure-canvas");
+		let figure = this.el(doc, "div", "abstractin-figure");
+		let canvas = this.el(doc, "div", "abstractin-figure-canvas");
 		canvas.appendChild(svg);
-		let head = this.el(doc, "div", "zs-figure-tools");
+		let head = this.el(doc, "div", "abstractin-figure-tools");
 		let sourceBlock = this.renderCodeBlock(doc, source, "svg");
 		sourceBlock.hidden = true;
-		let toggle = this.ghostButton(doc, "zs-figure-source", "code", "Source", () => {
+		let toggle = this.ghostButton(doc, "abstractin-figure-source", "code", "Source", () => {
 			sourceBlock.hidden = !sourceBlock.hidden;
 			toggle.setAttribute("aria-expanded", String(!sourceBlock.hidden));
 		});
 		toggle.setAttribute("aria-expanded", "false");
-		let copy = this.ghostButton(doc, "zs-figure-copy", "copy", "Copy", () => {
+		let copy = this.ghostButton(doc, "abstractin-figure-copy", "copy", "Copy", () => {
 			Zotero.Utilities.Internal.copyTextToClipboard(source);
 			copy.setLabel("Copied");
 			doc.defaultView.setTimeout(() => copy.setLabel("Copy"), 1200);
 		});
-		let save = this.ghostButton(doc, "zs-figure-save", "save", "Save", () => this.openDrawingMenu(save, source), { chevron: true });
+		let save = this.ghostButton(doc, "abstractin-figure-save", "save", "Save", () => this.openDrawingMenu(save, source), { chevron: true });
 		head.append(toggle, copy, save);
 		figure.append(canvas, head, sourceBlock);
 		return figure;
 	},
 
 	renderDrawingPlaceholder(doc) {
-		let holder = this.el(doc, "div", "zs-figure zs-figure-pending");
-		holder.append(this.el(doc, "span", "zs-spinner"), this.el(doc, "span", "zs-shimmer", "Drawing…"));
+		let holder = this.el(doc, "div", "abstractin-figure abstractin-figure-pending");
+		holder.append(this.el(doc, "span", "abstractin-spinner"), this.el(doc, "span", "abstractin-shimmer", "Drawing…"));
 		return holder;
 	},
 
@@ -4629,13 +4522,13 @@ Zusia = {
 	// Exported drawings use a light palette on white, whatever the sidebar's theme,
 	// so they read well in notes, documents and slides.
 	EXPORT_PALETTE: {
-		"--zs-text": "#1f2328", "--zs-muted": "#5b6270", "--zs-faint": "#a9b0bb",
+		"--abstractin-text": "#1f2328", "--abstractin-muted": "#5b6270", "--abstractin-faint": "#a9b0bb",
 		"--accent-teal": "#2a9bb5", "--tag-purple": "#7c62d6", "--accent-orange": "#e8652f",
 		"--accent-red": "#d02f3c", "--accent-green": "#2e9e57",
 	},
 
 	openDrawingMenu(anchor, source) {
-		let root = anchor.closest(".zs-root");
+		let root = anchor.closest(".abstractin-root");
 		if (!root) {
 			return;
 		}
@@ -4685,14 +4578,14 @@ Zusia = {
 		}
 		let XHTML = "http://www.w3.org/1999/xhtml";
 		let host = doc.createElementNS(XHTML, "div");
-		host.className = "zs-root zs-export";
+		host.className = "abstractin-root abstractin-export";
 		host.setAttribute("style", "position: fixed; left: -10000px; top: 0; width: 600px; visibility: hidden;");
 		for (let [name, value] of Object.entries(this.EXPORT_PALETTE)) {
 			host.style.setProperty(name, value);
 		}
-		host.style.setProperty("--zs-accent", this.getAppearance().accent || this.ZOTERO_ACCENT);
+		host.style.setProperty("--abstractin-accent", this.getAppearance().accent || this.ZOTERO_ACCENT);
 		let canvas = doc.createElementNS(XHTML, "div");
-		canvas.className = "zs-figure-canvas";
+		canvas.className = "abstractin-figure-canvas";
 		canvas.appendChild(svg);
 		host.appendChild(canvas);
 		doc.documentElement.appendChild(host);
@@ -4884,14 +4777,14 @@ Zusia = {
 					let token = this.drawingColor(value, prop);
 					if (token) {
 						el.removeAttribute(prop);
-						el.style.setProperty(prop, "var(--zs-d-" + token + ")");
+						el.style.setProperty(prop, "var(--abstractin-d-" + token + ")");
 					}
 				}
 				let inline = el.style && el.style.getPropertyValue(prop);
 				if (inline) {
 					let token = this.drawingColor(inline, prop);
 					if (token) {
-						el.style.setProperty(prop, "var(--zs-d-" + token + ")");
+						el.style.setProperty(prop, "var(--abstractin-d-" + token + ")");
 					}
 				}
 			}
@@ -4982,7 +4875,7 @@ Zusia = {
 		if (this._noteMode) {
 			return table;
 		}
-		let wrap = this.el(doc, "div", "zs-table-wrap");
+		let wrap = this.el(doc, "div", "abstractin-table-wrap");
 		wrap.appendChild(table);
 		return wrap;
 	},
@@ -5017,9 +4910,9 @@ Zusia = {
 			return "";
 		});
 
-		let box = this._noteMode ? doc.createElementNS("http://www.w3.org/1999/xhtml", "blockquote") : this.el(doc, "div", "zs-env zs-env-" + kind);
-		let head = this._noteMode ? doc.createElementNS("http://www.w3.org/1999/xhtml", "p") : this.el(doc, "div", "zs-env-head");
-		let labelEl = this.el(doc, this._noteMode ? "strong" : "span", "zs-env-label",
+		let box = this._noteMode ? doc.createElementNS("http://www.w3.org/1999/xhtml", "blockquote") : this.el(doc, "div", "abstractin-env abstractin-env-" + kind);
+		let head = this._noteMode ? doc.createElementNS("http://www.w3.org/1999/xhtml", "p") : this.el(doc, "div", "abstractin-env-head");
+		let labelEl = this.el(doc, this._noteMode ? "strong" : "span", "abstractin-env-label",
 			this.BOX_ENVS[env] + (kind === "proof" ? "." : ""));
 		head.appendChild(labelEl);
 		if (!this._noteMode) {
@@ -5029,24 +4922,24 @@ Zusia = {
 			}
 			// Filled in by linkTheorems(), which numbers boxes across the whole chat.
 			if (kind !== "proof") {
-				labelEl.appendChild(this.el(doc, "span", "zs-env-num"));
+				labelEl.appendChild(this.el(doc, "span", "abstractin-env-num"));
 			}
 		}
 		if (title) {
-			let titleEl = this.el(doc, "span", "zs-env-title");
+			let titleEl = this.el(doc, "span", "abstractin-env-title");
 			titleEl.appendChild(doc.createTextNode(" — "));
 			this.renderInline(doc, titleEl, title);
 			head.appendChild(titleEl);
 		}
 		box.appendChild(head);
 
-		let content = this._noteMode ? box : this.el(doc, "div", "zs-env-body zs-rich");
+		let content = this._noteMode ? box : this.el(doc, "div", "abstractin-env-body abstractin-rich");
 		this.renderMarkdown(doc, content, body.trim());
 		if (content !== box) {
 			box.appendChild(content);
 		}
 		if (kind === "proof") {
-			box.appendChild(this.el(doc, this._noteMode ? "p" : "div", "zs-qed", "∎"));
+			box.appendChild(this.el(doc, this._noteMode ? "p" : "div", "abstractin-qed", "∎"));
 		}
 		return box;
 	},
@@ -5064,7 +4957,7 @@ Zusia = {
 			if (label) {
 				li.appendChild(this.el(doc, "strong", null, label + " "));
 			}
-			let holder = this.el(doc, "div", "zs-li-body");
+			let holder = this.el(doc, "div", "abstractin-li-body");
 			this.renderMarkdown(doc, holder, body.trim());
 			li.appendChild(holder);
 			list.appendChild(li);
@@ -5151,7 +5044,7 @@ Zusia = {
 					parent.appendChild(this.renderRef(doc, url.slice(1), label));
 				}
 				else if (/^https?:\/\//.test(url)) {
-					let link = this.el(doc, this._noteMode ? "a" : "span", "zs-link");
+					let link = this.el(doc, this._noteMode ? "a" : "span", "abstractin-link");
 					if (this._noteMode) {
 						link.setAttribute("href", url);
 					}
@@ -5294,24 +5187,24 @@ Zusia = {
 
 		let math = this.texToMathML(doc, tex, displayMode);
 		let fallback = () => {
-			let code = this.el(doc, "code", "zs-tex-error", displayMode ? tex : "$" + tex + "$");
+			let code = this.el(doc, "code", "abstractin-tex-error", displayMode ? tex : "$" + tex + "$");
 			code.title = "Could not render this LaTeX";
 			return code;
 		};
 
 		if (!displayMode) {
-			let span = this.el(doc, "span", "zs-math");
+			let span = this.el(doc, "span", "abstractin-math");
 			span.title = tex;
 			span.dataset.tex = tex;
 			span.appendChild(math || fallback());
 			return span;
 		}
 
-		let box = this.el(doc, "div", "zs-math-block");
+		let box = this.el(doc, "div", "abstractin-math-block");
 		box.dataset.tex = tex;
-		let scroller = this.el(doc, "div", "zs-math-scroll");
+		let scroller = this.el(doc, "div", "abstractin-math-scroll");
 		scroller.appendChild(math || fallback());
-		let copy = this.el(doc, "button", "zs-copy-tex", "Copy TeX");
+		let copy = this.el(doc, "button", "abstractin-copy-tex", "Copy TeX");
 		copy.title = "Copy LaTeX source";
 		copy.addEventListener("click", () => {
 			Zotero.Utilities.Internal.copyTextToClipboard(tex);
@@ -5355,7 +5248,7 @@ Zusia = {
 		let dirName = paperItem.libraryID + "-" + paperItem.key;
 		let dir = OS.Path.join(this.getDataDir(), dirName);
 		// createDirectoryIfMissingAsync() does not create missing parents, so create
-		// the shared "zusia" directory before the per-item subdirectory.
+		// the shared "abstractin" directory before the per-item subdirectory.
 		await Zotero.File.createDirectoryIfMissingAsync(this.getDataDir());
 		await Zotero.File.createDirectoryIfMissingAsync(dir);
 		let reading = attachmentItem && this._readingStates.get(attachmentItem.id);
@@ -5586,7 +5479,12 @@ Zusia = {
 	formattingGuide() {
 		return (
 			"Formatting: your answer is shown in a narrow sidebar that renders Markdown and LaTeX. " +
-			"Write ALL mathematics in LaTeX: $...$ inline and $$...$$ on their own lines for displayed " +
+			"Adapt detail and background explanation to this question and its follow-ups, rather than assigning a fixed learner level. " +
+			"Start with intuition for conceptual questions and show assumptions and intermediate steps for derivation or proof questions. " +
+			"When background is unclear, give a moderate explanation and ask about it only when needed for a useful answer. " +
+			"Choose prose, equations and formal definition/theorem/proof environments according to the material " +
+			"type and the question. Follow explicit presentation requests; do not force every answer into formal mathematics. " +
+			"When mathematics is useful, write it in LaTeX: $...$ inline and $$...$$ on their own lines for displayed " +
 			"equations (align, cases and matrix environments work). Never write maths with Unicode " +
 			"symbols such as ‖, Σ, ≤, subscript digits or superscript letters; use \\|, \\sum, \\le, x_1 " +
 			"instead. For formal statements you may use \\begin{definition}, theorem, lemma, " +
@@ -5604,8 +5502,8 @@ Zusia = {
 
 	drawingGuide() {
 		return (
-			"Drawings: when a picture explains something better than words (a geometric idea, a " +
-			"pipeline, an architecture, a plot sketch), draw it as SVG in a ```svg code block; it " +
+			"Drawings: include a drawing only when the user requests one in the current question. " +
+			"When requested, draw it as SVG in a ```svg code block; it " +
 			"renders as a figure on the sidebar's own background. Make it polished and clear: " +
 			"one idea per drawing, few elements, aligned to a grid, generous padding, every node " +
 			"and axis labelled. Rules: set viewBox about 360 wide (the sidebar is narrow) and no " +
@@ -5624,8 +5522,10 @@ Zusia = {
 	// Appended to every question (never stored in the chat), because resumed
 	// sessions tend to drift away from formatting rules given only at the start.
 	formattingReminder(language = this.getLanguage()) {
-		return "\n\n(Sidebar formatting: maths in LaTeX with $...$ / $$...$$, no Unicode maths symbols. " +
-			"Drawings as ```svg blocks using only the sidebar's colour names. \\label statements and \\ref earlier ones." +
+		return "\n\n(Sidebar formatting: choose prose, maths and formal environments to suit the material and question; explicit user requests take precedence. " +
+			"When using maths, use LaTeX with $...$ / $$...$$, no Unicode maths symbols. " +
+			"Draw only when requested in this question, as ```svg blocks using only the sidebar's colour names. " +
+			"When using formal statements, use \\label and \\ref earlier ones." +
 			(language ? " Always reply in " + language + ", whatever language the user writes in." : " Reply in the language the user writes in.") + ")";
 	},
 
@@ -5646,7 +5546,7 @@ Zusia = {
 			"not provided: answer from these files and your own knowledge, and say so when a " +
 			"question needs details only the full text would have. Do not modify any files. " +
 			"Keep answers focused on this paper. " + this.languageInstruction() + " " +
-			this.behaviourInstructions() + "\n\n" +
+			"\n\n" +
 			this.formattingGuide()
 		);
 	},
@@ -6052,7 +5952,7 @@ Zusia = {
 			"below, so do not use any tools. The paper's full text is deliberately not provided: " +
 			"answer from these and your own knowledge, and say so when a question needs details " +
 			"only the full text would have. Keep answers focused on this paper. " +
-			this.languageInstruction() + " " + this.behaviourInstructions() + "\n\n" + this.formattingGuide() + "\n\n" +
+			this.languageInstruction() + " " + "\n\n" + this.formattingGuide() + "\n\n" +
 			"<metadata>\n" + files.metadata + "</metadata>\n\n" +
 			(files.annotations ? "<annotations>\n" + files.annotations + "\n</annotations>\n\n" : "") +
 			"---\n\n" + tail

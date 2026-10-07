@@ -3,13 +3,13 @@
  */
 "use strict";
 (() => {
- const builtin = Object.fromEntries(Object.entries(Zusia.BACKENDS).map(([id, agent]) => [id, { ...agent }]));
- const nativeRun = Zusia.runBackend;
- const nativeGetBackend = Zusia.getBackend;
- const nativeInit = Zusia.init;
- const nativeGetModels = Zusia.getModels;
- const nativeGetEfforts = Zusia.getEfforts;
- Object.assign(Zusia, {
+ const builtin = Object.fromEntries(Object.entries(AbstractIn.BACKENDS).map(([id, agent]) => [id, { ...agent }]));
+ const nativeRun = AbstractIn.runBackend;
+ const nativeGetBackend = AbstractIn.getBackend;
+ const nativeInit = AbstractIn.init;
+ const nativeGetModels = AbstractIn.getModels;
+ const nativeGetEfforts = AbstractIn.getEfforts;
+ Object.assign(AbstractIn, {
   agentRegistry() {
    const saved = this.getJSONPref("agents", []) || [];
    const registry = { ...builtin };
@@ -285,7 +285,7 @@
  });
 })();
 
-Object.assign(Zusia, {
+Object.assign(AbstractIn, {
  async agentReadFile(ctx, path, line = 1, limit = undefined) {
   if (ctx.reading?.evidenceMode === "knowledge") throw new Error("File access is unavailable during Knowledge discussion.");
   if (typeof path !== "string" || path.includes("\0")) throw new Error("Invalid source path.");
@@ -436,12 +436,12 @@ Object.assign(Zusia, {
  },
 });
 
-Object.assign(Zusia, {
+Object.assign(AbstractIn, {
  buildAssistantsCard(doc) {
   const card = this.card(doc, "Assistants", "Manage reading agents. Built-in Codex is ready; other agents must pass skill compatibility checks before activation.");
-  const status = this.el(doc, "div", "zs-notice"); status.setAttribute("role", "status");
-  const list = this.el(doc, "div", "zs-agent-list");
-  const editor = this.el(doc, "div", "zs-agent-editor"); editor.hidden = true;
+  const status = this.el(doc, "div", "abstractin-notice"); status.setAttribute("role", "status");
+  const list = this.el(doc, "div", "abstractin-agent-list");
+  const editor = this.el(doc, "div", "abstractin-agent-editor"); editor.hidden = true;
   const redraw = () => {
    list.replaceChildren();
    const registry = this.agentRegistry();
@@ -451,15 +451,15 @@ Object.assign(Zusia, {
    });
    list.append(this.row(doc, "Reading agent", select));
    for (const [id, agent] of Object.entries(registry)) {
-    const details = this.el(doc, "details", "zs-agent"); details.dataset.backend = id;
+    const details = this.el(doc, "details", "abstractin-agent"); details.dataset.backend = id;
     const summary = this.el(doc, "summary");
     const name = this.el(doc, "strong", null, agent.fullName);
     const checked = this.getAgentValidation(id);
     const label = id === "codex" ? "Built-in reading support" : checked?.source ? "Discussion & source checks passed" : checked?.discussion ? "Discussion checks passed; source access unavailable" : "Not tested";
-    summary.append(name, this.el(doc, "span", "zs-agent-status", label));
-    const badge = this.el(doc, "span", "zs-badge", "In use"); badge.hidden = id !== this.readingAgent(); summary.append(badge);
-    const body = this.el(doc, "div", "zs-agent-body");
-    const path = this.el(doc, "input", "zs-field"); path.type = "text";
+    summary.append(name, this.el(doc, "span", "abstractin-agent-status", label));
+    const badge = this.el(doc, "span", "abstractin-badge", "In use"); badge.hidden = id !== this.readingAgent(); summary.append(badge);
+    const body = this.el(doc, "div", "abstractin-agent-body");
+    const path = this.el(doc, "input", "abstractin-field"); path.type = "text";
     path.placeholder = "Detect “" + agent.command + "” automatically";
     path.value = this.getPref(agent.pathPref) || "";
     path.addEventListener("change", () => { try { this.assertAgentIdle(id); this.setPref(agent.pathPref, path.value.trim()); this.clearAgentValidation(id); redraw(); } catch (e) { status.textContent = e.message; } });
@@ -468,16 +468,16 @@ Object.assign(Zusia, {
     const efforts = this.getEfforts(id);
     if (efforts.length > 1) body.append(this.row(doc, "Reasoning effort", this.select(doc, efforts.map(value => [value, this.EFFORTS[value].label]), this.getEffort(id), value => this.setPref(id + ".effort", value))));
     if (id === "codex") {
-     const extra = this.el(doc, "input", "zs-field"); extra.type = "text"; extra.value = this.getPref("codex.models") || "";
+     const extra = this.el(doc, "input", "abstractin-field"); extra.type = "text"; extra.value = this.getPref("codex.models") || "";
      extra.placeholder = "Comma-separated model IDs";
      extra.addEventListener("change", () => { this.setPref("codex.models", extra.value.trim()); redraw(); });
      body.append(this.row(doc, "Extra models", extra));
     }
     body.append(this.row(doc, "Command path", path));
     if (id === "claude") body.append(this.row(doc, "Use my Claude Code settings", this.switchControl(doc, !!this.getPref("useClaudeUserSettings"), value => { this.setPref("useClaudeUserSettings", value); this.clearAgentValidation(id); redraw(); }), "Uses your local Claude settings."));
-    if (checked) body.append(this.el(doc, "p", "zs-row-hint", "Checked agent version: " + checked.agentVersion + ". Images: " + (checked.images ? "supported" : "not supported") + ". Checks are sample-based, not a guarantee for every answer."));
-    const buttons = this.el(doc, "div", "zs-button-row");
-    const test = this.el(doc, "button", "zs-button", "Test & adapt skills"); test.type = "button";
+    if (checked) body.append(this.el(doc, "p", "abstractin-row-hint", "Checked agent version: " + checked.agentVersion + ". Images: " + (checked.images ? "supported" : "not supported") + ". Checks are sample-based, not a guarantee for every answer."));
+    const buttons = this.el(doc, "div", "abstractin-button-row");
+    const test = this.el(doc, "button", "abstractin-button", "Test & adapt skills"); test.type = "button";
     test.addEventListener("click", async () => {
      test.disabled = true; select.disabled = true;
      try { const result = await this.testAndAdaptAgent(id, message => { status.textContent = message; });
@@ -487,8 +487,8 @@ Object.assign(Zusia, {
     });
     buttons.append(test);
     if (agent.custom) {
-     const edit = this.el(doc, "button", "zs-button", "Edit"); edit.type = "button"; edit.addEventListener("click", () => editAgent(agent));
-     const remove = this.el(doc, "button", "zs-button", "Remove"); remove.type = "button"; remove.addEventListener("click", () => { try { this.removeAgent(id); redraw(); } catch (e) { status.textContent = e.message; } });
+     const edit = this.el(doc, "button", "abstractin-button", "Edit"); edit.type = "button"; edit.addEventListener("click", () => editAgent(agent));
+     const remove = this.el(doc, "button", "abstractin-button", "Remove"); remove.type = "button"; remove.addEventListener("click", () => { try { this.removeAgent(id); redraw(); } catch (e) { status.textContent = e.message; } });
      buttons.append(edit, remove);
     }
     body.append(buttons); details.append(summary, body); list.append(details);
@@ -496,23 +496,23 @@ Object.assign(Zusia, {
   };
   const editAgent = (agent = {}) => {
    editor.replaceChildren(); editor.hidden = false;
-   const input = (label, value) => { const field = this.el(doc, "input", "zs-field"); field.type = "text"; field.value = value || ""; editor.append(this.row(doc, label, field)); return field; };
+   const input = (label, value) => { const field = this.el(doc, "input", "abstractin-field"); field.type = "text"; field.value = value || ""; editor.append(this.row(doc, label, field)); return field; };
    const name = input("Agent name", agent.name);
    const command = input("Executable", agent.command);
    const args = input("Arguments (JSON array)", JSON.stringify(agent.args || []));
    const protocol = this.select(doc, [["acp", "ACP v1"], ["abstractin-jsonl", "AbstractIn JSONL adapter"]], agent.protocol || "acp", () => {});
    editor.append(this.row(doc, "Protocol", protocol));
-   const save = this.el(doc, "button", "zs-button", "Save agent"); save.type = "button";
+   const save = this.el(doc, "button", "abstractin-button", "Save agent"); save.type = "button";
    save.addEventListener("click", () => {
     try { this.saveAgent({ ...(agent.id ? { id: agent.id } : {}), name: name.value, command: command.value, args: JSON.parse(args.value), protocol: protocol.value }); editor.hidden = true; redraw(); status.textContent = "Agent saved. Test and adapt its skills before enabling it."; }
     catch (e) { status.textContent = e.message || String(e); }
    });
-   const cancel = this.el(doc, "button", "zs-button", "Cancel"); cancel.type = "button"; cancel.addEventListener("click", () => { editor.hidden = true; });
-   const buttons = this.el(doc, "div", "zs-button-row"); buttons.append(save, cancel); editor.append(buttons);
+   const cancel = this.el(doc, "button", "abstractin-button", "Cancel"); cancel.type = "button"; cancel.addEventListener("click", () => { editor.hidden = true; });
+   const buttons = this.el(doc, "div", "abstractin-button-row"); buttons.append(save, cancel); editor.append(buttons);
   };
-  const buttons = this.el(doc, "div", "zs-button-row");
-  const add = this.el(doc, "button", "zs-button", "Add agent"); add.type = "button"; add.addEventListener("click", () => editAgent());
-  const importButton = this.el(doc, "button", "zs-button", "Import adapter…"); importButton.type = "button";
+  const buttons = this.el(doc, "div", "abstractin-button-row abstractin-agent-add-actions");
+  const add = this.el(doc, "button", "abstractin-button", "Add agent"); add.type = "button"; add.addEventListener("click", () => editAgent());
+  const importButton = this.el(doc, "button", "abstractin-button", "Import adapter…"); importButton.type = "button";
   importButton.addEventListener("click", async () => {
    try {
     const { FilePicker } = ChromeUtils.importESModule("chrome://zotero/content/modules/filePicker.mjs");
@@ -529,7 +529,7 @@ Object.assign(Zusia, {
  },
 });
 
-Object.assign(Zusia, {
+Object.assign(AbstractIn, {
  async runAgentProcess(command, args, cwd, onEvent, onSpawn, stdin, timeout, environment = null) {
   const win = Zotero.getMainWindow();
   let timer, expired = false;
@@ -544,7 +544,7 @@ Object.assign(Zusia, {
  },
 });
 
-Object.assign(Zusia, {
+Object.assign(AbstractIn, {
  assertAgentIdle(id) {
   if ([...this._pending.values()].some(request => request.backend === id)) throw new Error("Stop or finish this agent's current reading request before changing its configuration.");
  },

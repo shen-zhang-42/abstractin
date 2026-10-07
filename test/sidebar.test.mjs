@@ -4,22 +4,25 @@ import { loadPlugin } from "./load-plugin.mjs";
 
 const PREFIX = "extensions.abstractin.";
 
-function sidebar(prefs = {}) {
+function sidebar(prefs = {}, readerPanel = true) {
 	// The setup wizard is tested on its own; everywhere else setup is already done.
 	prefs = { [PREFIX + "onboarded"]: true, ...prefs };
 	const env = loadPlugin({ prefs });
 	const { plugin, document, window } = env;
 	const removed = [];
 	const body = document.createElement("div");
-	document.body.appendChild(body);
+	if (readerPanel) {
+		const panel = document.createElement("section"); panel.className = "abstractin-reader-panel";
+		document.body.appendChild(panel); panel.appendChild(body);
+	} else document.body.appendChild(body);
 	plugin.renderSkeleton(document, body);
-	const root = body.querySelector(".zs-root");
+	const root = body.querySelector(".abstractin-root");
 	root._installed = { claude: "/bin/claude", codex: null, agy: "/bin/agy" };
 	const sent = [];
 	const view = {
 		doc: document, root, ctx: { dir: "/tmp/x" },
-		logEl: root.querySelector(".zs-log"),
-		input: root.querySelector(".zs-input"),
+		logEl: root.querySelector(".abstractin-log"),
+		input: root.querySelector(".abstractin-input"),
 		send: (text, images) => sent.push(images && images.length ? { text, images } : text),
 	};
 	window.Zotero.File = { pathToFileURI: path => "file://" + path, putContentsAsync: async () => {}, createDirectoryIfMissingAsync: async () => {} };
@@ -27,7 +30,7 @@ function sidebar(prefs = {}) {
 	plugin._views.set(root, view);
 	return { ...env, root, view, sent, removed };
 }
-const menuLabels = root => [...root.querySelectorAll(".zs-menu .zs-menu-label")].map(n => n.textContent);
+const menuLabels = root => [...root.querySelectorAll(".abstractin-menu .abstractin-menu-label")].map(n => n.textContent);
 
 test("reading model menu uses the Codex catalog and saves a custom model ID", () => {
 	const { root, view, plugin, prefs } = sidebar();
@@ -35,107 +38,105 @@ test("reading model menu uses the Codex catalog and saves a custom model ID", ()
 	root._installed.codex = "/bin/codex";
 	plugin._codexModels = [{ id: "gpt-6-sol", label: "GPT-6 Sol" }];
 	plugin._codexModelsLoadedAt = Date.now();
-	root.querySelector(".zs-model-btn").click();
+	root.querySelector(".abstractin-model-btn").click();
 	assert.ok(menuLabels(root).includes("GPT-6 Sol"));
-	const sol = [...root.querySelectorAll(".zs-menu-item")].find(n => n.textContent.includes("GPT-6 Sol"));
+	const sol = [...root.querySelectorAll(".abstractin-menu-item")].find(n => n.textContent.includes("GPT-6 Sol"));
 	sol.click();
 	assert.equal(prefs[PREFIX + "codex.model"], "gpt-6-sol");
-	root.querySelector(".zs-model-btn").click();
-	[...root.querySelectorAll(".zs-menu-item")].find(n => n.textContent.includes("Choose another model")).click();
-	const input = root.querySelector(".zs-codex-model-input");
+	root.querySelector(".abstractin-model-btn").click();
+	[...root.querySelectorAll(".abstractin-menu-item")].find(n => n.textContent.includes("Choose another model")).click();
+	const input = root.querySelector(".abstractin-codex-model-input");
 	input.value = "account-model";
-	root.querySelector(".zs-model-save").click();
+	root.querySelector(".abstractin-model-save").click();
 	assert.equal(prefs[PREFIX + "codex.model"], "account-model");
 	assert.ok(plugin.getModels("codex").some(n => n.id === "account-model"));
-	assert.equal(root.querySelector(".zs-panel"), null);
+	assert.equal(root.querySelector(".abstractin-panel"), null);
 });
 
 test("first entry welcomes the reader with a companion and one Start Reading button", () => {
 	const { plugin, view } = sidebar();
 	plugin.renderEmptyState(view);
-	assert.equal(view.logEl.querySelectorAll(".zs-start-reading").length, 1);
-	assert.equal(view.logEl.querySelector(".zs-empty-title").textContent, "let's start reading");
-	assert.ok(view.logEl.querySelector(".zs-mascot"));
+	assert.equal(view.logEl.querySelectorAll(".abstractin-start-reading").length, 1);
+	assert.equal(view.logEl.querySelector(".abstractin-empty-title").textContent, "let's start reading");
+	assert.ok(view.logEl.querySelector(".abstractin-mascot"));
 });
 
 test("Start Reading appears only before entering a reading chat", () => {
 	const { root, view, plugin } = sidebar({ [PREFIX + "language"]: "English" });
 	root.dataset.labels = "icons";
 	plugin.renderMessages(view, []);
-	assert.equal(root.querySelector(".zs-start-reading").hidden, false);
+	assert.equal(root.querySelector(".abstractin-start-reading").hidden, false);
 	plugin.appendUser(view, "A question");
-	assert.equal(root.querySelector(".zs-start-reading").hidden, true);
+	assert.equal(root.querySelector(".abstractin-start-reading").hidden, true);
 	plugin.renderMessages(view, []);
-	assert.equal(root.querySelector(".zs-start-reading").hidden, false);
+	assert.equal(root.querySelector(".abstractin-start-reading").hidden, false);
 	view.ctx.reading = { type: "paper", language: "English" };
 	plugin.updateReadingControls(view);
-	const button = root.querySelector(".zs-start-reading");
+	const button = root.querySelector(".abstractin-start-reading");
 	assert.equal(button.hidden, true);
 	assert.equal(button.textContent, "Start Reading");
-	assert.ok(button.classList.contains("zs-reading-primary"));
-	assert.ok(!button.classList.contains("zs-ghost"));
+	assert.ok(button.classList.contains("abstractin-reading-primary"));
+	assert.ok(!button.classList.contains("abstractin-ghost"));
 	assert.equal(button.getAttribute("aria-label"), "Start Reading");
-	assert.equal(root.querySelector(".zs-reading-status").textContent, "Paper · English · Codex");
-	assert.equal(root.querySelector(".zs-reading-statusbar").previousElementSibling, root.querySelector(".zs-composer"));
-	assert.equal(root.querySelector(".zs-reading-workspace"), null);
-	assert.equal(root.querySelector(".zs-reading-return"), null);
+	assert.equal(root.querySelector(".abstractin-reading-status").textContent, "Paper · English · Codex");
+	assert.equal(root.querySelector(".abstractin-reading-statusbar").previousElementSibling, root.querySelector(".abstractin-composer"));
+	assert.equal(root.querySelector(".abstractin-reading-workspace"), null);
+	assert.equal(root.querySelector(".abstractin-reading-return"), null);
 });
 
 test("composer shows the assistant, model and effort from prefs", () => {
 	const { root } = sidebar({ [PREFIX + "claude.model"]: "opus", [PREFIX + "claude.effort"]: "high" });
-	assert.equal(root.querySelector(".zs-model-btn .zs-label").textContent, "Claude · Opus");
-	assert.equal(root.querySelector(".zs-effort-btn .zs-label").textContent, "High");
-	assert.equal(root.querySelector(".zs-input").placeholder, "Ask Claude about this paper…");
+	assert.equal(root.querySelector(".abstractin-model-btn .abstractin-label").textContent, "Claude · Opus");
+	assert.equal(root.querySelector(".abstractin-effort-btn .abstractin-label").textContent, "High");
+	assert.equal(root.querySelector(".abstractin-input").placeholder, "Ask Claude about this paper…");
 });
 
 test("model menu lists every assistant and switches backend and model together", () => {
 	const { root, prefs, plugin } = sidebar();
 	plugin._agyModels = [{ id: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)" }];
-	root.querySelector(".zs-model-btn").click();
-	assert.deepEqual([...root.querySelectorAll(".zs-menu-section")].map(n => n.textContent),
+	root.querySelector(".abstractin-model-btn").click();
+	assert.deepEqual([...root.querySelectorAll(".abstractin-menu-section")].map(n => n.textContent),
 		["Claude Code", "OpenAI Codex", "Google Antigravity"]);
-	assert.ok(root.querySelector(".zs-menu").textContent.includes("Not installed"), "missing CLI is explained");
-	const gemini = [...root.querySelectorAll(".zs-menu-item")].find(i => i.textContent.includes("Gemini 3.1 Pro"));
+	assert.ok(root.querySelector(".abstractin-menu").textContent.includes("Not installed"), "missing CLI is explained");
+	const gemini = [...root.querySelectorAll(".abstractin-menu-item")].find(i => i.textContent.includes("Gemini 3.1 Pro"));
 	gemini.click();
 	assert.equal(prefs[PREFIX + "backend"], "agy");
 	assert.equal(prefs[PREFIX + "agy.model"], "gemini-3.1-pro-high");
-	assert.equal(root.querySelector(".zs-menu"), null, "menu closes after choosing");
-	assert.equal(root.querySelector(".zs-model-btn .zs-label").textContent, "Gemini 3.1 Pro (High)");
-	assert.equal(root.querySelector(".zs-effort-btn .zs-label").textContent, "Auto");
+	assert.equal(root.querySelector(".abstractin-menu"), null, "menu closes after choosing");
+	assert.equal(root.querySelector(".abstractin-model-btn .abstractin-label").textContent, "Gemini 3.1 Pro (High)");
+	assert.equal(root.querySelector(".abstractin-effort-btn .abstractin-label").textContent, "Auto");
 });
 
 test("effort menu offers the levels the current backend supports", () => {
 	const { root, prefs } = sidebar({ [PREFIX + "backend"]: "agy" });
-	root.querySelector(".zs-effort-btn").click();
+	root.querySelector(".abstractin-effort-btn").click();
 	assert.deepEqual(menuLabels(root), ["Auto", "Low", "Medium", "High"]);
-	[...root.querySelectorAll(".zs-menu-item")][3].click();
+	[...root.querySelectorAll(".abstractin-menu-item")][3].click();
 	assert.equal(prefs[PREFIX + "agy.effort"], "high");
-	assert.equal(root.querySelector(".zs-effort-btn .zs-label").textContent, "High");
+	assert.equal(root.querySelector(".abstractin-effort-btn .abstractin-label").textContent, "High");
 });
 
 test("a second click on the same button closes its menu", () => {
 	const { root } = sidebar();
-	root.querySelector(".zs-effort-btn").click();
-	assert.ok(root.querySelector(".zs-menu"));
-	root.querySelector(".zs-effort-btn").click();
-	assert.equal(root.querySelector(".zs-menu"), null);
+	root.querySelector(".abstractin-effort-btn").click();
+	assert.ok(root.querySelector(".abstractin-menu"));
+	root.querySelector(".abstractin-effort-btn").click();
+	assert.equal(root.querySelector(".abstractin-menu"), null);
 });
 
-test("answers get Explain better, Retry, Copy and a More menu; only the last is retryable", () => {
+test("answers retain Retry, Copy and More without the removed Explain better action", () => {
 	const { root, view, plugin, sent } = sidebar();
 	plugin.renderMessages(view, [
 		{ role: "user", text: "q1" }, { role: "assistant", text: "a1", backend: "claude" },
 		{ role: "user", text: "q2" }, { role: "assistant", text: "a2", backend: "claude" },
 	]);
-	const turns = root.querySelectorAll(".zs-turn");
-	assert.equal(turns[0].querySelector(".zs-retry"), null);
-	assert.ok(turns[1].querySelector(".zs-retry"));
-	assert.ok(turns[1].classList.contains("zs-last"));
-	turns[1].querySelector(".zs-explain").click();
-	assert.equal(sent[0], plugin.getExplainPrompt());
-	turns[0].querySelector(".zs-explain").click();
-	assert.match(sent[1], /^About your earlier answer that begins "a1/);
-	turns[1].querySelector(".zs-more").click();
+	const turns = root.querySelectorAll(".abstractin-turn");
+	assert.equal(turns[0].querySelector(".abstractin-retry"), null);
+	assert.ok(turns[1].querySelector(".abstractin-retry"));
+	assert.ok(turns[1].classList.contains("abstractin-last"));
+	assert.equal(root.querySelector(".abstractin-explain"), null);
+	assert.ok(turns[1].querySelector(".abstractin-copy"));
+	turns[1].querySelector(".abstractin-more").click();
 	assert.deepEqual(menuLabels(root), ["Save as note", "Copy"]);
 });
 
@@ -145,17 +146,17 @@ test("answers from different assistants or models are labelled", () => {
 		{ role: "user", text: "q1" }, { role: "assistant", text: "a1", backend: "claude", model: "opus" },
 		{ role: "user", text: "q2" }, { role: "assistant", text: "a2", backend: "agy" },
 	]);
-	assert.deepEqual([...root.querySelectorAll(".zs-by")].map(n => n.textContent), ["Claude · Opus", "Antigravity"]);
+	assert.deepEqual([...root.querySelectorAll(".abstractin-by")].map(n => n.textContent), ["Claude · Opus", "Antigravity"]);
 });
 
 test("busy state turns Send into Stop and disables prompts", () => {
 	const { root, view, plugin } = sidebar();
 	plugin.setBusy(view, true);
-	const send = root.querySelector(".zs-send");
-	assert.ok(send.classList.contains("zs-stop"));
+	const send = root.querySelector(".abstractin-send");
+	assert.ok(send.classList.contains("abstractin-stop"));
 	assert.equal(send.disabled, false);
 	assert.equal(send.title, "Stop");
-	assert.ok([...root.querySelectorAll(".zs-pill")].every(p => p.disabled));
+	assert.equal(root.querySelector(".abstractin-prompt-menu").disabled, true);
 	plugin.setBusy(view, false);
 	assert.equal(send.title, "Send (Enter)");
 	assert.equal(send.disabled, true, "empty input cannot be sent");
@@ -189,28 +190,28 @@ test("paper chip label: first author, et al. and year", () => {
 test("paper chip renders into the composer and hides without a paper", () => {
 	const { root, plugin } = sidebar();
 	plugin.renderPaperChip(root, { label: "Dohare et al., 2024", title: "Loss of plasticity" });
-	const chip = root.querySelector(".zs-composer .zs-context-chip");
-	assert.equal(chip.querySelector(".zs-context-label").textContent, "Dohare et al., 2024");
-	assert.equal(chip.querySelector(".zs-context-badge"), null);
+	const chip = root.querySelector(".abstractin-composer .abstractin-context-chip");
+	assert.equal(chip.querySelector(".abstractin-context-label").textContent, "Dohare et al., 2024");
+	assert.equal(chip.querySelector(".abstractin-context-badge"), null);
 	assert.match(chip.title, /not the PDF text/);
-	assert.equal(root.querySelector(".zs-context").hidden, false);
+	assert.equal(root.querySelector(".abstractin-context").hidden, false);
 	plugin.renderPaperChip(root, null);
-	assert.equal(root.querySelector(".zs-context").hidden, true);
+	assert.equal(root.querySelector(".abstractin-context").hidden, true);
 });
 
 test("error card: short errors open, long ones collapse, retry runs the callback", () => {
 	const { view, plugin } = sidebar();
 	let retried = 0;
 	const short = plugin.appendError(view, "claude exited with code 1", { title: "Claude could not answer", retry: () => retried++ });
-	assert.equal(short.querySelector(".zs-error-title").textContent, "Claude could not answer");
-	assert.equal(short.querySelector(".zs-error-details").hidden, false);
-	short.querySelector(".zs-error-retry").click();
+	assert.equal(short.querySelector(".abstractin-error-title").textContent, "Claude could not answer");
+	assert.equal(short.querySelector(".abstractin-error-details").hidden, false);
+	short.querySelector(".abstractin-error-retry").click();
 	assert.equal(retried, 1);
 	const long = plugin.appendError(view, "x".repeat(500));
-	assert.equal(long.querySelector(".zs-error-details").hidden, true);
-	long.querySelector(".zs-error-head").click();
-	assert.equal(long.querySelector(".zs-error-details").hidden, false);
-	assert.equal(long.querySelector(".zs-error-head").getAttribute("aria-expanded"), "true");
+	assert.equal(long.querySelector(".abstractin-error-details").hidden, true);
+	long.querySelector(".abstractin-error-head").click();
+	assert.equal(long.querySelector(".abstractin-error-details").hidden, false);
+	assert.equal(long.querySelector(".abstractin-error-head").getAttribute("aria-expanded"), "true");
 });
 
 test("history menu lists earlier chats and restores the chosen one", async () => {
@@ -221,13 +222,13 @@ test("history menu lists earlier chats and restores the chosen one", async () =>
 		{ path: "/tmp/x/chat-1.json", title: "Summarize this paper", count: 2, ts: Date.parse("2026-09-01T10:00:00Z") },
 	];
 	plugin.restoreChat = async (r, archive) => { restored = archive.path; };
-	root.querySelector(".zs-history").click();
-	assert.ok(root.querySelector(".zs-menu").textContent.includes("Loading"));
+	root.querySelector(".abstractin-history").click();
+	assert.ok(root.querySelector(".abstractin-menu").textContent.includes("Loading"));
 	await new Promise(r => setTimeout(r, 0));
 	assert.deepEqual(menuLabels(root), ["What is the DFT?", "Summarize this paper"]);
-	assert.match(root.querySelector(".zs-menu .zs-menu-desc").textContent, /^4 messages · /);
-	root.querySelectorAll(".zs-menu-item")[1].click();
-	assert.equal(root.querySelector(".zs-menu"), null);
+	assert.match(root.querySelector(".abstractin-menu .abstractin-menu-desc").textContent, /^4 messages · /);
+	root.querySelectorAll(".abstractin-menu-item")[1].click();
+	assert.equal(root.querySelector(".abstractin-menu"), null);
 	await new Promise(r => setTimeout(r, 0));
 	assert.equal(restored, "/tmp/x/chat-1.json");
 });
@@ -235,17 +236,17 @@ test("history menu lists earlier chats and restores the chosen one", async () =>
 test("history menu explains when there is nothing to reopen", async () => {
 	const { root, plugin } = sidebar();
 	plugin.listArchives = async () => [];
-	root.querySelector(".zs-history").click();
+	root.querySelector(".abstractin-history").click();
 	await new Promise(r => setTimeout(r, 0));
-	assert.match(root.querySelector(".zs-menu").textContent, /No earlier chats/);
+	assert.match(root.querySelector(".abstractin-menu").textContent, /No earlier chats/);
 });
 
 test("edit icon puts a question back in the composer", () => {
 	const { root, view, plugin, window } = sidebar();
 	plugin.renderMessages(view, [{ role: "user", text: "First $x$" }, { role: "assistant", text: "a", backend: "claude" }, { role: "user", text: "Second question" }, { role: "assistant", text: "b", backend: "claude" }]);
-	root.querySelector(".zs-user .zs-user-edit").click();
+	root.querySelector(".abstractin-user .abstractin-user-edit").click();
 	assert.equal(view.input.value, "First $x$");
-	assert.equal(root.querySelector(".zs-send").disabled, false);
+	assert.equal(root.querySelector(".abstractin-send").disabled, false);
 });
 
 test("keyboard: ArrowUp recalls the last question, Escape stops a running answer", async () => {
@@ -258,7 +259,7 @@ test("keyboard: ArrowUp recalls the last question, Escape stops a running answer
 	plugin.getContext = async () => ({ dir, paperItem: null });
 	plugin.loadHistory = async () => [{ role: "user", text: "Last question?" }, { role: "assistant", text: "a", backend: "claude" }];
 	await plugin.renderContent(document, body, { key: "X" });
-	const input = body.querySelector(".zs-input");
+	const input = body.querySelector(".abstractin-input");
 	input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowUp" }));
 	assert.equal(input.value, "Last question?");
 	let cancelled = false;
@@ -277,22 +278,22 @@ test("answers show a collapsed activity line that expands to the steps", () => {
 			thoughtMs: 5200,
 		} },
 	]);
-	const activity = root.querySelector(".zs-turn .zs-activity");
-	assert.equal(activity.querySelector(".zs-activity-summary").textContent, "Read paper.txt · searched once · thought for 5s");
-	const list = activity.querySelector(".zs-activity-list");
+	const activity = root.querySelector(".abstractin-turn .abstractin-activity");
+	assert.equal(activity.querySelector(".abstractin-activity-summary").textContent, "Read paper.txt · searched once · thought for 5s");
+	const list = activity.querySelector(".abstractin-activity-list");
 	assert.equal(list.hidden, true);
-	activity.querySelector(".zs-activity-head").click();
+	activity.querySelector(".abstractin-activity-head").click();
 	assert.equal(list.hidden, false);
-	assert.deepEqual([...list.querySelectorAll(".zs-step-label")].map(n => n.textContent),
+	assert.deepEqual([...list.querySelectorAll(".abstractin-step-label")].map(n => n.textContent),
 		["Read paper.txt", "Searched for “FFT”", "Thought for 5s"]);
 });
 
 test("menus: arrow keys move focus, Home/End jump, Escape closes back to the button", async () => {
 	const { root, window } = sidebar({ "extensions.abstractin.claude.effort": "high" });
-	const button = root.querySelector(".zs-effort-btn");
+	const button = root.querySelector(".abstractin-effort-btn");
 	button.click();
 	await new Promise(r => setTimeout(r, 0));
-	const items = [...root.querySelectorAll(".zs-menu-item")];
+	const items = [...root.querySelectorAll(".abstractin-menu-item")];
 	const doc = root.ownerDocument;
 	assert.equal(doc.activeElement, items[3], "opens on the checked item (High)");
 	const key = k => doc.dispatchEvent(new window.KeyboardEvent("keydown", { key: k, bubbles: true }));
@@ -307,7 +308,7 @@ test("menus: arrow keys move focus, Home/End jump, Escape closes back to the but
 	key("Home");
 	assert.equal(doc.activeElement, items[0]);
 	key("Escape");
-	assert.equal(root.querySelector(".zs-menu"), null);
+	assert.equal(root.querySelector(".abstractin-menu"), null);
 	assert.equal(doc.activeElement, button);
 });
 
@@ -315,11 +316,11 @@ test("long model names drop the assistant prefix; the tooltip keeps both", () =>
 	const { root, plugin } = sidebar({ "extensions.abstractin.backend": "agy", "extensions.abstractin.agy.model": "gemini-3.8-flash-high" });
 	plugin._agyModels = [{ id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)" }];
 	plugin.updateControls(root);
-	const button = root.querySelector(".zs-model-btn");
-	assert.equal(button.querySelector(".zs-label").textContent, "Gemini 3.8 Flash (High)");
+	const button = root.querySelector(".abstractin-model-btn");
+	assert.equal(button.querySelector(".abstractin-label").textContent, "Gemini 3.8 Flash (High)");
 	assert.match(button.title, /^Antigravity · Gemini 3\.8 Flash \(High\)/);
 	const short = sidebar({ "extensions.abstractin.claude.model": "opus" });
-	assert.equal(short.root.querySelector(".zs-model-btn .zs-label").textContent, "Claude · Opus");
+	assert.equal(short.root.querySelector(".abstractin-model-btn .abstractin-label").textContent, "Claude · Opus");
 });
 
 test("every icon shown anywhere maps to a bundled icon file", async () => {
@@ -333,17 +334,17 @@ test("every icon shown anywhere maps to a bundled icon file", async () => {
 	]);
 	plugin.renderMessages(view, []);
 	plugin.renderMessages(view, [{ role: "user", text: "q" }, { role: "assistant", text: "a", backend: "claude", activity: { steps: [{ kind: "read", label: "Read x" }], thoughtMs: 1 } }]);
-	root.querySelector(".zs-activity-head").click();
+	root.querySelector(".abstractin-activity-head").click();
 	plugin.appendError(view, "boom", { retry() {} });
 	plugin.renderPaperChip(root, { label: "A, 2024", title: "T" });
-	root.querySelector(".zs-effort-btn").click();
+	root.querySelector(".abstractin-effort-btn").click();
 	const prefsBox = document.createElement("div");
 	document.body.appendChild(prefsBox);
 	plugin.renderPrefsPane(document, prefsBox);
 	const busy = sidebar();
 	busy.plugin.setBusy(busy.view, true);
 
-	const used = new Set([...document.querySelectorAll(".zs-i"), ...busy.document.querySelectorAll(".zs-i")].map(n => n.dataset.icon));
+	const used = new Set([...document.querySelectorAll(".abstractin-i"), ...busy.document.querySelectorAll(".abstractin-i")].map(n => n.dataset.icon));
 	assert.ok(used.size >= 15, "icons found: " + [...used].join(", "));
 	const unmapped = [...used].filter(name => name !== "stop" && !plugin.ICON_FILES[name]);
 	assert.deepEqual(unmapped, [], "icons without an icon file");
@@ -387,15 +388,15 @@ test("icons are fetched once, recoloured to currentColor and inlined", async () 
 
 test("images: staged thumbnails enable Send, can be removed, and go out with the message", async () => {
 	const { root, view, plugin, sent, removed } = sidebar();
-	const send = root.querySelector(".zs-send");
-	assert.equal(root.querySelector(".zs-attachments").hidden, true);
+	const send = root.querySelector(".abstractin-send");
+	assert.equal(root.querySelector(".abstractin-attachments").hidden, true);
 	plugin.stagePath(view, "/tmp/x/attachments/image-1.png");
 	plugin.stagePath(view, "/tmp/x/attachments/image-2.png");
-	assert.equal(root.querySelector(".zs-attachments").hidden, false);
-	assert.equal(root.querySelectorAll(".zs-attachments .zs-thumb img").length, 2);
-	assert.equal(root.querySelector(".zs-attachments img").getAttribute("src"), "file:///tmp/x/attachments/image-1.png");
+	assert.equal(root.querySelector(".abstractin-attachments").hidden, false);
+	assert.equal(root.querySelectorAll(".abstractin-attachments .abstractin-thumb img").length, 2);
+	assert.equal(root.querySelector(".abstractin-attachments img").getAttribute("src"), "file:///tmp/x/attachments/image-1.png");
 	assert.equal(send.disabled, false, "an image alone can be sent");
-	root.querySelector(".zs-attachments .zs-thumb-remove").click();
+	root.querySelector(".abstractin-attachments .abstractin-thumb-remove").click();
 	await new Promise(r => setTimeout(r, 0));
 	assert.deepEqual(removed, ["/tmp/x/attachments/image-1.png"], "an unsent image's file is deleted");
 	plugin.sendOrStop(root);
@@ -418,7 +419,7 @@ test("images: pasted image files are staged; text pastes are left alone", async 
 	staged = null;
 	assert.equal(paste([txt]).defaultPrevented, false);
 	assert.equal(staged, null);
-	assert.equal(root.querySelector(".zs-attach").title, "Add an image or screenshot (Alt+I)");
+	assert.equal(root.querySelector(".abstractin-attach").title, "Add an image or screenshot (Alt+I)");
 });
 
 test("images: sent messages show thumbnails; edit puts text and images back", () => {
@@ -427,59 +428,29 @@ test("images: sent messages show thumbnails; edit puts text and images back", ()
 		{ role: "user", text: "What is this plot?", images: ["attachments/image-9.png"] },
 		{ role: "assistant", text: "A histogram.", backend: "claude" },
 	]);
-	const card = root.querySelector(".zs-user");
-	assert.equal(card.querySelector(".zs-user-images img").getAttribute("src"), "file:///tmp/x/attachments/image-9.png");
-	assert.equal(card.querySelector(".zs-user-text").textContent, "What is this plot?");
-	card.querySelector(".zs-user-edit").click();
+	const card = root.querySelector(".abstractin-user");
+	assert.equal(card.querySelector(".abstractin-user-images img").getAttribute("src"), "file:///tmp/x/attachments/image-9.png");
+	assert.equal(card.querySelector(".abstractin-user-text").textContent, "What is this plot?");
+	card.querySelector(".abstractin-user-edit").click();
 	assert.equal(view.input.value, "What is this plot?");
 	assert.deepEqual([...plugin.stagedPaths(view)], ["/tmp/x/attachments/image-9.png"]);
 });
 
-test("mode buttons: toggle Drawing/LaTeX, hide per Settings, and tag the sent message", () => {
-	const { root, view, plugin, prefs } = sidebar();
-	const drawing = root.querySelector('.zs-mode[data-mode="drawing"]');
-	const latex = root.querySelector('.zs-mode[data-mode="latex"]');
-	assert.equal(drawing.getAttribute("aria-pressed"), "false");
-	drawing.click();
-	assert.equal(prefs[PREFIX + "mode.drawing"], true);
-	assert.equal(drawing.getAttribute("aria-pressed"), "true");
-	assert.deepEqual([...plugin.activeModes()], ["drawing"]);
-	latex.click();
-	assert.deepEqual([...plugin.activeModes()], ["drawing", "latex"]);
-	const note = plugin.modeInstructions(plugin.activeModes());
-	assert.match(note, /```svg block/);
-	assert.match(note, /\\begin\{definition\}/);
-	// Hidden in Settings: the button disappears and its mode stops applying.
-	prefs[PREFIX + "modeButtons"] = JSON.stringify({ latex: false });
-	plugin.updateControls(root);
-	assert.equal(latex.hidden, true);
-	assert.equal(drawing.hidden, false);
-	assert.deepEqual([...plugin.activeModes()], ["drawing"]);
-	plugin.renderMessages(view, [{ role: "user", text: "Draw it", modes: ["drawing"] }]);
-	assert.equal(root.querySelector(".zs-user .zs-user-mode").textContent, "Drawing");
-});
-
-test("shortcuts: Alt+D and Alt+L toggle the modes by key position; hidden buttons and other keys are ignored", () => {
-	const { root, plugin, prefs, window } = sidebar();
-	const press = (code, extra = {}) => {
-		const event = new window.KeyboardEvent("keydown", { code, altKey: true, bubbles: true, cancelable: true, ...extra });
-		root.querySelector(".zs-input").dispatchEvent(event);
+test("retired mode preferences and shortcuts cannot impose an answer format", () => {
+	const { root, view, plugin, prefs, window } = sidebar({ [PREFIX + "mode.drawing"]: true, [PREFIX + "mode.latex"]: true });
+	assert.equal(root.querySelector(".abstractin-mode"), null);
+	plugin.renderMessages(view, [{ role: "user", text: "A plain-language explanation", modes: ["drawing", "latex"] }]);
+	assert.equal(root.querySelector(".abstractin-user-mode"), null);
+	const press = (code) => {
+		const event = new window.KeyboardEvent("keydown", { code, altKey: true, bubbles: true, cancelable: true });
+		root.querySelector(".abstractin-input").dispatchEvent(event);
 		return event;
 	};
-	assert.equal(press("KeyD").defaultPrevented, true);
-	assert.equal(prefs[PREFIX + "mode.drawing"], true);
-	assert.equal(root.querySelector('.zs-mode[data-mode="drawing"]').getAttribute("aria-pressed"), "true");
-	press("KeyL");
-	assert.equal(prefs[PREFIX + "mode.latex"], true);
-	press("KeyD");
-	assert.equal(prefs[PREFIX + "mode.drawing"], false);
-	assert.equal(press("KeyD", { ctrlKey: true }).defaultPrevented, false);
-	assert.equal(press("KeyQ").defaultPrevented, false);
-	prefs[PREFIX + "modeButtons"] = JSON.stringify({ latex: false });
+	assert.equal(press("KeyD").defaultPrevented, false);
 	assert.equal(press("KeyL").defaultPrevented, false);
-	assert.equal(press("KeyI").defaultPrevented, true, "Alt+I opens the image menu");
-	assert.ok(root.querySelector(".zs-menu"));
-	assert.match(root.querySelector('.zs-mode[data-mode="drawing"]').title, /\(Alt\+D\)$/);
+	assert.equal(prefs[PREFIX + "mode.drawing"], true, "retired values are ignored without rewriting settings");
+	assert.equal(press("KeyI").defaultPrevented, true, "image attachment shortcut remains available");
+	assert.ok(root.querySelector(".abstractin-menu"));
 });
 
 test("streaming: unchanged blocks are kept, only new blocks fade in", () => {
@@ -493,12 +464,12 @@ test("streaming: unchanged blocks are kept, only new blocks fade in", () => {
 	};
 	const first = step("Para one with $x^2$.\n\nPara tw");
 	assert.equal(first.length, 2);
-	assert.ok(first.every(n => n.classList.contains("zs-enter")));
+	assert.ok(first.every(n => n.classList.contains("abstractin-enter")));
 	const second = step("Para one with $x^2$.\n\nPara two, longer.\n\nThird");
 	assert.equal(second[0], first[0], "unchanged paragraph is the same node");
 	assert.notEqual(second[1], first[1], "the growing paragraph is replaced");
-	assert.equal(second[1].classList.contains("zs-enter"), false, "a replaced block does not animate again");
-	assert.equal(second[2].classList.contains("zs-enter"), true);
+	assert.equal(second[1].classList.contains("abstractin-enter"), false, "a replaced block does not animate again");
+	assert.equal(second[2].classList.contains("abstractin-enter"), true);
 	const third = step("Para one with $x^2$.\n\nPara two, longer.\n\nThird");
 	assert.ok(third.length === second.length && third.every((n, i) => n === second[i]), "no change keeps every node");
 });
@@ -532,7 +503,7 @@ test("search result jump scrolls to the message and flashes it", () => {
 	plugin._jump = { dir: "/tmp/x", index: 2 };
 	plugin.applyJump(view);
 	assert.equal(scrolled, "q2");
-	assert.ok(view.logEl.children[2].classList.contains("zs-flash"));
+	assert.ok(view.logEl.children[2].classList.contains("abstractin-flash"));
 	assert.equal(plugin._jump, null);
 });
 
@@ -544,7 +515,7 @@ test("reader selection: prompt quotes the passage with its page; Explain sends, 
 	view.input.value = "why?";
 	plugin.applyDraft(view);
 	assert.equal(view.input.value, "About this passage:\n\n> x\n\nwhy?");
-	assert.equal(root.querySelector(".zs-send").disabled, false);
+	assert.equal(root.querySelector(".abstractin-send").disabled, false);
 	let started = null;
 	plugin.startRequest = (v, text) => { started = text; };
 	plugin._drafts.set("/tmp/x", { text: "Explain this passage:\n\n> y", send: true });
@@ -571,22 +542,22 @@ test("theorem links: clicking jumps to the box, Back (button or Alt+←) returns
 		{ role: "user", text: "Use it" },
 		{ role: "assistant", text: "Apply \\ref{thm:key} here.", backend: "claude" },
 	]);
-	const back = root.querySelector(".zs-back");
+	const back = root.querySelector(".abstractin-back");
 	assert.equal(back.hidden, true);
 	const scrolls = [];
 	view.logEl.scrollTo = (opts) => scrolls.push(opts.top);
 	view.logEl.scrollTop = 500;
-	const ref = root.querySelector(".zs-ref-ok");
+	const ref = root.querySelector(".abstractin-ref-ok");
 	assert.equal(ref.textContent, "Theorem 1");
 	ref.click();
 	assert.equal(scrolls.length, 1, "scrolled to the theorem");
-	assert.ok(root.querySelector('.zs-env[data-label="thm:key"]').classList.contains("zs-flash"));
+	assert.ok(root.querySelector('.abstractin-env[data-label="thm:key"]').classList.contains("abstractin-flash"));
 	assert.equal(back.hidden, false);
 	ref.click();
-	assert.equal(back.querySelector(".zs-label").textContent, "Back (2)");
+	assert.equal(back.querySelector(".abstractin-label").textContent, "Back (2)");
 	back.click();
 	assert.deepEqual(scrolls.slice(-1), [500]);
-	assert.equal(back.querySelector(".zs-label").textContent, "Back");
+	assert.equal(back.querySelector(".abstractin-label").textContent, "Back");
 	const event = new window.KeyboardEvent("keydown", { key: "ArrowLeft", altKey: true, bubbles: true, cancelable: true });
 	view.input.dispatchEvent(event);
 	assert.equal(event.defaultPrevented, true);
@@ -600,17 +571,51 @@ test("the reading assistant and available prompts sit immediately above the comp
 	const { root, view, plugin } = sidebar();
 	view.ctx.reading = { type: "book" };
 	plugin.renderMessages(view, []);
-	const bar = root.querySelector(".zs-reading-bar");
-	assert.equal(bar.previousElementSibling, root.querySelector(".zs-log-wrap"));
-	assert.equal(bar.nextElementSibling, root.querySelector(".zs-composer"));
-	const row = bar.querySelector(".zs-reading-assistant");
-	assert.ok(row.firstElementChild.matches(".zs-discussion-companion"));
-	assert.ok(row.querySelector(".zs-mascot[data-icon='mascot-marmoset']"));
-	assert.equal(row.querySelector(".zs-reading-invitation").textContent, "ask me a question!");
-	assert.equal(row.querySelector(".zs-quick").hidden, false);
-	assert.equal(root.querySelector(".zs-empty .zs-mascot"), null);
-	assert.equal(row.querySelectorAll(".zs-pill").length, plugin.getPrompts().length);
-	assert.ok(root.querySelector(".zs-header .zs-header-icon[data-icon='app']"));
+	const bar = root.querySelector(".abstractin-reading-bar");
+	assert.equal(bar.previousElementSibling, root.querySelector(".abstractin-log-wrap"));
+	assert.equal(bar.nextElementSibling, root.querySelector(".abstractin-composer"));
+	const row = bar.querySelector(".abstractin-reading-assistant");
+	assert.ok(row.firstElementChild.matches(".abstractin-discussion-companion"));
+	assert.ok(row.querySelector(".abstractin-mascot[data-icon='mascot-marmoset']"));
+	assert.equal(row.querySelector(".abstractin-reading-invitation").textContent, "Ask me a question?");
+	assert.equal(row.querySelector(".abstractin-quick").hidden, false);
+	assert.equal(root.querySelector(".abstractin-empty .abstractin-mascot"), null);
+	assert.equal(row.querySelectorAll(".abstractin-pill").length, 0);
+	assert.equal(row.querySelectorAll(".abstractin-prompt-menu").length, 1);
+	assert.ok(root.querySelector(".abstractin-header .abstractin-header-icon[data-icon='app']"));
+});
+
+test("the dropdown switches lists and fills an editable draft without sending", () => {
+	const { root, view, plugin, sent } = sidebar();
+	root.querySelector(".abstractin-prompt-menu").click();
+	assert.equal(root.querySelector(".abstractin-menu-item").disabled, false, "a menu rendered before the view attaches becomes usable");
+	plugin.closeMenu(root);
+	view.ctx.reading = { type: "book" };
+	plugin.updateReadingControls(view);
+	root.querySelector(".abstractin-prompt-menu").click();
+	assert.equal(root.querySelector(".abstractin-menu-section").textContent, "Book questions");
+	assert.ok(menuLabels(root).includes("Explain this passage"));
+	root.querySelector(".abstractin-menu-item").click();
+	assert.equal(sent.length, 0);
+	assert.equal(view.input.value, plugin.getPrompts("book")[0].prompt);
+	assert.equal(root.ownerDocument.activeElement, view.input);
+	view.input.value += " Please focus on the second equation.";
+	view.send(view.input.value);
+	assert.match(sent[0], /Please focus on the second equation/);
+	assert.equal(root.querySelector(".abstractin-menu"), null);
+	view.ctx.reading.type = "paper";
+	plugin.updateReadingControls(view);
+	root.querySelector(".abstractin-prompt-menu").click();
+	assert.equal(root.querySelector(".abstractin-menu-section").textContent, "Paper questions");
+	assert.ok(menuLabels(root).includes("Research question"));
+	assert.ok(!menuLabels(root).includes("Explain this passage"));
+	plugin.closeMenu(root);
+	plugin.savePrompts([], "paper");
+	plugin.refreshRoot(root);
+	assert.equal(root.querySelector(".abstractin-quick").hidden, true);
+	view.ctx.reading.type = "book";
+	plugin.updateReadingControls(view);
+	assert.equal(root.querySelector(".abstractin-quick").hidden, false);
 });
 
 test("icons: Phosphor's duotone layer is tagged so CSS can tint it; licence ships with the icons", async () => {
@@ -623,7 +628,7 @@ test("icons: Phosphor's duotone layer is tagged so CSS can tint it; licence ship
 	await new Promise(r => setTimeout(r, 0));
 	await new Promise(r => setTimeout(r, 0));
 	const [duo, main] = icon.querySelectorAll("path");
-	assert.equal(duo.getAttribute("class"), "zs-duo");
+	assert.equal(duo.getAttribute("class"), "abstractin-duo");
 	assert.equal(duo.getAttribute("opacity"), null, "opacity comes from CSS");
 	assert.equal(main.getAttribute("class"), null);
 	const { existsSync } = await import("node:fs");
@@ -639,11 +644,11 @@ test("icon-first: labels are hidden by default and every labelled button keeps a
 	]);
 	plugin.appendError(view, "boom", { retry() {} });
 	assert.equal(root.dataset.labels, "icons");
-	const unnamed = [...root.querySelectorAll(".zs-ghost")]
-		.filter(b => b.querySelector(".zs-label")?.textContent.trim() && !b.title)
+	const unnamed = [...root.querySelectorAll(".abstractin-ghost")]
+		.filter(b => b.querySelector(".abstractin-label")?.textContent.trim() && !b.title)
 		.map(b => b.className);
 	assert.deepEqual(unnamed, [], "buttons that would be unnamed without their label");
-	assert.ok(root.querySelector(".zs-figure-source .zs-i"), "Source has an icon");
+	assert.ok(root.querySelector(".abstractin-figure-source .abstractin-i"), "Source has an icon");
 	plugin.applyAppearance(root, { ...plugin.getAppearance(), labels: "text" });
 	assert.equal(root.dataset.labels, "text");
 });
@@ -654,10 +659,10 @@ test("reading companions load from preferences while legacy choices fall back to
 		plugin.renderMessages(view, []);
 		const expected = ["wagtail", "puffin"].includes(mascot) ? mascot : "marmoset";
 		assert.equal(plugin.getAppearance().mascot, expected);
-		assert.equal(root.querySelector(".zs-empty .zs-mascot").dataset.icon, "mascot-" + expected);
-		assert.equal(root.querySelector(".zs-discussion-companion .zs-mascot").dataset.icon, "mascot-" + expected);
-		assert.equal(root.querySelector(".zs-header-icon").dataset.icon, "app");
-		assert.equal(root.querySelector(".zs-start-reading .zs-i").dataset.icon, "book");
+		assert.equal(root.querySelector(".abstractin-empty .abstractin-mascot").dataset.icon, "mascot-" + expected);
+		assert.equal(root.querySelector(".abstractin-discussion-companion .abstractin-mascot").dataset.icon, "mascot-" + expected);
+		assert.equal(root.querySelector(".abstractin-header-icon").dataset.icon, "app");
+		assert.equal(root.querySelector(".abstractin-start-reading .abstractin-i").dataset.icon, "book");
 		assert.deepEqual(Object.keys(plugin.MASCOTS), ["marmoset", "wagtail", "puffin"]);
 	}
 });
@@ -668,10 +673,10 @@ test("changing reading companions refreshes the composer companion", () => {
 	for (const mascot of ["wagtail", "puffin", "marmoset"]) {
 		prefs[PREFIX + "appearance"] = JSON.stringify({ mascot });
 		plugin.refreshRoot(root);
-		for (const location of [".zs-discussion-companion"]) {
-			const icon = root.querySelector(location + " .zs-mascot");
+		for (const location of [".abstractin-discussion-companion"]) {
+			const icon = root.querySelector(location + " .abstractin-mascot");
 			assert.equal(icon.dataset.icon, "mascot-" + mascot);
-			const animatedPart = mascot === "puffin" ? ".zs-mascot-puffin-wing" : ".zs-mascot-tail";
+			const animatedPart = mascot === "puffin" ? ".abstractin-mascot-puffin-wing" : ".abstractin-mascot-tail";
 			assert.ok(icon.querySelector("svg " + animatedPart), "animated artwork loads immediately");
 		}
 	}
@@ -692,7 +697,7 @@ test("behaviour: send key, hidden steps and quick prompts apply to the sidebar",
 	assert.equal(key({}), false, "plain Enter makes a new line");
 	assert.equal(key({ metaKey: true }), true);
 	assert.equal(key({ ctrlKey: true }), true);
-	assert.match(root.querySelector(".zs-send").title, /(⌘|Ctrl)\+?Enter/);
+	assert.match(root.querySelector(".abstractin-send").title, /(⌘|Ctrl)\+?Enter/);
 	const normal = sidebar();
 	assert.equal(normal.root.dataset.steps, "shown");
 	const k2 = (opts) => normal.plugin.isSendKey(new normal.window.KeyboardEvent("keydown", { key: "Enter", ...opts }));
@@ -703,71 +708,73 @@ test("behaviour: send key, hidden steps and quick prompts apply to the sidebar",
 
 test("wizard: shown on first use, steps move forward and back, Escape skips", () => {
 	const { root, plugin, prefs, window } = sidebar({ [PREFIX + "onboarded"]: undefined });
-	const wizard = root.querySelector(".zs-wizard");
+	const wizard = root.querySelector(".abstractin-wizard");
 	assert.ok(wizard, "wizard shown");
 	assert.equal(wizard.getAttribute("role"), "dialog");
 	const step = () => wizard.dataset.step;
 	assert.equal(step(), "welcome");
-	assert.equal(wizard.querySelectorAll(".zs-wizard-dot").length, plugin.WIZARD_STEPS.length);
-	assert.equal(wizard.querySelector(".zs-wizard-prev").hidden, true);
-	wizard.querySelector(".zs-wizard-next").click();
+	assert.equal(wizard.querySelectorAll(".abstractin-wizard-dot").length, plugin.WIZARD_STEPS.length);
+	assert.equal(wizard.querySelector(".abstractin-wizard-prev").hidden, true);
+	wizard.querySelector(".abstractin-wizard-next").click();
 	assert.equal(step(), "assistant");
-	assert.equal(wizard.querySelector('.zs-wizard-dot[aria-current="step"]'), wizard.querySelectorAll(".zs-wizard-dot")[1]);
-	wizard.querySelector(".zs-wizard-prev").click();
+	assert.equal(wizard.querySelector('.abstractin-wizard-dot[aria-current="step"]'), wizard.querySelectorAll(".abstractin-wizard-dot")[1]);
+	wizard.querySelector(".abstractin-wizard-prev").click();
 	assert.equal(step(), "welcome");
 	wizard.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-	assert.equal(root.querySelector(".zs-wizard"), null);
+	assert.equal(root.querySelector(".abstractin-wizard"), null);
 	assert.equal(prefs[PREFIX + "onboarded"], true);
 });
 
-test("wizard: every step's choices are saved, finishing closes it for good", () => {
-	const { root, plugin, prefs } = sidebar({ [PREFIX + "onboarded"]: false });
-	const wizard = root.querySelector(".zs-wizard");
-	const next = () => wizard.querySelector(".zs-wizard-next").click();
-	const tile = title => [...wizard.querySelectorAll(".zs-tile")].find(t => t.title === title);
-	next();
-	assert.equal(wizard.dataset.step, "assistant");
-	tile("Codex").click();
-	assert.equal(prefs[PREFIX + "backend"], "codex");
-	next();
-	assert.equal(wizard.dataset.step, "look");
-	wizard.querySelector('.zs-swatch[aria-label="Violet"]').click();
-	assert.equal(plugin.getAppearance().style, "flat");
+test("wizard: current settings save in the reading window and untested agents remain blocked", () => {
+	const { root, plugin, prefs, view, window } = sidebar({ [PREFIX + "onboarded"]: false });
+	const wizard = root.querySelector(".abstractin-wizard");
+	assert.equal(wizard.parentElement, root.querySelector(".abstractin-log-wrap"));
+	plugin.setBusy(view, false); assert.equal(view.input.disabled, true);
+	const next = () => wizard.querySelector(".abstractin-wizard-next").click();
+	const tile = title => [...wizard.querySelectorAll(".abstractin-tile")].find(t => t.title === title);
+	next(); assert.equal(wizard.dataset.step, "assistant");
+	const agent = wizard.querySelector("select");
+	agent.value = "agy"; agent.dispatchEvent(new window.Event("change"));
+	assert.equal(agent.value, "codex"); assert.match(wizard.querySelector(".abstractin-notice").textContent, /Test this agent/);
+	const model = wizard.querySelector(".abstractin-codex-model-input");
+	model.value = "custom-model"; model.dispatchEvent(new window.Event("change"));
+	assert.equal(prefs[PREFIX + "codex.model"], "custom-model");
+	next(); assert.equal(wizard.dataset.step, "companion");
+	tile("Puffin").click(); assert.equal(plugin.getAppearance().mascot, "puffin");
+	next(); assert.equal(wizard.dataset.step, "look");
+	wizard.querySelector('.abstractin-swatch[aria-label="Violet"]').click();
 	assert.equal(plugin.getAppearance().accent, "#6d4fd6");
-	assert.equal(root.dataset.style, "flat", "the sidebar previews the choice at once");
-	next();
-	assert.equal(wizard.dataset.step, "companion");
-	tile("Puffin").click();
-	assert.equal(plugin.getAppearance().mascot, "puffin");
-	next();
-	assert.equal(wizard.dataset.step, "answers");
-	tile("Expert").click();
-	const language = wizard.querySelector("select");
-	language.value = "Italiano";
-	language.dispatchEvent(new root.ownerDocument.defaultView.Event("change"));
-	tile("Drawing").click();
-	assert.equal(plugin.getBehaviour().level, "expert");
+	[...wizard.querySelectorAll(".abstractin-segmented button")].find(button => button.textContent === "Large").click();
+	assert.equal(plugin.getAppearance().size, "large");
+	next(); assert.equal(wizard.dataset.step, "answers");
+	const language = wizard.querySelector("select"); language.value = "Italiano"; language.dispatchEvent(new window.Event("change"));
 	assert.equal(prefs[PREFIX + "language"], "Italiano");
-	assert.equal(prefs[PREFIX + "mode.drawing"], true);
-	assert.equal(tile("Drawing").getAttribute("aria-pressed"), "true");
-	next();
-	assert.equal(wizard.dataset.step, "done");
-	assert.ok(wizard.querySelector(".zs-mascot[data-icon='mascot-puffin']"));
-	wizard.querySelector(".zs-wizard-next").click();
-	assert.equal(root.querySelector(".zs-wizard"), null);
-	assert.equal(prefs[PREFIX + "onboarded"], true);
-	const again = sidebar({ [PREFIX + "onboarded"]: true });
-	assert.equal(again.root.querySelector(".zs-wizard"), null);
+	assert.ok(!wizard.textContent.includes("Expert")); assert.ok(!wizard.textContent.includes("LaTeX"));
+	next(); assert.equal(wizard.dataset.step, "interaction");
+	[...wizard.querySelectorAll(".abstractin-segmented button")].find(button => button.textContent === "⌘/Ctrl + Enter").click();
+	assert.equal(plugin.getBehaviour().sendKey, "mod-enter");
+	next(); assert.equal(wizard.dataset.step, "done");
+	assert.ok(wizard.querySelector(".abstractin-mascot[data-icon='mascot-puffin']"));
+	next(); assert.equal(root.querySelector(".abstractin-wizard"), null); assert.equal(prefs[PREFIX + "onboarded"], true);
+	assert.equal(view.input.disabled, false);
+	assert.equal(sidebar({ [PREFIX + "onboarded"]: true }).root.querySelector(".abstractin-wizard"), null);
+});
+
+test("first-install setup never appears in the original context panel", () => {
+	const { root, plugin, prefs } = sidebar({ [PREFIX + "onboarded"]: false }, false);
+	assert.equal(root.querySelector(".abstractin-wizard"), null);
+	plugin.refreshRoot(root); assert.equal(root.querySelector(".abstractin-wizard"), null);
+	assert.equal(prefs[PREFIX + "onboarded"], false, "opening the old pane does not consume onboarding");
 });
 
 test("wizard: every button is named for icon-only display", () => {
 	const { root, plugin } = sidebar({ [PREFIX + "onboarded"]: false });
-	const wizard = root.querySelector(".zs-wizard");
+	const wizard = root.querySelector(".abstractin-wizard");
 	for (let i = 0; i < plugin.WIZARD_STEPS.length; i++) {
-		const unnamed = [...wizard.querySelectorAll("button")].filter(b => !b.hidden && !b.title && !b.getAttribute("aria-label"));
+		const unnamed = [...wizard.querySelectorAll("button")].filter(b => !b.hidden && !b.title && !b.getAttribute("aria-label") && !b.textContent.trim());
 		assert.deepEqual(unnamed.map(b => b.className), [], "step " + wizard.dataset.step);
 		if (i < plugin.WIZARD_STEPS.length - 1) {
-			wizard.querySelector(".zs-wizard-next").click();
+			wizard.querySelector(".abstractin-wizard-next").click();
 		}
 	}
 });
@@ -816,27 +823,27 @@ const record = (over = {}) => ({
 test("clarifications panel: lists saved clarifications newest first, opens a detail with passage, prompt and answer", async () => {
 	const env = clarificationPanel([record(), record({ id: "c2", ts: Date.parse("2026-09-18T10:00:00Z"), passage: "Newer passage", pageLabel: "70" })]);
 	const { root, plugin } = env;
-	assert.ok(root.querySelector(".zs-header .zs-clarifications"), "header button");
+	assert.ok(root.querySelector(".abstractin-header .abstractin-clarifications"), "header button");
 	await plugin.openClarifications(root);
-	const panel = root.querySelector(".zs-panel");
+	const panel = root.querySelector(".abstractin-panel");
 	assert.ok(panel);
-	const items = [...panel.querySelectorAll(".zs-clar-item")];
-	assert.deepEqual(items.map(i => i.querySelector(".zs-clar-passage").textContent), ["Newer passage", "Every Cauchy sequence converges"]);
-	assert.equal(items[1].querySelector(".zs-clar-page").textContent, "p. 65");
+	const items = [...panel.querySelectorAll(".abstractin-clar-item")];
+	assert.deepEqual(items.map(i => i.querySelector(".abstractin-clar-passage").textContent), ["Newer passage", "Every Cauchy sequence converges"]);
+	assert.equal(items[1].querySelector(".abstractin-clar-page").textContent, "p. 65");
 	items[1].click();
-	const detail = panel.querySelector(".zs-clar-detail");
+	const detail = panel.querySelector(".abstractin-clar-detail");
 	assert.ok(detail);
-	assert.equal(detail.querySelector(".zs-clar-passage-full").textContent, "Every Cauchy sequence converges");
-	assert.equal(detail.querySelector(".zs-clar-prompt").textContent, record().prompt);
-	assert.equal(detail.querySelector(".zs-clar-instructions pre").textContent, record().instructions);
-	assert.ok(detail.querySelector(".zs-clar-answer strong"), "answer rendered as rich text");
-	assert.ok(detail.querySelector(".zs-clar-answer math"), "maths rendered");
-	detail.querySelector(".zs-clar-copy").click();
+	assert.equal(detail.querySelector(".abstractin-clar-passage-full").textContent, "Every Cauchy sequence converges");
+	assert.equal(detail.querySelector(".abstractin-clar-prompt").textContent, record().prompt);
+	assert.equal(detail.querySelector(".abstractin-clar-instructions pre").textContent, record().instructions);
+	assert.ok(detail.querySelector(".abstractin-clar-answer strong"), "answer rendered as rich text");
+	assert.ok(detail.querySelector(".abstractin-clar-answer math"), "maths rendered");
+	detail.querySelector(".abstractin-clar-copy").click();
 	assert.deepEqual(env.copied, [record().prompt]);
-	detail.querySelector(".zs-clar-pdf").click();
+	detail.querySelector(".abstractin-clar-pdf").click();
 	assert.deepEqual(JSON.parse(JSON.stringify(env.opened)), [{ id: 99, location: { position: record().position } }]);
-	panel.querySelector(".zs-panel-back").click();
-	assert.ok(panel.querySelector(".zs-clar-item"), "back to the list");
+	panel.querySelector(".abstractin-panel-back").click();
+	assert.ok(panel.querySelector(".abstractin-clar-item"), "back to the list");
 });
 
 test("clarifications panel: go to the chat message, delete, empty state and Escape", async () => {
@@ -851,22 +858,22 @@ test("clarifications panel: go to the chat message, delete, empty state and Esca
 	let scrolled = false;
 	target.scrollIntoView = () => { scrolled = true; };
 	await plugin.openClarifications(root);
-	root.querySelector(".zs-clar-item").click();
-	root.querySelector(".zs-clar-chat").click();
-	assert.equal(root.querySelector(".zs-panel"), null, "panel closes");
+	root.querySelector(".abstractin-clar-item").click();
+	root.querySelector(".abstractin-clar-chat").click();
+	assert.equal(root.querySelector(".abstractin-panel"), null, "panel closes");
 	assert.ok(scrolled, "scrolled to the question");
-	assert.ok(target.classList.contains("zs-flash"), "the question is highlighted");
+	assert.ok(target.classList.contains("abstractin-flash"), "the question is highlighted");
 	await plugin.openClarifications(root);
-	root.querySelector(".zs-clar-item").click();
-	root.querySelector(".zs-clar-delete").click();
+	root.querySelector(".abstractin-clar-item").click();
+	root.querySelector(".abstractin-clar-delete").click();
 	await env.tick();
 	assert.deepEqual(env.stored(), []);
-	assert.ok(root.querySelector(".zs-panel .zs-clar-empty"), "empty state after deleting the last one");
-	root.querySelector(".zs-panel").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-	assert.equal(root.querySelector(".zs-panel"), null);
+	assert.ok(root.querySelector(".abstractin-panel .abstractin-clar-empty"), "empty state after deleting the last one");
+	root.querySelector(".abstractin-panel").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+	assert.equal(root.querySelector(".abstractin-panel"), null);
 	const unnamed = [];
 	await plugin.openClarifications(root);
-	for (const b of root.querySelectorAll(".zs-panel button")) {
+	for (const b of root.querySelectorAll(".abstractin-panel button")) {
 		if (!b.title && !b.getAttribute("aria-label") && !b.textContent.trim()) unnamed.push(b.className);
 	}
 	assert.deepEqual(unnamed, []);
@@ -877,20 +884,20 @@ test("reading mode menu wraps check, symbol and text in an inner layout and swit
  const { root, view, plugin, prefs } = sidebar();
  view.ctx.reading = { type: "book", language: "English" };
  plugin.updateReadingControls(view);
- assert.ok(root.querySelector(".zs-composer .zs-controls .zs-reading-evidence-mode"));
- assert.equal(root.querySelector(".zs-header .zs-reading-evidence-mode"), null);
- root.querySelector(".zs-reading-evidence-mode").click();
- const rows = [...root.querySelectorAll(".zs-reading-mode-menu .zs-menu-item")];
+ assert.ok(root.querySelector(".abstractin-composer .abstractin-controls .abstractin-reading-evidence-mode"));
+ assert.equal(root.querySelector(".abstractin-header .abstractin-reading-evidence-mode"), null);
+ root.querySelector(".abstractin-reading-evidence-mode").click();
+ const rows = [...root.querySelectorAll(".abstractin-reading-mode-menu .abstractin-menu-item")];
  assert.equal(rows.length, 2);
  for (const row of rows) {
   assert.equal(row.children.length, 1);
   const content = row.firstElementChild;
-  assert.ok(content.classList.contains("zs-menu-content"));
-  assert.deepEqual([...content.children].map(n => n.className), ["zs-i zs-check", "zs-i zs-reading-menu-icon", "zs-menu-text"]);
-  assert.equal(content.querySelector(".zs-menu-text").children.length, 2);
+  assert.ok(content.classList.contains("abstractin-menu-content"));
+  assert.deepEqual([...content.children].map(n => n.className), ["abstractin-i abstractin-check", "abstractin-i abstractin-reading-menu-icon", "abstractin-menu-text"]);
+  assert.equal(content.querySelector(".abstractin-menu-text").children.length, 2);
  }
  rows[0].click();
  assert.equal(prefs[PREFIX + "readingEvidenceMode"], "knowledge");
- assert.equal(root.querySelector(".zs-reading-evidence-mode .zs-i").dataset.icon, "readingKnowledge");
- assert.equal(root.querySelector(".zs-menu"), null);
+ assert.equal(root.querySelector(".abstractin-reading-evidence-mode .abstractin-i").dataset.icon, "readingKnowledge");
+ assert.equal(root.querySelector(".abstractin-menu"), null);
 });

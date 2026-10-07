@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" preserveAspectRatio="xMidYMid meet" fill="none" stroke="#383a38" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round">
   <g transform="translate(0 13) scale(1 .60)">
-    <g class="zs-mascot-tail zs-mascot-wagtail-tail">
+    <g class="abstractin-mascot-tail abstractin-mascot-wagtail-tail">
       <path d="M33 31c9 1 18-2 28-2-8 3-15 5-26 6z" fill="#252725"/>
       <path d="m34 33 27 4-27 .2z" fill="#333632"/>
       <path d="m36 34 22 2.4m-21-4 20-1.5" stroke="#eeeae1" stroke-width="0.55"/>

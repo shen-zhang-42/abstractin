@@ -8,7 +8,7 @@ const exists = path => existsSync(new URL("../" + path, import.meta.url));
 
 test("README explains install, build, test and opens with the illustration", () => {
 	const readme = read("README.md");
-	assert.ok(readme.trimStart().startsWith('<p align="center"><img src="docs/zusia-hero.jpg"'), "the wide illustration is the first thing");
+	assert.ok(readme.trimStart().startsWith('<p align="center"><img src="docs/abstractin-hero.jpg"'), "the wide illustration is the first thing");
 	for (const heading of ["## Install", "## Build", "## Test", "## Privacy"]) {
 		assert.ok(readme.includes(heading), "README section " + heading);
 	}
@@ -19,7 +19,7 @@ test("README explains install, build, test and opens with the illustration", () 
 
 test("the README videos are recorded in Zotero and shown with their full-quality copies", () => {
 	const readme = read("README.md");
-	for (const video of ["zusia-chat", "zusia-proof", "zusia-explain-better", "zusia-figure"]) {
+	for (const video of ["abstractin-chat", "abstractin-proof", "abstractin-explain-better", "abstractin-figure"]) {
 		assert.ok(readme.includes(`docs/videos/${video}.gif`), video + ".gif shown");
 		assert.ok(readme.includes(`docs/videos/${video}.mp4`), video + ".mp4 linked");
 	}
@@ -47,17 +47,17 @@ test("the extension uses the AbstractIn name and its own plugin identity", () =>
 	assert.equal(manifest.name, "AbstractIn");
 	assert.equal(JSON.parse(read("package.json")).name, "abstractin");
 	assert.match(read("src/locale/en-US/abstractin.ftl"), /\.label = AbstractIn/);
-	assert.match(read("src/content/zusia.js"), /label: "AbstractIn"/);
+	assert.match(read("src/content/abstractin.js"), /label: "AbstractIn"/);
 	assert.match(read("build.sh"), /abstractin\.xpi/);
 	assert.match(read("README.md"), /AbstractIn/);
 	assert.equal(manifest.applications.zotero.id, "abstractin@shen-zhang-42.github.io");
-	assert.match(read("src/bootstrap.js"), /Zotero\.AbstractIn = Zusia/);
+	assert.match(read("src/bootstrap.js"), /Zotero\.AbstractIn = AbstractIn/);
 	assert.match(read("src/prefs.xhtml"), /abstractin-prefs-root/);
-	assert.match(read("src/content/zusia.js"), /PREF_PREFIX: "extensions\.abstractin\."/);
+	assert.match(read("src/content/abstractin.js"), /PREF_PREFIX: "extensions\.abstractin\."/);
 });
 
 test("nothing but the Claude Code backend itself is named after Claude", () => {
-	// Zusia drives three assistants. Naming its own files, globals, preferences or
+	// AbstractIn drives three assistants. Naming its own files, globals, preferences or
 	// data directory after one of them was a leftover from when Claude was the only
 	// backend, and it misleads anyone reading the source.
 	for (const path of ["src", "test"]) {
@@ -65,7 +65,7 @@ test("nothing but the Claude Code backend itself is named after Claude", () => {
 			.filter(name => /claude/i.test(name));
 		assert.deepEqual(stray, [], "no file under " + path + "/ is named after an assistant");
 	}
-	const sidebar = read("src/content/zusia.js");
+	const sidebar = read("src/content/abstractin.js");
 	for (const identity of ["ClaudeSidebar", "claude-sidebar"]) {
 		assert.ok(!sidebar.includes(identity), identity + " is gone from the sidebar");
 	}

@@ -7,7 +7,7 @@ out="${APPEARANCE_OUT:-$repo/test/integration/out/appearance}"
 mkdir -p "$profile_root/profile/extensions" "$profile_root/data" "$out"
 rm -f "$out/results.json"
 echo "${ABSTRACTIN_SOURCE:-$repo/src}" > "$profile_root/profile/extensions/abstractin@shen-zhang-42.github.io"
-echo "$repo/test/integration/appearance" > "$profile_root/profile/extensions/zusia-tester@firekern.github.io"
+echo "$repo/test/integration/appearance" > "$profile_root/profile/extensions/abstractin-tester@shen-zhang-42.github.io"
 cat > "$profile_root/profile/user.js" <<PREFS
 user_pref("extensions.zotero.dataDir", "$profile_root/data");
 user_pref("extensions.zotero.useDataDir", true);
@@ -19,13 +19,13 @@ user_pref("extensions.zotero.firstRun2", false);
 user_pref("extensions.zotero.firstRunGuidance", false);
 user_pref("extensions.zotero.sync.autoSync", false);
 user_pref("extensions.abstractin.onboarded", true);
-user_pref("extensions.zusia-tester.outDir", "$out");
+user_pref("extensions.abstractin-tester.outDir", "$out");
 PREFS
 if [ -n "${CATALOG_FIXTURE:-}" ]; then
  python3 - "$profile_root/profile/user.js" "$CATALOG_FIXTURE" <<'PYTEST'
 import json, sys
 with open(sys.argv[1], 'a') as prefs:
- prefs.write('user_pref("extensions.zusia-tester.catalogFixture", ' + json.dumps(sys.argv[2]) + ');\n')
+ prefs.write('user_pref("extensions.abstractin-tester.catalogFixture", ' + json.dumps(sys.argv[2]) + ');\n')
 PYTEST
 fi
 timeout 60 env MOZ_HEADLESS=1 MOZ_HEADLESS_WIDTH=1000 MOZ_HEADLESS_HEIGHT=900 "${ZOTERO_BIN:-zotero}" -profile "$profile_root/profile" -no-remote -ZoteroDebugText > "$out/zotero-debug.log" 2>&1 || true

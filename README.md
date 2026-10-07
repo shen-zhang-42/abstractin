@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/zusia-hero.jpg" alt="Zusia: a girl in a red hoodie studying the ResNet paper at night" width="100%"></p>
+<p align="center"><img src="docs/abstractin-hero.jpg" alt="AbstractIn: a girl in a red hoodie studying the ResNet paper at night" width="100%"></p>
 
 <h1 align="center">AbstractIn</h1>
 
@@ -25,17 +25,19 @@ The original `book-reading`, `scientific-paper-reading` and the paper skill's lo
 
 See [Windows installation and verification](docs/WINDOWS-TESTING.md). No running Codespace is needed. Source development uses this checkout's `src/` directory; run `npm run source:path` to print its absolute location.
 
-In PDF readers, use the gray document-and-chat icon in the top toolbar beside the **Toggle Context Pane** controls to open the dedicated AbstractIn panel. The chat has its own right-side panel with a fixed composer and scrollable messages. It uses a plain gray theme, a companion welcome with “let's start reading”, the original header tools and the complete composer controls. Start Reading begins inline questions rather than opening a setup dialog. Confirmed documents restore their reading chat on subsequent visits, including after restarting Zotero. HTML elements and Zotero resource loading keep these controls usable in native reader windows. Close/reopen preserves drafts and running requests; switching PDF tabs selects the matching chat. The library item section remains available. In readers, the item section also keeps an **Open AbstractIn panel** launcher, so a missed toolbar event cannot hide every entry. Already-open PDFs receive a toolbar entry when the plugin starts; its visible AbstractIn label remains usable if the icon fails to load.
+In PDF readers, use the gray document-and-chat icon in the top toolbar beside the **Toggle Context Pane** controls to open the dedicated AbstractIn panel. The chat has its own right-side panel with a fixed composer and scrollable messages. It uses a plain gray theme, a companion welcome with “let's start reading”, the original header tools and the complete composer controls. Start Reading begins inline questions rather than opening a setup dialog. First-install setup appears inside this dedicated reading panel, never in the original context-pane section. It guides checked agent/model selection, companion, accent, font and text size, language, and chat interaction preferences. Confirmed documents restore their reading chat on subsequent visits, including after restarting Zotero. HTML elements and Zotero resource loading keep these controls usable in native reader windows. Close/reopen preserves drafts and running requests; switching PDF tabs selects the matching chat. The library item section remains available. In readers, the item section also keeps an **Open AbstractIn panel** launcher, so a missed toolbar event cannot hide every entry. Already-open PDFs receive a toolbar entry when the plugin starts; its visible AbstractIn label remains usable if the icon fails to load.
 
 Books initialize their actual table of contents from a bounded source excerpt without generating chapter summaries or scanning every chapter for page links. Failed automatic initialization is not repeated on subsequent visits. Completed discussions remain editable Zotero notes; verified source links preserve the original reading position. The old Contents & records, Return to reading and Resume here controls are temporarily removed while a new records entry point is designed. Unverified source page locations do not prevent a discussion note from saving; guessed links are omitted and source gaps are reported separately.
 
 Current-page discussions receive text directly from the open reader at the page captured when you send the question, independently of the whole-document index. Page text is cached per loaded PDF; verified quotations can produce physical-page links even when global mapping is unavailable. Blank edge pages are restored only after comparing native reader pages with extracted text. Chapter navigation resolves locations on demand from a unique PDF bookmark, verified page label or mapped heading. It never assumes a fixed printed-page offset; the workspace UI currently has no dedicated entry button.
 
-AbstractIn uses a simple gray document with a conversation bubble as its app icon. Settings → Appearance → Reading companion offers a gray-brown marmoset, a black-and-white white wagtail, and a puffin with an orange beak. The marmoset gently sways its ringed tail; the wagtail bobs its long tail up and down; the puffin gently lifts and lowers its wing. Their bodies stay still, and reduced-motion preferences disable companion animation. The selected companion welcomes first-time readers, then appears at the left of the shortcut row immediately above the composer, followed by “ask me a question!” and available prompts. Material type, language, agent and PDF status appear below the composer. Changes apply to open panels and are saved for the next session. The Codex model menu reads the local CLI catalog through `codex app-server` and `model/list`, supports refresh and manual model IDs, and uses the same sign-in as `codex exec`. Model-specific reasoning choices follow the catalog. Catalog entries are not proof of account entitlement; a completed inference verifies access. All button SVGs are bundled with the startup script, so reader frames do not depend on separate resource reads to display their icons.
+AbstractIn uses a simple gray document with a conversation bubble as its app icon. Settings → Appearance → Reading companion offers a gray-brown marmoset, a black-and-white white wagtail, and a puffin with an orange beak. The marmoset gently sways its ringed tail; the wagtail bobs its long tail up and down; the puffin gently lifts and lowers its wing. Their bodies stay still, and reduced-motion preferences disable companion animation. The selected companion welcomes first-time readers, then appears at the left of the shortcut row immediately above the composer, followed by “Ask me a question?” and a compact question dropdown. Selecting a question fills the composer so it can be edited before sending. Custom instructions are also stored as editable quick prompts, with no automatic injection. Behaviour retains only send-key, automatic-scrolling, activity-display and quick-prompt visibility preferences; explanation detail follows the question instead of fixed length, level or tone settings. Book and paper prompt lists are edited independently in Settings → Chat. Material type, language, agent and PDF status appear below the composer. Changes apply to open panels and are saved for the next session. The Codex model menu reads the local CLI catalog through `codex app-server` and `model/list`, supports refresh and manual model IDs, and uses the same sign-in as `codex exec`. Model-specific reasoning choices follow the catalog. Catalog entries are not proof of account entitlement; a completed inference verifies access. All button SVGs are bundled with the startup script, so reader frames do not depend on separate resource reads to display their icons.
+
+Drawing and LaTeX answer modes are removed: the agent chooses prose, mathematical notation and formal environments to suit the material and question, respecting explicit requests. Drawings are requested in the question itself. Rendering still uses KaTeX and sanitized SVG; these are formatting instructions and rendering code, not separate skills.
 
 The icon dropdown inside the composer’s bottom toolbar uses dedicated Lucide brain-circuit and file-search symbols and offers **Knowledge discussion** and **Source verification**. Knowledge discussion reuses saved notes, conversation and cached page text, skipping full-text extraction and disabling Codex command execution, apps and web search for ordinary follow-ups. An explicit current-page question reads only that page. Numbered document references (such as theorem 1.1) or an explicit request to inspect a section automatically verify the requested passage; the assistant can also request one source-verification pass when document-specific evidence is missing. Verification uses cached source text first and must report an unfound passage instead of guessing. An explicit prohibition on reading/searching the document prevents both new page reads and automatic verification for that turn. The selected mode persists; initial contents and explicit paper-summary actions always verify their sources. New chat and Previous chats preserve document-level contents, summaries and notes while resetting backend sessions. Replies and workspace recaps use bundled KaTeX, including multiline formulas and bare array environments. Copying selected reply text keeps formulas as TeX; the answer-copy action preserves Markdown and LaTeX. An undefined `\ThetaSpace` is displayed as its literal symbol name, without inferring its definition.
 
-The local workspace contains a PDF copy and text extracted by Zotero, with physical page boundaries when verified. Codex reads relevant portions as needed; the full text is not inserted into every prompt. Missing files and image-only PDFs produce explicit errors; OCR and QMD/HTML report export are not included. The demos below show the inherited Zusia interface.
+The local workspace contains a PDF copy and text extracted by Zotero, with physical page boundaries when verified. Codex reads relevant portions as needed; the full text is not inserted into every prompt. Missing files and image-only PDFs produce explicit errors; OCR and QMD/HTML report export are not included. The demos below show the inherited AbstractIn interface.
 
 **Inherited interface**
 
@@ -48,13 +50,13 @@ The local workspace contains a PDF copy and text extracted by Zotero, with physi
 
 ## 1. Ask about the paper
 
-> **Open the side pane → Zusia → ask.** Turn on *Drawing* and *LaTeX* for a diagram and real maths.
+> **Open the side pane → AbstractIn → ask.** Turn on *Drawing* and *LaTeX* for a diagram and real maths.
 >
 > Real recording: Zotero on a Mac, *Attention Is All You Need*, a live answer from Claude. 27 seconds, with the wait sped up.
 
-<p align="center"><img src="docs/videos/zusia-chat.gif" alt="In Zotero, open the side pane on Attention Is All You Need, turn on Drawing and LaTeX, ask how Q, K and V flow and why attention divides by the square root of d_k, and read Claude's answer with its diagram and lemmas" width="100%"></p>
+<p align="center"><img src="docs/videos/abstractin-chat.gif" alt="In Zotero, open the side pane on Attention Is All You Need, turn on Drawing and LaTeX, ask how Q, K and V flow and why attention divides by the square root of d_k, and read Claude's answer with its diagram and lemmas" width="100%"></p>
 
-<p align="center"><a href="docs/videos/zusia-chat.mp4">▶ Watch in full quality (MP4)</a></p>
+<p align="center"><a href="docs/videos/abstractin-chat.mp4">▶ Watch in full quality (MP4)</a></p>
 
 ## 2. Make it yours
 
@@ -70,25 +72,25 @@ Settings → Assistants supports custom ACP v1 agents and imported JSONL adapter
 
 > **Turn on *LaTeX*.** Definitions, lemmas and theorems come back as numbered boxes, and every `\ref` is a link: click to jump, **Back** (⌥←) to return.
 
-<p align="center"><img src="docs/videos/zusia-proof.gif" alt="In Zotero on the Adam paper, ask for the assumptions and regret bound of Theorem 4.1; the answer arrives as numbered lemmas with links, and clicking one jumps to it" width="100%"></p>
+<p align="center"><img src="docs/videos/abstractin-proof.gif" alt="In Zotero on the Adam paper, ask for the assumptions and regret bound of Theorem 4.1; the answer arrives as numbered lemmas with links, and clicking one jumps to it" width="100%"></p>
 
-<p align="center"><a href="docs/videos/zusia-proof.mp4">▶ Watch in full quality (MP4)</a></p>
+<p align="center"><a href="docs/videos/abstractin-proof.mp4">▶ Watch in full quality (MP4)</a></p>
 
 ## 4. Didn't click? Ask again, better
 
 > **One button under every answer.** It comes back with the intuition first, then the steps, an example and the usual trap.
 
-<p align="center"><img src="docs/videos/zusia-explain-better.gif" alt="In Zotero on the BERT paper, a dense one-sentence answer, then the Explain better button produces intuition, steps and an example" width="100%"></p>
+<p align="center"><img src="docs/videos/abstractin-explain-better.gif" alt="In Zotero on the BERT paper, a dense one-sentence answer, then the Explain better button produces intuition, steps and an example" width="100%"></p>
 
-<p align="center"><a href="docs/videos/zusia-explain-better.mp4">▶ Watch in full quality (MP4)</a></p>
+<p align="center"><a href="docs/videos/abstractin-explain-better.mp4">▶ Watch in full quality (MP4)</a></p>
 
 ## 5. Ask about a figure
 
 > **📎 → *Current PDF page*.** The page you are looking at goes with the question, so figures and tables can be asked about. Upload, paste, drop or screenshot work too.
 
-<p align="center"><img src="docs/videos/zusia-figure.gif" alt="In Zotero on the Vision Transformer paper, attach the current PDF page and ask what Figure 1 shows" width="100%"></p>
+<p align="center"><img src="docs/videos/abstractin-figure.gif" alt="In Zotero on the Vision Transformer paper, attach the current PDF page and ask what Figure 1 shows" width="100%"></p>
 
-<p align="center"><a href="docs/videos/zusia-figure.mp4">▶ Watch in full quality (MP4)</a></p>
+<p align="center"><a href="docs/videos/abstractin-figure.mp4">▶ Watch in full quality (MP4)</a></p>
 
 <p align="center"><img src="docs/rule.svg" alt="" width="100%"></p>
 
@@ -115,7 +117,7 @@ The plugin update feed points at this AbstractIn repository. In-place updates be
 
 ## Sync across computers
 
-Saved discussion notes, contents, summaries, the last recorded reading position and complete conversation text are Zotero child notes attached to the exact item/PDF identity. Zotero data sync carries them independently of PDF file downloads. Install AbstractIn on another computer, sync the same library and use Start Reading for that PDF: a fresh local workspace restores the latest complete chat and its saved notes; other synced conversations are available under Previous chats. If a local workspace already has an active chat, it is preserved and other computers' conversations are offered under Previous chats. Existing local current/archived chats migrate when that document is used again. New chat and Retry retain earlier conversations.
+Saved discussion notes, contents, summaries, the last recorded reading position and complete conversation text are Zotero child notes attached to the exact item/PDF identity. Zotero data sync carries them independently of PDF file downloads. Install AbstractIn on another computer, sync the same library and use Start Reading for that PDF: a fresh local workspace reconstructs chapter groups and complete discussion transcripts from sync notes. Each discussion keeps its own local agent session; returning to a chapter resumes that session when available. **Previous chats** groups chapters and discussions. Its **Migrate legacy discussions** button imports older current/archived chats without deleting originals or guessing chapter ownership. New discussion creates another independent thread in the current chapter. See [Chapter discussions](docs/CHAPTER-DISCUSSIONS.md) for routing, source boundaries, migration and long-paper behavior.
 
 Long transcripts are stored in text chunks without truncation. Partial sync never restores an incomplete transcript. When another computer continues an imported chat it writes a separate branch, preserving the source computer's notes. Note-save failures preserve local conversation text and show a sync warning.
 
@@ -149,7 +151,7 @@ npm run shots        # screenshots of the UI in headless Firefox (optional)
 npm run test:zotero  # headless Zotero integration run (Linux, Flatpak)
 ZOTERO_BIN=/path/to/zotero bash test/integration/appearance.sh # native layout and icons
 ZOTERO_BIN=/path/to/zotero bash test/integration/restart.sh    # install built XPI and restart twice
-ZUSIA_BACKGROUND=path/to/illustration.jpg npm run videos   # re-records the README videos (macOS)
+ABSTRACTIN_BACKGROUND=path/to/illustration.jpg npm run videos   # re-records the README videos (macOS)
 ```
 
 The videos are recorded in a real Zotero with its own demo profile and library, so your library is never used. The scenes move the real pointer: don't touch the Mac while they run. Needs `ffmpeg`, `cliclick`, the `claude` CLI, and Screen Recording and Accessibility permission for the terminal.
@@ -172,4 +174,4 @@ New behaviour starts with a failing test; see [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Icons: [Phosphor Icons](https://phosphoricons.com) (MIT). Maths: [KaTeX](https://katex.org) (MIT) and Latin Modern Math (GUST Font License). The study buddies are original to this project; the illustrations were made for Zusia with Google Gemini. Papers in the videos: arXiv 1706.03762, 1512.03385, 1810.04805, 2010.11929, 2005.14165, 1412.6980. Details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-AbstractIn preserves Zusia’s MIT license and Andrea Porcelli’s copyright. See [LICENSE](LICENSE).
+AbstractIn preserves AbstractIn’s MIT license and Andrea Porcelli’s copyright. See [LICENSE](LICENSE).

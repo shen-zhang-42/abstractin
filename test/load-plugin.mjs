@@ -24,13 +24,14 @@ export function loadPlugin({ prefs = {} } = {}) {
 		if (!url.endsWith("content/lib/katex.min.js")) throw new Error("Unexpected script: " + url);
 		runInNewContext(read("src/content/lib/katex.min.js"), scope);
 	} } };
-	window.eval("var Zusia;\n" + read("src/content/zusia.js") + "\nwindow.Zusia = Zusia;");
+	window.eval("var AbstractIn;\n" + read("src/content/abstractin.js") + "\nwindow.AbstractIn = AbstractIn;");
 	window.eval(read("src/content/icon-assets.js"));
 	window.eval(read("src/content/reading.js"));
 	window.eval(read("src/content/reading-workflow.js"));
 	window.eval(read("src/content/reader-panel.js"));
 	window.eval(read("src/content/agents.js"));
-	const plugin = window.Zusia;
+	window.eval(read("src/content/chats.js"));
+	const plugin = window.AbstractIn;
 	plugin.rootURI = "./";
 	return { window, document: window.document, plugin, prefs };
 }

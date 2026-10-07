@@ -6,7 +6,7 @@ profile_root=$(mktemp -d /tmp/abstractin-restart-XXXXXX)
 out="${RESTART_OUT:-$repo/test/integration/out/restart}"
 mkdir -p "$profile_root/profile/extensions" "$profile_root/data" "$out"
 cp "${ABSTRACTIN_XPI:-$repo/abstractin.xpi}" "$profile_root/install.xpi"
-echo "$repo/test/integration/restart" > "$profile_root/profile/extensions/zusia-tester@firekern.github.io"
+echo "$repo/test/integration/restart" > "$profile_root/profile/extensions/abstractin-tester@shen-zhang-42.github.io"
 cat > "$profile_root/profile/user.js" <<PREFS
 user_pref("extensions.zotero.dataDir", "$profile_root/data");
 user_pref("extensions.zotero.useDataDir", true);
@@ -18,8 +18,8 @@ user_pref("extensions.zotero.firstRun2", false);
 user_pref("extensions.zotero.firstRunGuidance", false);
 user_pref("extensions.zotero.sync.autoSync", false);
 user_pref("extensions.abstractin.onboarded", true);
-user_pref("extensions.zusia-tester.outDir", "$out");
-user_pref("extensions.zusia-tester.xpi", "$profile_root/install.xpi");
+user_pref("extensions.abstractin-tester.outDir", "$out");
+user_pref("extensions.abstractin-tester.xpi", "$profile_root/install.xpi");
 PREFS
 for stage in 0 1 2; do
  rm -f "$out/stage-$stage.json"

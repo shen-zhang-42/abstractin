@@ -156,7 +156,7 @@ for (const type of ["book", "paper"]) {
 		const pdfPath = join(window.Zotero.DataDirectory.dir, "test.pdf");
 		await writeFile(pdfPath, "%PDF-1.7 test transport");
 		attachment.getFilePathAsync = async () => pdfPath;
-		window.Zotero.PDFWorker = { getFullText: async () => ({ text: "Title\fContents\fOriginal proof", totalPages: 3, extractedPages: 3 }) };
+		window.Zotero.PDFWorker = { getFullText: async () => ({ text: ["Title", "Contents", ...Array(6).fill("Other page"), "Original proof"].join("\f"), totalPages: 9, extractedPages: 9 }) };
 		parent.getBestAttachment = async () => attachment;
 		window.Zotero.Items = { get: id => notes.find(note => note.id === id) };
 		window.Zotero.Libraries = { get: () => ({ libraryType: "user" }) };
@@ -181,15 +181,18 @@ for (const type of ["book", "paper"]) {
 		};
 		const body = document.createElement("div"); document.body.appendChild(body);
 		p.renderSkeleton(document, body);
-		const root = body.querySelector(".zs-root");
+		const root = body.querySelector(".abstractin-root");
 		const ctx = await p.getContext(parent);
-		const view = { doc: document, root, ctx, input: root.querySelector(".zs-input"), logEl: root.querySelector(".zs-log"),
+		const view = { doc: document, root, ctx, input: root.querySelector(".abstractin-input"), logEl: root.querySelector(".abstractin-log"),
 			send: (text, images) => p.sendText(view, text, images) };
 		p._views.set(root, view);
 		await p.activateReading(view, attachment, { type, language: "中文" });
-		p.startRequest(view, "Why does this step work?", [], [], { selection: {
+		const sending = p.startRequest(view, "Why does this step work?", [], [], { selection: {
 			text: "The hypothesis", attachmentID: 7, pageLabel: "xiv", position: { pageIndex: 8 },
 		} });
+		await new Promise(resolve => setTimeout(resolve, 20));
+		root.querySelector(".abstractin-chapter-choice button")?.click();
+		await sending;
 		const pending = p._pending.get(view.ctx.dir);
 		const result = await pending.promise;
 		await new Promise(resolve => setTimeout(resolve, 30));
@@ -213,7 +216,7 @@ for (const type of ["book", "paper"]) {
 		assert.equal(await readFile(path, "utf8"), await readFile(original, "utf8"));
 		// User edits to Zotero notes are visible to later questions through a derived snapshot.
 		notes[0].html += "<p>User corrected the hypothesis.</p>";
-		assert.match(await p.exportReadingRecords(view.ctx), /User corrected the hypothesis/);
+		assert.equal(await p.exportReadingRecords(view.ctx), "", "other editable records are not injected into this discussion");
 	});
 }
 
@@ -246,8 +249,8 @@ test("the companion collects reading information inline, validates it and starts
 	const attachments = [7, 8].map(id => ({ id, key: "PDF0000" + id, isPDFAttachment: () => true, getField: () => "PDF " + id }));
 	window.Zotero.Items = { get: id => attachments.find(item => item.id === id) };
 	const body = document.createElement("div"); document.body.appendChild(body); p.renderSkeleton(document, body);
-	const root = body.querySelector(".zs-root");
-	const view = { doc: document, root, input: root.querySelector(".zs-input"), logEl: root.querySelector(".zs-log"), ctx: { paperItem: parent, attachmentItem: attachments[0], dir: "/tmp/a" } };
+	const root = body.querySelector(".abstractin-root");
+	const view = { doc: document, root, input: root.querySelector(".abstractin-input"), logEl: root.querySelector(".abstractin-log"), ctx: { paperItem: parent, attachmentItem: attachments[0], dir: "/tmp/a" } };
 	p._views.set(root, view);
 	let chosen, workflow;
 	p.activateReading = async (view, item, options) => { chosen = { item, options }; view.ctx.reading = options; p.renderMessages(view, []); };
@@ -255,7 +258,7 @@ test("the companion collects reading information inline, validates it and starts
 	p.renderMessages(view, []);
 	await p.openReadingSetup(root);
 	assert.equal(root.querySelector("[role=dialog]"), null);
-	assert.ok(root.querySelector(".zs-reading-welcome .zs-mascot"));
+	assert.ok(root.querySelector(".abstractin-reading-welcome .abstractin-mascot"));
 	assert.match(view.logEl.textContent, /Reading fixture/);
 	assert.equal(root.querySelector("select"), null);
 	await p.sendText(view, "A different title");
@@ -286,19 +289,17 @@ test("the companion collects reading information inline, validates it and starts
 	assert.match(p.readingPrompt(view.ctx), /Understand the proof in chapter 2/);
 });
 
-test("a confirmed reading document is restored after restarting without repeating the introduction", async () => {
-	const { plugin: p, window } = loadPlugin();
-	p.getDataDir = () => "/tmp/reading-restore";
-	const parent = { id: 9, key: "BOOK1234", libraryID: 1, isRegularItem: () => true };
-	const attachment = { id: 7, key: "PDF00007", parentItem: parent, isRegularItem: () => false, isAttachment: () => true };
-	window.Zotero.File = { createDirectoryIfMissingAsync: async () => {}, getContentsAsync: async path => {
-		assert.ok(path.endsWith("reading-PDF00007/reading.json"));
-		return JSON.stringify({ type: "book", title: "Confirmed title", goal: "A proof", itemKey: parent.key, attachmentKey: attachment.key });
-	} };
-	const ctx = await p.getContext(attachment);
-	assert.equal(ctx.reading.title, "Confirmed title");
-	assert.equal(ctx.reading.goal, "A proof");
-	assert.ok(ctx.dir.endsWith("reading-PDF00007"));
+test("a confirmed reading document restores its isolated discussion after restarting", async () => {
+ const { plugin: p, window } = loadPlugin(); filesystem(window);
+ window.Zotero.DataDirectory = { dir: await mkdtemp(join(tmpdir(), "abstractin-restore-")) };
+ const parent = { id: 9, key: "BOOK1234", libraryID: 1, isRegularItem: () => true, getNotes: () => [] };
+ const attachment = { id: 7, key: "PDF00007", parentItem: parent, isRegularItem: () => false, isAttachment: () => true };
+ const dir = join(p.getDataDir(), "1-BOOK1234", "reading-PDF00007"); await mkdir(dir, { recursive: true });
+ await writeFile(join(dir, "reading.json"), JSON.stringify({ type: "book", title: "Confirmed title", goal: "A proof", itemKey: parent.key, attachmentKey: attachment.key }));
+ const ctx = await p.getContext(attachment);
+ assert.equal(ctx.reading.title, "Confirmed title"); assert.equal(ctx.reading.goal, "A proof");
+ assert.equal(ctx.documentDir, dir); assert.ok(ctx.dir.includes("/discussions/"));
+ const restored = await p.getContext(attachment); assert.equal(restored.discussion.id, ctx.discussion.id);
 });
 
 test("reading language follows shared preferences even with an older saved reading language", () => {

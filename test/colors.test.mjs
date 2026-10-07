@@ -21,7 +21,7 @@ for (const { name, color: preset } of plugin.ACCENTS) {
 		const onAccent = plugin.contrast(color, plugin.textOn(color));
 		assert.ok(onAccent >= 3, `send icon contrast ${onAccent.toFixed(2)} < 3`);
 		for (const [theme, { bg, text }] of Object.entries(THEMES)) {
-			// --zs-accent-ink: accent mixed 78% with the text colour (buttons, labels).
+			// --abstractin-accent-ink: accent mixed 78% with the text colour (buttons, labels).
 			const ink = mix(color, text, 0.78);
 			const inkContrast = plugin.contrast(ink, bg);
 			assert.ok(inkContrast >= 3, `${theme}: accent ink contrast ${inkContrast.toFixed(2)} < 3`);
@@ -32,7 +32,7 @@ for (const { name, color: preset } of plugin.ACCENTS) {
 	});
 }
 
-test("Zusia's own red is offered as an accent", () => {
+test("AbstractIn's own red is offered as an accent", () => {
 	assert.ok(plugin.ACCENTS.some(a => a.name === "Red" && /^#[0-9a-f]{6}$/i.test(a.color)));
 });
 

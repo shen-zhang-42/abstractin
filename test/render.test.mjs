@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { loadPlugin, fixture, render, leftoverMarkup } from "./load-plugin.mjs";
 
 const env = loadPlugin();
-const texErrors = c => [...c.querySelectorAll(".zs-tex-error")].map(n => n.textContent);
+const texErrors = c => [...c.querySelectorAll(".abstractin-tex-error")].map(n => n.textContent);
 const cellText = (table, row, col) => table.rows[row].cells[col].textContent.trim();
 
 test("bundled KaTeX loads without DOM globals and renders the Bayesian formulas from the reported failure", () => {
@@ -39,7 +39,7 @@ test("real FFT answer: every formula renders, table is 4×4, maths after a list 
 	assert.equal(table.rows[0].cells.length, 4);
 	assert.ok(table.rows[1].cells[3].querySelector("math"), "maths inside a cell");
 	const combine = [...c.querySelectorAll("li")].find(li => li.textContent.startsWith("Combine"));
-	assert.ok(combine.querySelector(".zs-math-block"), "display maths belongs to its list item");
+	assert.ok(combine.querySelector(".abstractin-math-block"), "display maths belongs to its list item");
 });
 
 test("tables: alignment, math with \\| norms, escaped pipes, pipe-less syntax", () => {
@@ -61,13 +61,13 @@ test("tables: alignment, math with \\| norms, escaped pipes, pipe-less syntax", 
 
 test("latex: display forms, environments, lists, and broken TeX shown as source", () => {
 	const c = render(env, fixture("latex.md"));
-	assert.equal(c.querySelectorAll(".zs-math-block").length, 8);
-	assert.equal(c.querySelectorAll(".zs-env").length, 3);
-	assert.ok(c.querySelector(".zs-env-def .zs-env-title").textContent.includes("Metric"));
-	assert.ok(c.querySelector(".zs-env-proof .zs-math-block"), "display maths inside a proof");
+	assert.equal(c.querySelectorAll(".abstractin-math-block").length, 8);
+	assert.equal(c.querySelectorAll(".abstractin-env").length, 3);
+	assert.ok(c.querySelector(".abstractin-env-def .abstractin-env-title").textContent.includes("Metric"));
+	assert.ok(c.querySelector(".abstractin-env-proof .abstractin-math-block"), "display maths inside a proof");
 	assert.deepEqual(texErrors(c), ["$\\frac{1}{$", "$\\badmacro{x}$"]);
 	assert.ok(c.textContent.includes("price of $5 or $20"), "currency is not maths");
-	assert.ok(c.querySelector("ol > li .zs-math-block"), "display maths after an item stays in the list");
+	assert.ok(c.querySelector("ol > li .abstractin-math-block"), "display maths after an item stays in the list");
 	assert.equal(c.querySelectorAll("ol").length, 1, "the list continues after its display maths");
 });
 
@@ -80,8 +80,8 @@ test("markdown: nested lists, continuation lines, quotes, code, headings", () =>
 	assert.ok(second.textContent.includes("continued on an indented line"));
 	assert.ok(c.querySelector("blockquote math"));
 	assert.equal(c.querySelector("pre code").textContent.split("\n").length, 2);
-	assert.equal(c.querySelectorAll(".zs-h").length, 2);
-	assert.ok(c.querySelector(".zs-link"));
+	assert.equal(c.querySelectorAll(".abstractin-h").length, 2);
+	assert.ok(c.querySelector(".abstractin-link"));
 	assert.ok(c.querySelector("hr"));
 });
 
@@ -129,12 +129,12 @@ test("streaming: an unfinished formula is held back until it closes", () => {
 
 test("code blocks get a header with language and copy, except in notes", () => {
 	const c = render(env, "```python\nprint(1)\n```");
-	assert.equal(c.querySelector(".zs-code .zs-code-lang").textContent, "python");
-	assert.equal(c.querySelector(".zs-code pre code").textContent, "print(1)");
-	assert.ok(c.querySelector(".zs-code .zs-code-copy"));
+	assert.equal(c.querySelector(".abstractin-code .abstractin-code-lang").textContent, "python");
+	assert.equal(c.querySelector(".abstractin-code pre code").textContent, "print(1)");
+	assert.ok(c.querySelector(".abstractin-code .abstractin-code-copy"));
 	const html = env.plugin.noteHTML("", "```js\nx()\n```");
 	assert.match(html, /<pre><code>x\(\)<\/code><\/pre>/);
-	assert.doesNotMatch(html, /zs-code/);
+	assert.doesNotMatch(html, /abstractin-code/);
 });
 
 test("drawings: an svg block renders as a themed figure on the sidebar background", () => {
@@ -150,24 +150,24 @@ test("drawings: an svg block renders as a themed figure on the sidebar backgroun
 		"</svg>",
 		"```",
 	].join("\n"));
-	const svg = c.querySelector(".zs-figure .zs-figure-canvas svg");
+	const svg = c.querySelector(".abstractin-figure .abstractin-figure-canvas svg");
 	assert.ok(svg);
 	assert.equal(svg.getAttribute("viewBox"), "0 0 300 120");
 	assert.equal(svg.getAttribute("width"), null);
 	assert.equal(svg.querySelectorAll("rect").length, 1, "full-size background rectangle is dropped");
 	const rect = svg.querySelector("rect");
-	assert.equal(rect.style.getPropertyValue("fill"), "var(--zs-d-accent-soft)");
-	assert.equal(rect.style.getPropertyValue("stroke"), "var(--zs-d-accent)");
+	assert.equal(rect.style.getPropertyValue("fill"), "var(--abstractin-d-accent-soft)");
+	assert.equal(rect.style.getPropertyValue("stroke"), "var(--abstractin-d-accent)");
 	const circle = svg.querySelector("circle");
-	assert.equal(circle.style.getPropertyValue("fill"), "var(--zs-d-green-soft)");
-	assert.equal(circle.style.getPropertyValue("stroke"), "var(--zs-d-green)");
+	assert.equal(circle.style.getPropertyValue("fill"), "var(--abstractin-d-green-soft)");
+	assert.equal(circle.style.getPropertyValue("stroke"), "var(--abstractin-d-green)");
 	const text = svg.querySelector("text");
-	assert.equal(text.style.getPropertyValue("fill"), "var(--zs-d-ink)");
+	assert.equal(text.style.getPropertyValue("fill"), "var(--abstractin-d-ink)");
 	assert.equal(text.getAttribute("font-family"), null);
-	assert.equal(svg.querySelector("line").style.getPropertyValue("stroke"), "var(--zs-d-line)");
-	const source = c.querySelector(".zs-figure > .zs-code");
+	assert.equal(svg.querySelector("line").style.getPropertyValue("stroke"), "var(--abstractin-d-line)");
+	const source = c.querySelector(".abstractin-figure > .abstractin-code");
 	assert.equal(source.hidden, true);
-	c.querySelector(".zs-figure-source").click();
+	c.querySelector(".abstractin-figure-source").click();
 	assert.equal(source.hidden, false);
 });
 
@@ -184,7 +184,7 @@ test("drawings: scripts, handlers, external links and embedded HTML are removed"
 		"</svg>",
 		"```",
 	].join("\n"));
-	const svg = c.querySelector(".zs-figure svg");
+	const svg = c.querySelector(".abstractin-figure svg");
 	assert.ok(svg);
 	assert.equal(svg.getAttribute("onload"), null);
 	for (const tag of ["script", "style", "foreignObject", "image", "a", "div"]) {
@@ -199,18 +199,18 @@ test("drawings: scripts, handlers, external links and embedded HTML are removed"
 });
 
 test("drawings: broken or unfinished SVG falls back to code; bare <svg> markup also renders", () => {
-	assert.ok(render(env, "```svg\n<svg>not a drawing</svg>\n```").querySelector(".zs-code"), "nothing drawable falls back to code");
-	assert.ok(render(env, "```svg\n<svg xmlns=\"http://www.w3.org/2000/svg\"><rect/>").querySelector(".zs-code"));
+	assert.ok(render(env, "```svg\n<svg>not a drawing</svg>\n```").querySelector(".abstractin-code"), "nothing drawable falls back to code");
+	assert.ok(render(env, "```svg\n<svg xmlns=\"http://www.w3.org/2000/svg\"><rect/>").querySelector(".abstractin-code"));
 	const bare = render(env, 'Look:\n\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">\n<circle cx="5" cy="5" r="4" fill="teal"/>\n</svg>\n\nDone.');
-	assert.equal(bare.querySelector(".zs-figure svg circle").style.getPropertyValue("fill"), "var(--zs-d-teal)");
+	assert.equal(bare.querySelector(".abstractin-figure svg circle").style.getPropertyValue("fill"), "var(--abstractin-d-teal)");
 	assert.equal(bare.lastElementChild.textContent, "Done.");
 });
 
 test("drawings: a streaming svg shows a placeholder; notes keep the source", () => {
 	const partial = "Intro\n\n```svg\n<svg viewBox=\"0 0 10 10\"><rect";
 	const live = render(env, env.plugin.withoutIncompleteMath(partial));
-	assert.ok(live.querySelector(".zs-figure-pending"));
-	assert.equal(live.querySelector(".zs-code"), null);
+	assert.ok(live.querySelector(".abstractin-figure-pending"));
+	assert.equal(live.querySelector(".abstractin-code"), null);
 	assert.equal(env.plugin.withoutIncompleteMath("a\n```js\nlet x"), "a\n```js\nlet x");
 	const html = env.plugin.noteHTML("Q", "```svg\n<svg xmlns=\"http://www.w3.org/2000/svg\"><rect/></svg>\n```");
 	assert.match(html, /<pre>/);
@@ -219,11 +219,11 @@ test("drawings: a streaming svg shows a placeholder; notes keep the source", () 
 
 test("drawings: svg without xmlns, with xlink and with a bare & still render (as models write them)", () => {
 	const noNs = render(env, '```svg\n<svg viewBox="0 0 360 200" font-family="Helvetica">\n<circle cx="10" cy="10" r="5" fill="accent"/>\n</svg>\n```');
-	assert.equal(noNs.querySelector(".zs-figure svg circle").style.getPropertyValue("fill"), "var(--zs-d-accent)");
+	assert.equal(noNs.querySelector(".abstractin-figure svg circle").style.getPropertyValue("fill"), "var(--abstractin-d-accent)");
 	const xlink = render(env, '```svg\n<svg viewBox="0 0 10 10"><defs><path id="p" d="M0 0L5 5"/></defs><use xlink:href="#p"/></svg>\n```');
-	assert.equal(xlink.querySelector(".zs-figure svg use").getAttribute("href"), "#p");
+	assert.equal(xlink.querySelector(".abstractin-figure svg use").getAttribute("href"), "#p");
 	const amp = render(env, '```svg\n<svg viewBox="0 0 10 10"><text x="1" y="5">A & B</text></svg>\n```');
-	assert.equal(amp.querySelector(".zs-figure svg text").textContent, "A & B");
+	assert.equal(amp.querySelector(".abstractin-figure svg text").textContent, "A & B");
 });
 
 test("notes: with a collector, each drawing becomes a numbered image placeholder", () => {
@@ -231,7 +231,7 @@ test("notes: with a collector, each drawing becomes a numbered image placeholder
 	const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="5" height="5"/></svg>';
 	const html = env.plugin.noteHTML("Q", "Look:\n\n```svg\n" + svg + "\n```\n\nand\n\n```svg\n" + svg + "\n```", drawings);
 	assert.equal(drawings.length, 2);
-	assert.match(html, /<p><img data-zs-drawing="0"><\/p>[\s\S]*<p><img data-zs-drawing="1"><\/p>/);
+	assert.match(html, /<p><img data-abstractin-drawing="0"><\/p>[\s\S]*<p><img data-abstractin-drawing="1"><\/p>/);
 	assert.doesNotMatch(html, /<pre>/);
 });
 
@@ -243,14 +243,14 @@ test("theorem links: boxes are numbered across the chat, \\ref and [text](#label
 		"", "By \\ref{thm:banach}, [this definition](#def:metric) and \\cref{thm:nope}. \\label{stray}",
 	].join("\n"));
 	env.plugin.linkTheorems(c);
-	assert.deepEqual([...c.querySelectorAll(".zs-env-head")].map(h => h.textContent), ["Definition 1 — Metric", "Theorem 2", "Proof. — Proof of Theorem 2"]);
-	assert.deepEqual([...c.querySelectorAll(".zs-ref")].map(r => [r.textContent, r.classList.contains("zs-ref-ok")]),
+	assert.deepEqual([...c.querySelectorAll(".abstractin-env-head")].map(h => h.textContent), ["Definition 1 — Metric", "Theorem 2", "Proof. — Proof of Theorem 2"]);
+	assert.deepEqual([...c.querySelectorAll(".abstractin-ref")].map(r => [r.textContent, r.classList.contains("abstractin-ref-ok")]),
 		[["Theorem 2", true], ["Definition 1", true], ["Theorem 2", true], ["this definition", true], ["thm:nope", false]]);
-	assert.match(c.querySelector(".zs-ref-ok").title, /Every contraction has a fixed point\./);
+	assert.match(c.querySelector(".abstractin-ref-ok").title, /Every contraction has a fixed point\./);
 	assert.doesNotMatch(c.textContent, /\\label|\\ref|\\cref/);
 	assert.deepEqual(leftoverMarkup(c), []);
 	const note = env.plugin.noteHTML("Q", "\\begin{lemma}\\label{lem:a}\nX\n\\end{lemma}\n\nSee \\ref{lem:a}.");
-	assert.doesNotMatch(note, /zs-ref|\\label/);
+	assert.doesNotMatch(note, /abstractin-ref|\\label/);
 	assert.match(note, /See lem:a\./);
 });
 
@@ -262,7 +262,7 @@ The display is \[\sum_{i=1}^n x_i\] here.
 A normal prose line
 continues here.`);
  assert.equal(c.querySelectorAll('math').length, 3); assert.deepEqual(texErrors(c), []);
- assert.equal(c.querySelectorAll('.zs-math-block').length, 1);
+ assert.equal(c.querySelectorAll('.abstractin-math-block').length, 1);
  assert.ok(c.querySelector('br')); assert.deepEqual(leftoverMarkup(c), []);
 });
 
@@ -292,7 +292,7 @@ test("copying selected rendered answers keeps TeX once and does not intercept co
  const local = loadPlugin({ prefs: { 'extensions.abstractin.onboarded': true } });
  const { plugin: p, document: doc, window } = local;
  const body = doc.createElement('div'); doc.body.append(body); p.renderSkeleton(doc, body);
- const root = body.querySelector('.zs-root'), rich = p.el(doc, 'div', 'zs-rich'); root.querySelector('.zs-log').append(rich);
+ const root = body.querySelector('.abstractin-root'), rich = p.el(doc, 'div', 'abstractin-rich'); root.querySelector('.abstractin-log').append(rich);
  p.renderMarkdown(doc, rich, 'Inline $x^2$.\n\n$$\\frac{1}{2}$$\n\nNext paragraph.');
  const range = doc.createRange(); range.selectNodeContents(rich); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
  let copied = ''; const event = new window.Event('copy', { bubbles: true, cancelable: true });
@@ -303,6 +303,6 @@ test("copying selected rendered answers keeps TeX once and does not intercept co
  window.Zotero.Utilities.Internal.copyTextToClipboard = text => { copied = text; };
  rich.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true }));
  assert.ok(copied.includes('$x^2$'));
- const input = root.querySelector('.zs-input'); selection.removeAllRanges();
+ const input = root.querySelector('.abstractin-input'); selection.removeAllRanges();
  const composerEvent = new window.Event('copy', { bubbles: true, cancelable: true }); input.dispatchEvent(composerEvent); assert.equal(composerEvent.defaultPrevented, false);
 });

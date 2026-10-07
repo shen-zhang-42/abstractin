@@ -11,8 +11,8 @@ const LOOK = {
 };
 const PANE = "#zotero-context-pane";
 // Every open tab has its own sidebar; setUp() tags the one on screen.
-const ACTIVE = '[data-zusia-active="1"]';
-const LOG = `doc.querySelector('${ACTIVE} .zs-log')`;
+const ACTIVE = '[data-abstractin-active="1"]';
+const LOG = `doc.querySelector('${ACTIVE} .abstractin-log')`;
 
 // ---------------------------------------------------------------------------
 
@@ -24,9 +24,7 @@ async function setUp(s, { paper, page = 0, modes = {}, look = LOOK, onboarded = 
 		Zotero.Prefs.set("extensions.abstractin.backend", "claude", true);
 		Zotero.Prefs.set("extensions.abstractin.claude.model", "opus", true);
 		Zotero.Prefs.set("extensions.abstractin.claude.effort", ${JSON.stringify(effort)}, true);
-		Zotero.Prefs.set("extensions.abstractin.mode.drawing", ${!!modes.drawing}, true);
 		Zotero.Prefs.set("extensions.abstractin.behaviour", JSON.stringify({ length: "short", level: "student", tone: "neutral" }), true);
-		Zotero.Prefs.set("extensions.abstractin.mode.latex", ${!!modes.latex}, true);
 		Services.wm.getMostRecentWindow("zotero:pref")?.close();
 		for (let id of ["post-upgrade-container", "sync-reminder-container", "file-renaming-banner-container"]) {
 			let banner = doc.getElementById(id);
@@ -46,7 +44,7 @@ async function setUp(s, { paper, page = 0, modes = {}, look = LOOK, onboarded = 
 		let pane = doc.getElementById("zotero-context-pane");
 		pane.setAttribute("width", "560");
 		pane.style.width = "560px";
-		for (let input of doc.querySelectorAll(".zs-input")) input.value = "";
+		for (let input of doc.querySelectorAll(".abstractin-input")) input.value = "";
 		await Zotero.Promise.delay(900);
 		return true;`);
 	s.front();
@@ -55,10 +53,10 @@ async function setUp(s, { paper, page = 0, modes = {}, look = LOOK, onboarded = 
 		let reader = Zotero.Reader._readers.find(r => r.tabID === win.Zotero_Tabs.selectedID);
 		let item = Zotero.Items.get(reader.itemID);
 		let dir = Zotero.AbstractIn.contextDirFor(item);
-		for (let root of doc.querySelectorAll(".zs-root")) {
+		for (let root of doc.querySelectorAll(".abstractin-root")) {
 			let view = Zotero.AbstractIn._views.get(root);
-			if (view && view.ctx.dir === dir && root.getBoundingClientRect().width > 100) root.dataset.zusiaActive = "1";
-			else delete root.dataset.zusiaActive;
+			if (view && view.ctx.dir === dir && root.getBoundingClientRect().width > 100) root.dataset.abstractinActive = "1";
+			else delete root.dataset.abstractinActive;
 		}
 		return doc.querySelectorAll('${ACTIVE}').length;`);
 	await s.moveTo({ x: 700, y: 620 }, { ms: 300 });
@@ -103,11 +101,11 @@ async function waitForAnswer(s, mark) {
 async function readAnswer(s, { from = "question", stepPx = 300, pause = 1400 } = {}) {
 	// from: "question" starts at the last question, anything else keeps the current scroll.
 	let { top, max } = await s.run(`let log = ${LOG};
-		let user = [...log.querySelectorAll(".zs-user")].pop();
+		let user = [...log.querySelectorAll(".abstractin-user")].pop();
 		let offset = n => n.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop;
 		if (${from === "question"}) log.scrollTop = Math.max(0, offset(user) - 8);
 		return { top: log.scrollTop, max: log.scrollHeight - log.clientHeight };`);
-	await s.moveTo(await s.rect(`${ACTIVE} .zs-log`), { ms: 500, dx: 170 });
+	await s.moveTo(await s.rect(`${ACTIVE} .abstractin-log`), { ms: 500, dx: 170 });
 	for (let y = top + stepPx; y < max + stepPx; y += stepPx) {
 		await s.run(`let log = ${LOG}; let from = log.scrollTop, to = Math.min(${Math.round(y)}, ${max});
 			let start = Date.now();
@@ -120,7 +118,7 @@ async function readAnswer(s, { from = "question", stepPx = 300, pause = 1400 } =
 // ---------------------------------------------------------------------------
 
 const SCENES = {
-	// Select a sentence in the PDF and let Zusia explain it.
+	// Select a sentence in the PDF and let AbstractIn explain it.
 	explain: {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.resnet, page: 0 });
@@ -154,14 +152,14 @@ const SCENES = {
 		async run(s) {
 			s.mark("start");
 			await sleep(1000);
-			await s.click(`${ACTIVE} .zs-attach`, { after: 800 });
+			await s.click(`${ACTIVE} .abstractin-attach`, { after: 800 });
 			s.mark("attach menu");
 			await s.clickText("Current PDF page", { after: 1400, scope: PANE });
 			s.mark("page attached");
-			await s.click(`${ACTIVE} .zs-input`, { after: 200 });
+			await s.click(`${ACTIVE} .abstractin-input`, { after: 200 });
 			await s.type("what does Figure 1 show? Three sentences.", { perChar: 30 });
 			await sleep(500);
-			await s.click(`${ACTIVE} .zs-send`, { after: 300 });
+			await s.click(`${ACTIVE} .abstractin-send`, { after: 300 });
 			s.mark("sent");
 			await waitForAnswer(s);
 			await readAnswer(s, { stepPx: 260 });
@@ -183,16 +181,16 @@ const SCENES = {
 		async run(s) {
 			s.mark("start");
 			await sleep(1000);
-			await s.click(`${ACTIVE} .zs-clarifications`, { after: 1300 });
+			await s.click(`${ACTIVE} .abstractin-clarifications`, { after: 1300 });
 			s.mark("panel");
-			await s.click(await s.rectOf(`return [...doc.querySelectorAll('${ACTIVE} .zs-clar-item')].find(i => i.textContent.includes("Deeper neural")) || doc.querySelector('${ACTIVE} .zs-clar-item');`), { after: 1500 });
+			await s.click(await s.rectOf(`return [...doc.querySelectorAll('${ACTIVE} .abstractin-clar-item')].find(i => i.textContent.includes("Deeper neural")) || doc.querySelector('${ACTIVE} .abstractin-clar-item');`), { after: 1500 });
 			s.mark("detail");
-			await s.run(`let body = doc.querySelector('${ACTIVE} .zs-panel-body'); let start = Date.now();
+			await s.run(`let body = doc.querySelector('${ACTIVE} .abstractin-panel-body'); let start = Date.now();
 				while (Date.now() - start < 2600) { let t = (Date.now() - start) / 2600; body.scrollTop = (body.scrollHeight - body.clientHeight) * t; await new Promise(r => win.requestAnimationFrame(r)); }`);
 			await sleep(1200);
-			await s.run(`let body = doc.querySelector('${ACTIVE} .zs-panel-body'); body.scrollTo({ top: 0, behavior: "smooth" });`);
+			await s.run(`let body = doc.querySelector('${ACTIVE} .abstractin-panel-body'); body.scrollTo({ top: 0, behavior: "smooth" });`);
 			await sleep(1200);
-			await s.click(`${ACTIVE} .zs-clar-pdf`, { after: 2600 });
+			await s.click(`${ACTIVE} .abstractin-clar-pdf`, { after: 2600 });
 			s.mark("back to the pdf");
 			await sleep(1500);
 		},
@@ -206,18 +204,18 @@ const SCENES = {
 		async run(s) {
 			s.mark("start");
 			await sleep(900);
-			await s.click(`${ACTIVE} .zs-search`, { after: 700 });
+			await s.click(`${ACTIVE} .abstractin-search`, { after: 700 });
 			s.mark("search open");
 			await s.type("residual", { perChar: 120 });
 			await sleep(1400);
 			s.mark("results");
-			let results = await s.run(`return [...doc.querySelectorAll('${ACTIVE} .zs-search-menu .zs-menu-item')].length`);
+			let results = await s.run(`return [...doc.querySelectorAll('${ACTIVE} .abstractin-search-menu .abstractin-menu-item')].length`);
 			for (let i = 0; i < Math.min(3, results); i++) {
-				await s.moveTo(await s.rect(`${ACTIVE} .zs-search-menu .zs-menu-item`, { index: i }), { ms: 420 });
+				await s.moveTo(await s.rect(`${ACTIVE} .abstractin-search-menu .abstractin-menu-item`, { index: i }), { ms: 420 });
 				await sleep(500);
 			}
 			if (results) {
-				await s.click(`${ACTIVE} .zs-search-menu .zs-menu-item`, { index: 0, after: 3000 });
+				await s.click(`${ACTIVE} .abstractin-search-menu .abstractin-menu-item`, { index: 0, after: 3000 });
 			}
 			s.mark("opened");
 			await sleep(2500);
@@ -235,19 +233,19 @@ const SCENES = {
 		async run(s) {
 			s.mark("start");
 			await sleep(900);
-			await s.click(`${ACTIVE} .zs-input`, { after: 200 });
+			await s.click(`${ACTIVE} .abstractin-input`, { after: 200 });
 			await s.type("State the assumptions and the regret bound of Theorem 4.1, then sketch the proof.", { perChar: 28 });
 			await sleep(400);
-			await s.click(`${ACTIVE} .zs-send`, { after: 300 });
+			await s.click(`${ACTIVE} .abstractin-send`, { after: 300 });
 			s.mark("sent");
 			await waitForAnswer(s);
 			await readAnswer(s, { stepPx: 320, pause: 1200 });
 			s.mark("read");
-			let refs = await s.run(`return [...${LOG}.querySelectorAll(".zs-ref-ok")].length`);
+			let refs = await s.run(`return [...${LOG}.querySelectorAll(".abstractin-ref-ok")].length`);
 			if (refs) {
-				await s.click(`${ACTIVE} .zs-log .zs-ref-ok`, { index: refs - 1, after: 2200 });
+				await s.click(`${ACTIVE} .abstractin-log .abstractin-ref-ok`, { index: refs - 1, after: 2200 });
 				s.mark("jumped");
-				await s.click(`${ACTIVE} .zs-back`, { after: 2000 });
+				await s.click(`${ACTIVE} .abstractin-back`, { after: 2000 });
 				s.mark("back");
 			}
 			await sleep(1500);
@@ -268,7 +266,9 @@ const SCENES = {
 		async run(s) {
 			s.mark("start");
 			await sleep(1600);
-			await s.click(`${ACTIVE} .zs-explain`, { after: 600 });
+			await s.click(`${ACTIVE} .abstractin-input`, { after: 200 });
+			await s.type("Explain your last answer step by step, starting with the intuition and a concrete example.", { perChar: 25 });
+			await s.click(`${ACTIVE} .abstractin-send`, { after: 600 });
 			s.mark("asked again");
 			await waitForAnswer(s);
 			await readAnswer(s, { stepPx: 300 });
@@ -298,13 +298,13 @@ const SCENES = {
 				CS.renderMessages(view, await CS.loadHistory(dir));
 				await Zotero.Promise.delay(600);
 				return (await CS.loadHistory(dir)).length;`);
-			await s.run(`let log = ${LOG}; let fig = log.querySelector(".zs-figure");
+			await s.run(`let log = ${LOG}; let fig = log.querySelector(".abstractin-figure");
 				if (fig) log.scrollTop = fig.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 60;`);
 		},
 		async run(s) {
 			s.mark("start");
 			await sleep(1400);
-			await s.click(`${ACTIVE} .zs-figure-save`, { after: 900 });
+			await s.click(`${ACTIVE} .abstractin-figure-save`, { after: 900 });
 			s.mark("save menu");
 			await s.clickText("Add to a note", { after: 2600, scope: PANE });
 			s.mark("saved");
@@ -332,14 +332,14 @@ const SCENES = {
 		async setup(s) {
 			await setUp(s, { paper: PAPERS.gpt3, page: 0, onboarded: false, look: {} });
 			await s.run(`for (let root of doc.querySelectorAll('${ACTIVE}')) {
-				if (!root.querySelector(".zs-wizard")) Zotero.AbstractIn.showWizard(root);
+				if (!root.querySelector(".abstractin-wizard")) Zotero.AbstractIn.showWizard(root);
 			}`);
 		},
 		async run(s) {
 			s.mark("start");
 			await sleep(1400);
-			let next = `${ACTIVE} .zs-wizard-next`;
-			let tile = value => `${ACTIVE} .zs-wizard .zs-tile[data-value="${value}"]`;
+			let next = `${ACTIVE} .abstractin-wizard-next`;
+			let tile = value => `${ACTIVE} .abstractin-wizard .abstractin-tile[data-value="${value}"]`;
 			await s.click(next, { after: 900 });
 			s.mark("assistant");
 			await s.click(tile("claude"), { after: 900 });
@@ -347,7 +347,7 @@ const SCENES = {
 			s.mark("look");
 			await s.click(tile("flat"), { after: 1100 });
 			await s.click(tile("glass"), { after: 900 });
-			await s.click(`${ACTIVE} .zs-wizard .zs-swatch`, { index: 1, after: 1300 });
+			await s.click(`${ACTIVE} .abstractin-wizard .abstractin-swatch`, { index: 1, after: 1300 });
 			await s.click(next, { after: 900 });
 			s.mark("buddy");
 			await s.click(tile("owl"), { after: 900 });
@@ -356,7 +356,7 @@ const SCENES = {
 			await s.click(next, { after: 900 });
 			s.mark("answers");
 			await s.click(tile("student"), { after: 900 });
-			await s.click(`${ACTIVE} .zs-wizard .zs-tile[title="LaTeX"]`, { after: 1100 });
+			await s.click(`${ACTIVE} .abstractin-wizard .abstractin-tile[title="LaTeX"]`, { after: 1100 });
 			await s.click(next, { after: 1100 });
 			s.mark("done");
 			await s.click(next, { after: 2600 });
@@ -390,22 +390,20 @@ const SCENES = {
 			await s.click(`${PANE} item-pane-sidenav [data-pane$="abstractin-section"]`, { after: 900 });
 			await s.run(`let reader = Zotero.Reader._readers.find(r => r.tabID === win.Zotero_Tabs.selectedID);
 				let dir = Zotero.AbstractIn.contextDirFor(Zotero.Items.get(reader.itemID));
-				for (let root of doc.querySelectorAll(".zs-root")) {
+				for (let root of doc.querySelectorAll(".abstractin-root")) {
 					let view = Zotero.AbstractIn._views.get(root);
-					if (view && view.ctx.dir === dir && root.getBoundingClientRect().width > 100) root.dataset.zusiaActive = "1";
-					else delete root.dataset.zusiaActive;
+					if (view && view.ctx.dir === dir && root.getBoundingClientRect().width > 100) root.dataset.abstractinActive = "1";
+					else delete root.dataset.abstractinActive;
 				}`);
-			s.mark("zusia");
-			await s.click(`${ACTIVE} .zs-mode-drawing`, { after: 350 });
-			await s.click(`${ACTIVE} .zs-mode-latex`, { after: 500 });
+			s.mark("abstractin");
 			s.mark("modes");
-			await s.click(`${ACTIVE} .zs-input`, { after: 150 });
+			await s.click(`${ACTIVE} .abstractin-input`, { after: 150 });
 			await s.type("draw how Q, K and V flow, and why divide by sqrt(d_k)", { perChar: 22 });
 			await sleep(350);
-			await s.click(`${ACTIVE} .zs-send`, { after: 250 });
+			await s.click(`${ACTIVE} .abstractin-send`, { after: 250 });
 			s.mark("sent");
 			await waitForAnswer(s);
-			await s.run(`let log = ${LOG}; let fig = log.querySelector(".zs-figure");
+			await s.run(`let log = ${LOG}; let fig = log.querySelector(".abstractin-figure");
 				if (fig) log.scrollTo({ top: fig.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 40, behavior: "smooth" });`);
 			await sleep(2200);
 			s.mark("drawing");
@@ -424,19 +422,19 @@ const SCENES = {
 				CS._pickBackground = CS._pickBackground || CS.pickBackground;
 				CS.pickBackground = async () => {
 					let name = "background-" + Date.now() + ".jpg";
-					await IOUtils.copy("/Users/Shared/Zusia/night-in-kyoto.jpg", PathUtils.join(CS.getDataDir(), name));
+					await IOUtils.copy("/Users/Shared/AbstractIn/night-in-kyoto.jpg", PathUtils.join(CS.getDataDir(), name));
 					return name;
 				};
-				let log = ${LOG}; let fig = log.querySelector(".zs-figure");
+				let log = ${LOG}; let fig = log.querySelector(".abstractin-figure");
 				if (fig) log.scrollTop = fig.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 80;
 				Zotero.Utilities.Internal.openPreferences("abstractin-prefs");
-				for (let i = 0; i < 40 && !Services.wm.getMostRecentWindow("zotero:pref")?.document.querySelector(".zs-prefs"); i++) await Zotero.Promise.delay(150);
+				for (let i = 0; i < 40 && !Services.wm.getMostRecentWindow("zotero:pref")?.document.querySelector(".abstractin-prefs"); i++) await Zotero.Promise.delay(150);
 				let pw = Services.wm.getMostRecentWindow("zotero:pref");
 				pw.resizeTo(760, 820); pw.moveTo(200, 170);
 				await Zotero.Promise.delay(700);
 				let d = pw.document;
 				d.querySelector("#prefs-search")?.blur();
-				let card = [...d.querySelectorAll(".zs-card")].find(c => c.querySelector(".zs-card-title").textContent === "Appearance");
+				let card = [...d.querySelectorAll(".abstractin-card")].find(c => c.querySelector(".abstractin-card-title").textContent === "Appearance");
 				card.scrollIntoView({ block: "start" });
 				d.getElementById("prefs-content").scrollTop -= 12;
 				pw.focus();
@@ -447,7 +445,7 @@ const SCENES = {
 		async run(s) {
 			const PREFS = `Services.wm.getMostRecentWindow("zotero:pref")`;
 			let control = (label, text) => s.rectOf(`let d = ${PREFS}.document;
-				let row = [...d.querySelectorAll(".zs-row")].find(r => r.querySelector(".zs-row-label")?.textContent === ${JSON.stringify(label)});
+				let row = [...d.querySelectorAll(".abstractin-row")].find(r => r.querySelector(".abstractin-row-label")?.textContent === ${JSON.stringify(label)});
 				let text = ${JSON.stringify("__T__")};
 				return [...row.querySelectorAll("button, label")].find(b => (b.title || b.textContent.trim()) === text);`.replace('"__T__"', JSON.stringify(text)));
 			let pick = async (label, text, after = 700) => s.click(await control(label, text), { after });
@@ -471,7 +469,7 @@ const SCENES = {
 			await s.run(`${PREFS}.close(); let CS = Zotero.AbstractIn; if (CS._pickBackground) CS.pickBackground = CS._pickBackground;`);
 			await sleep(900);
 			s.front();
-			await s.moveTo(await s.rect(`${ACTIVE} .zs-log`), { ms: 500, dx: 150 });
+			await s.moveTo(await s.rect(`${ACTIVE} .abstractin-log`), { ms: 500, dx: 150 });
 			await s.run(`let log = ${LOG}; let from = log.scrollTop, to = Math.max(0, from - 420), start = Date.now();
 				while (Date.now() - start < 1800) { let t = (Date.now() - start) / 1800; log.scrollTop = from + (to - from) * t; await new Promise(r => win.requestAnimationFrame(r)); }`);
 			await sleep(2200);
@@ -490,18 +488,18 @@ const SCENES = {
 		async run(s) {
 			s.mark("start");
 			await sleep(1000);
-			await s.click(`${ACTIVE} .zs-model-btn`, { after: 1000 });
+			await s.click(`${ACTIVE} .abstractin-model-btn`, { after: 1000 });
 			s.mark("model menu");
-			await s.moveTo(await s.rect(`${ACTIVE} .zs-menu .zs-menu-item`, { index: 1 }), { ms: 500 });
+			await s.moveTo(await s.rect(`${ACTIVE} .abstractin-menu .abstractin-menu-item`, { index: 1 }), { ms: 500 });
 			await sleep(700);
 			await s.clickText("Haiku", { after: 1200, scope: PANE });
 			s.mark("model picked");
-			await s.click(`${ACTIVE} .zs-effort-btn`, { after: 900 });
+			await s.click(`${ACTIVE} .abstractin-effort-btn`, { after: 900 });
 			await s.clickText("Low", { after: 1200, scope: PANE });
 			s.mark("effort picked");
-			await s.click(`${ACTIVE} .zs-input`, { after: 200 });
+			await s.click(`${ACTIVE} .abstractin-input`, { after: 200 });
 			await s.type("in two sentences: what is in-context learning?", { perChar: 28 });
-			await s.click(`${ACTIVE} .zs-send`, { after: 300 });
+			await s.click(`${ACTIVE} .abstractin-send`, { after: 300 });
 			s.mark("sent");
 			await waitForAnswer(s);
 			await readAnswer(s, { stepPx: 260 });

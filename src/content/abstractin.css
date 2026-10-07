@@ -1,0 +1,2897 @@
+/*
+ * AbstractIn reading interface.
+ *
+ * Layout and surfaces follow the two established Zotero AI plugins:
+ *  - Beaver (jlegewie/beaver-zotero): raised composer card mixed from Zotero's
+ *    own tokens, 6px control / 10px card radii, 22px ghost icon buttons, round
+ *    send button, quiet answer footer, overlay menus.
+ *  - llm-for-zotero (yilewang/llm-for-zotero): pill quick prompts, model and
+ *    reasoning dropdowns in the composer's control row.
+ * Everything resolves through Zotero's theme tokens, so light and dark follow
+ * Zotero. The only custom colour is --abstractin-accent (Settings → Appearance).
+ */
+
+.abstractin-root,
+.abstractin-prefs {
+	--abstractin-accent: var(--accent-blue, #4072e5);
+	--abstractin-accent-text: #fff;
+	--abstractin-font-size: 13px;
+
+	--abstractin-text: var(--fill-primary, rgba(0, 0, 0, 0.85));
+	--abstractin-muted: var(--fill-secondary, rgba(0, 0, 0, 0.55));
+	--abstractin-faint: var(--fill-tertiary, rgba(0, 0, 0, 0.25));
+	--abstractin-line: var(--fill-quarternary, rgba(0, 0, 0, 0.1));
+	--abstractin-hover: var(--fill-quinary, rgba(0, 0, 0, 0.05));
+
+	/* Surfaces, as in Beaver: ground is the pane, raised cards sit one step off it. */
+	--abstractin-ground: var(--material-sidepane, #f2f2f2);
+	--abstractin-raised: color-mix(in srgb, var(--material-mix-quarternary, #e5e5e5) 60%, var(--abstractin-ground));
+	--abstractin-overlay: var(--material-mix-quarternary, #e5e5e5);
+	--abstractin-border: color-mix(in srgb, var(--material-mix-quarternary, #e5e5e5) 50%, var(--abstractin-line));
+	--abstractin-border-strong: var(--abstractin-line);
+	--abstractin-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+
+	--abstractin-radius-control: 6px;
+	--abstractin-radius-card: 10px;
+	--abstractin-radius-root: 12px;
+
+	--abstractin-accent-soft: color-mix(in srgb, var(--abstractin-accent) 12%, transparent);
+	--abstractin-accent-line: color-mix(in srgb, var(--abstractin-accent) 55%, transparent);
+	--abstractin-accent-ink: color-mix(in srgb, var(--abstractin-accent) 80%, var(--abstractin-text));
+}
+
+.abstractin-root {
+	/* The item pane sizes sections by their content; without containment a wide
+	   formula or table would widen the whole pane instead of scrolling. */
+	contain: inline-size;
+	position: relative;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 0 0 6px;
+	color: var(--abstractin-text);
+	font-size: var(--abstractin-font-size);
+}
+.abstractin-root *,
+.abstractin-prefs * {
+	box-sizing: border-box;
+}
+/* The reader panel sits beside the PDF, outside item metadata sections. */
+.abstractin-reader-panel {
+	display: flex;
+	flex: 0 0 auto;
+	flex-direction: column;
+	min-width: 280px;
+	max-width: min(720px, 65vw);
+	min-height: 0;
+	height: 100%;
+	max-height: 100%;
+	overflow: hidden;
+	background: var(--material-sidepane, #f2f2f2);
+	border-inline-start: 1px solid var(--fill-quarternary, #ddd);
+}
+.abstractin-reader-panel[hidden],
+.abstractin-reader-splitter[hidden],
+.abstractin-reader-view[hidden] { display: none !important; }
+.abstractin-reader-view {
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	overflow: hidden;
+}
+.abstractin-reader-view > .abstractin-root {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
+	padding: 8px;
+	border-radius: 0;
+}
+.abstractin-reader-panel .abstractin-log-wrap { flex: 1 1 0; min-height: 0; }
+.abstractin-reader-panel .abstractin-log { height: 100%; min-height: 0; max-height: none; }
+.abstractin-reader-panel .abstractin-header,
+.abstractin-reader-panel .abstractin-reading-bar,
+.abstractin-reader-panel .abstractin-composer { flex: 0 0 auto; }
+.abstractin-reader-panel .abstractin-header-title { display: block !important; }
+.abstractin-reader-panel .abstractin-header > .abstractin-header-icon,
+.abstractin-reader-panel .abstractin-root[data-labels="icons"] .abstractin-header > .abstractin-header-icon { margin-inline-end: 4px; }
+.abstractin-reader-panel .abstractin-header { flex-wrap: wrap; }
+.abstractin-reader-panel .abstractin-header-title { flex: 0 0 auto; }
+.abstractin-reader-panel .abstractin-header .abstractin-icon { flex: 0 0 auto; }
+.abstractin-reader-panel .abstractin-controls { flex-wrap: wrap; }
+.abstractin-reader-panel .abstractin-controls .abstractin-model-btn { min-width: 0; }
+.abstractin-root[data-reading-theme="neutral"] > .abstractin-backdrop { display: none !important; }
+.abstractin-root[data-reading-theme="neutral"] { background: transparent; }
+.abstractin-root[data-reading-theme="neutral"] .abstractin-composer {
+	background: var(--abstractin-ground);
+	box-shadow: none;
+}
+.abstractin-root[data-reading-theme="neutral"] .abstractin-reading-primary {
+	width: auto;
+	align-self: flex-start;
+	min-height: 30px;
+	padding: 5px 10px;
+	gap: 6px;
+	font-size: 12px;
+	border-color: var(--abstractin-border-strong);
+	background: var(--abstractin-raised);
+	color: var(--abstractin-text);
+}
+.abstractin-root[data-reading-theme="neutral"] .abstractin-reading-primary:hover:not(:disabled) { background: var(--abstractin-hover); }
+.abstractin-root[data-reading-theme="neutral"] .abstractin-reading-primary .abstractin-i { width: 16px; height: 16px; }
+.abstractin-root[data-reading-theme="neutral"] .abstractin-reading-status { text-align: start; }
+.abstractin-reader-splitter { min-width: 4px; cursor: col-resize; }
+/* Component display rules must never un-hide an element hidden by the script. */
+.abstractin-root [hidden],
+.abstractin-prefs [hidden] {
+	display: none !important;
+}
+.abstractin-root button,
+.abstractin-prefs button {
+	appearance: none;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+}
+.abstractin-root button:focus-visible,
+.abstractin-prefs button:focus-visible {
+	outline: 2px solid var(--abstractin-accent);
+	outline-offset: 1px;
+}
+.abstractin-root .abstractin-i,
+.abstractin-prefs .abstractin-i {
+	display: block;
+	flex: none;
+}
+
+/* ---- buttons ---- */
+
+/* Ghost icon button (Beaver .icon-button). */
+.abstractin-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: none;
+	border-radius: var(--abstractin-radius-control);
+	color: var(--abstractin-muted) !important;
+	background: transparent;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+.abstractin-icon .abstractin-i {
+	width: 16px;
+	height: 16px;
+}
+.abstractin-icon:hover:not(:disabled) {
+	color: var(--abstractin-text) !important;
+	background: var(--abstractin-hover);
+}
+.abstractin-icon:disabled {
+	color: var(--abstractin-faint) !important;
+	cursor: default;
+}
+.abstractin-icon.abstractin-small {
+	width: 22px;
+	height: 22px;
+}
+.abstractin-icon.abstractin-small .abstractin-i {
+	width: 14px;
+	height: 14px;
+}
+
+/* Ghost text button (Beaver .variant-ghost). */
+.abstractin-ghost {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+	height: 24px;
+	padding: 0 7px;
+	border: none;
+	border-radius: var(--abstractin-radius-control);
+	font-size: 0.92em !important;
+	white-space: nowrap;
+	color: var(--abstractin-muted) !important;
+	background: transparent;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+.abstractin-ghost .abstractin-i {
+	width: 14px;
+	height: 14px;
+}
+.abstractin-ghost:hover:not(:disabled),
+.abstractin-ghost[aria-expanded="true"] {
+	color: var(--abstractin-text) !important;
+	background: var(--abstractin-hover);
+}
+.abstractin-ghost:disabled {
+	color: var(--abstractin-faint) !important;
+	cursor: default;
+}
+.abstractin-ghost .abstractin-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.abstractin-chevron {
+	width: 10px !important;
+	height: 10px !important;
+	opacity: 0.7;
+}
+
+/* ---- icons: Zotero's own icon set, inlined as SVG (see ICON_FILES) ---- */
+.abstractin-i {
+	display: inline-block;
+	flex: none;
+	width: 16px;
+	height: 16px;
+}
+.abstractin-i > svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+.abstractin-i[data-icon="chevronRight"] { transform: rotate(-90deg); }
+/* Stop is a plain filled square, as in every chat app. */
+.abstractin-i[data-icon="stop"] {
+	background: currentColor;
+	border-radius: 2px;
+	transform: scale(0.62);
+}
+/* Phosphor Duotone: the solid outline takes the text colour, the soft layer a wash of the accent. */
+.abstractin-i .abstractin-duo {
+	fill: var(--abstractin-accent);
+	opacity: 0.22;
+}
+.abstractin-send .abstractin-i .abstractin-duo,
+.abstractin-mode[aria-pressed="true"] .abstractin-i .abstractin-duo {
+	fill: currentColor;
+	opacity: 0.3;
+}
+.abstractin-header-icon {
+	width: 15px;
+	height: 15px;
+	margin-inline-end: 5px;
+	color: var(--abstractin-accent-ink);
+}
+/* Reading companions keep their bodies still; only tails or wings animate. */
+.abstractin-mascot {
+	width: 72px;
+	height: 72px;
+	margin: 0 auto 4px;
+	color: var(--abstractin-muted);
+}
+.abstractin-mascot > svg {
+	animation: none;
+}
+.abstractin-mascot .abstractin-mascot-tail {
+	transform-box: view-box;
+	transform-origin: 50px 35px;
+	animation: abstractin-mascot-tail-sway 4s ease-in-out infinite;
+}
+@keyframes abstractin-mascot-tail-sway {
+	0%, 100% { transform: rotate(-3deg); }
+	50% { transform: rotate(4deg); }
+}
+.abstractin-mascot .abstractin-mascot-wagtail-tail {
+	transform-origin: 34px 34px;
+	animation-name: abstractin-mascot-tail-bob;
+	animation-duration: 1.6s;
+}
+@keyframes abstractin-mascot-tail-bob {
+	0%, 100% { transform: rotate(-8deg); }
+	50% { transform: rotate(8deg); }
+}
+.abstractin-mascot .abstractin-mascot-puffin-wing {
+	transform-box: view-box;
+	transform-origin: 31px 24px;
+	animation: abstractin-mascot-wing-bob 2.8s ease-in-out infinite;
+}
+@keyframes abstractin-mascot-wing-bob {
+	0%, 100% { transform: rotate(-4deg); }
+	50% { transform: rotate(4deg); }
+}
+
+/* ---- header ---- */
+
+.abstractin-header {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-height: 26px;
+}
+.abstractin-header-identity {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.abstractin-header-title {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.92em;
+	color: var(--abstractin-muted);
+}
+
+/* ---- conversation ---- */
+
+.abstractin-log-wrap {
+	position: relative;
+	min-width: 0;
+}
+/* Beaver's scroll-to-latest: a small floating round button over the log. */
+.abstractin-jump {
+	position: absolute;
+	left: 50%;
+	bottom: 10px;
+	z-index: 5;
+	width: 28px !important;
+	height: 28px !important;
+	margin-left: -14px;
+	border: 1px solid var(--abstractin-border-strong) !important;
+	border-radius: 999px !important;
+	background: var(--abstractin-overlay) !important;
+	box-shadow: var(--abstractin-shadow);
+	animation: abstractin-fade-in 0.15s ease-out;
+}
+.abstractin-jump .abstractin-i {
+	width: 14px !important;
+	height: 14px !important;
+}
+
+.abstractin-log {
+	display: flex;
+	flex-direction: column;
+	gap: var(--abstractin-log-gap, 18px);
+	max-height: 60vh;
+	min-height: 120px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-scrollbar, var(--abstractin-faint)) transparent;
+	padding: 2px 2px 4px;
+	user-select: text;
+}
+/* A question and its answer read as one pair: close together, with more room between pairs. */
+.abstractin-log > .abstractin-user + .abstractin-turn,
+.abstractin-log > .abstractin-user + .abstractin-error {
+	margin-top: -8px;
+}
+.abstractin-log > *,
+.abstractin-turn > *,
+.abstractin-rich > * {
+	min-width: 0;
+	max-width: 100%;
+}
+/* The log scrolls; its messages must keep their height instead of shrinking to fit. */
+.abstractin-log > * {
+	flex-shrink: 0;
+}
+
+.abstractin-msg {
+	line-height: 1.5;
+	overflow-wrap: break-word;
+	user-select: text;
+}
+
+/* Your messages: a raised card, full width (Beaver's user request view). */
+.abstractin-user {
+	position: relative;
+	padding: 8px 11px;
+	border: 1px solid var(--abstractin-border);
+	border-radius: var(--abstractin-radius-card);
+	background: var(--abstractin-raised);
+	white-space: pre-wrap;
+}
+/* Long prompts: clamped with a fade, click to expand (Beaver user request view). */
+/* Beaver's edit affordance: appears in the corner on hover. */
+.abstractin-user-edit {
+	position: absolute;
+	top: 5px;
+	right: 5px;
+	opacity: 0;
+	background: var(--abstractin-raised) !important;
+	transition: opacity 0.12s ease;
+}
+.abstractin-user:hover .abstractin-user-edit,
+.abstractin-user-edit:focus-visible {
+	opacity: 1;
+}
+.abstractin-user-edit:hover {
+	background: var(--abstractin-overlay) !important;
+}
+.abstractin-user.abstractin-clamped {
+	max-height: 150px;
+	overflow: hidden;
+	cursor: pointer;
+	mask-image: linear-gradient(to bottom, black 65%, transparent);
+}
+.abstractin-user.abstractin-clamped:hover {
+	border-color: var(--abstractin-border-strong);
+}
+.abstractin-root[data-bubble="accent"] .abstractin-user {
+	border-color: color-mix(in srgb, var(--abstractin-accent) 30%, transparent);
+	background: color-mix(in srgb, var(--abstractin-accent) 10%, var(--abstractin-ground));
+}
+
+/* Answers: plain prose on the pane, with a quiet footer. */
+.abstractin-turn {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.abstractin-assistant {
+	padding: 0 2px;
+}
+/* Beaver keeps every answer's footer in place; earlier ones are just quieter. */
+.abstractin-footer {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-height: 24px;
+	opacity: 0.45;
+	transition: opacity 0.12s ease;
+}
+.abstractin-turn:hover .abstractin-footer,
+.abstractin-turn:focus-within .abstractin-footer,
+.abstractin-turn.abstractin-last .abstractin-footer {
+	opacity: 1;
+}
+.abstractin-footer .abstractin-spacer {
+	flex: 1;
+}
+.abstractin-footer .abstractin-ghost {
+	margin-inline-start: -5px;
+}
+.abstractin-by {
+	font-size: 0.85em;
+	color: var(--abstractin-faint);
+	margin-inline-end: 4px;
+}
+
+/* Error card (Beaver RunErrorDisplay): tinted red, a title row that expands. */
+.abstractin-error {
+	--abstractin-red: var(--accent-red, #db2c3a);
+	display: flex;
+	flex-direction: column;
+	border: 1px solid color-mix(in srgb, var(--abstractin-red) 30%, transparent);
+	border-radius: var(--abstractin-radius-card);
+	background: color-mix(in srgb, var(--abstractin-red) 7%, transparent);
+	overflow: hidden;
+}
+.abstractin-error-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 10px;
+	border: none;
+	text-align: start;
+	font-weight: 600;
+	color: var(--color-invalid, #b81d29) !important;
+	background: transparent;
+}
+.abstractin-error-head:hover {
+	background: color-mix(in srgb, var(--abstractin-red) 6%, transparent);
+}
+.abstractin-error-icon .abstractin-i {
+	width: 15px;
+	height: 15px;
+}
+.abstractin-error-title {
+	flex: 1;
+	min-width: 0;
+}
+.abstractin-error-chevron {
+	width: 12px;
+	height: 12px;
+	opacity: 0.7;
+	transition: transform 0.15s ease;
+}
+/* chevronRight is Zotero's down chevron turned right; open turns it back down. */
+.abstractin-error.abstractin-open .abstractin-error-chevron {
+	transform: none;
+}
+.abstractin-error-details {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 0 10px 8px 33px;
+}
+.abstractin-error-text {
+	font-size: 0.9em;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	color: var(--abstractin-text);
+	user-select: text;
+}
+.abstractin-error-actions {
+	display: flex;
+	gap: 2px;
+	margin-inline-start: -7px;
+}
+.abstractin-notice {
+	padding: 24px 8px;
+	text-align: center;
+	font-size: 0.92em;
+	color: var(--abstractin-muted);
+}
+.abstractin-stopped {
+	font-size: 0.85em;
+	color: var(--abstractin-faint);
+	font-style: italic;
+}
+
+/* ---- rich text ---- */
+
+.abstractin-rich > :first-child { margin-top: 0 !important; }
+.abstractin-rich > :last-child { margin-bottom: 0 !important; }
+.abstractin-rich p { margin: 0 0 8px; }
+.abstractin-rich .abstractin-h {
+	margin: 14px 0 6px;
+	font-weight: 650;
+	line-height: 1.3;
+}
+.abstractin-rich .abstractin-h1 { font-size: 1.15em; }
+.abstractin-rich .abstractin-h2 { font-size: 1.07em; }
+.abstractin-rich .abstractin-h3 { font-size: 1em; }
+.abstractin-rich ul,
+.abstractin-rich ol {
+	margin: 0 0 8px;
+	padding-inline-start: 20px;
+}
+.abstractin-rich li { margin: 2px 0; }
+.abstractin-rich li > ul,
+.abstractin-rich li > ol { margin: 2px 0 0; }
+.abstractin-rich li::marker { color: var(--abstractin-muted); }
+.abstractin-rich strong { font-weight: 650; }
+.abstractin-rich hr {
+	border: none;
+	border-top: 1px solid var(--abstractin-line);
+	margin: 12px 0;
+}
+.abstractin-rich code {
+	font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace;
+	font-size: 0.88em;
+	padding: 1px 4px;
+	border-radius: 4px;
+	background: var(--abstractin-hover);
+}
+.abstractin-code {
+	margin: 0 0 10px;
+	border: 1px solid var(--abstractin-border);
+	border-radius: 8px;
+	background: var(--abstractin-raised);
+	overflow: hidden;
+}
+.abstractin-code-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 26px;
+	padding: 0 4px 0 10px;
+	border-bottom: 1px solid var(--abstractin-border);
+}
+.abstractin-code-lang {
+	font-size: 0.82em;
+	color: var(--abstractin-muted);
+	text-transform: lowercase;
+}
+.abstractin-code-copy {
+	height: 22px !important;
+	font-size: 0.85em !important;
+}
+.abstractin-rich .abstractin-code pre {
+	margin: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+}
+.abstractin-rich pre {
+	margin: 0 0 8px;
+	padding: 8px 10px;
+	border-radius: 6px;
+	overflow-x: auto;
+	background: var(--abstractin-hover);
+	border: 1px solid var(--abstractin-line);
+}
+.abstractin-rich pre code {
+	padding: 0;
+	background: none;
+	white-space: pre;
+}
+.abstractin-rich .abstractin-quote {
+	margin: 0 0 8px;
+	padding: 2px 0 2px 10px;
+	border-inline-start: 3px solid var(--abstractin-line);
+	color: var(--abstractin-muted);
+}
+.abstractin-rich .abstractin-quote > :last-child { margin-bottom: 0; }
+.abstractin-link {
+	color: var(--abstractin-accent-ink);
+	text-decoration: underline;
+	text-decoration-color: var(--abstractin-accent-line);
+}
+.abstractin-plain { white-space: pre-wrap; }
+
+/* ---- tables ---- */
+
+.abstractin-table-wrap {
+	margin: 0 0 10px;
+	overflow-x: auto;
+	scrollbar-width: none;
+	border: 1px solid var(--abstractin-line);
+	border-radius: 6px;
+}
+.abstractin-rich table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.93em;
+	line-height: 1.4;
+}
+.abstractin-rich th,
+.abstractin-rich td {
+	padding: 5px 9px;
+	text-align: start;
+	vertical-align: middle;
+	overflow-wrap: normal;
+	border-bottom: 1px solid var(--abstractin-line);
+}
+.abstractin-rich th + th,
+.abstractin-rich td + td {
+	border-inline-start: 1px solid var(--abstractin-line);
+}
+.abstractin-rich tbody tr:last-child td { border-bottom: none; }
+.abstractin-rich th {
+	font-weight: 600;
+	white-space: nowrap;
+	background: var(--abstractin-hover);
+}
+.abstractin-rich td { min-width: 3em; }
+.abstractin-rich [data-align="center"] { text-align: center; }
+.abstractin-rich [data-align="right"] { text-align: end; }
+
+/* Still too wide after fitting: scroll sideways behind a soft fade on the hidden side,
+   with a thin scrollbar only while hovering. */
+.abstractin-overflow:hover {
+	scrollbar-width: thin;
+}
+.abstractin-overflow:not(.abstractin-at-end) {
+	mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
+}
+.abstractin-overflow:not(.abstractin-at-start):not(.abstractin-at-end) {
+	mask-image: linear-gradient(to right, transparent, black 28px, black calc(100% - 28px), transparent);
+}
+.abstractin-overflow.abstractin-at-end:not(.abstractin-at-start) {
+	mask-image: linear-gradient(to right, transparent, black 28px);
+}
+
+/* ---- LaTeX (native MathML from KaTeX) ---- */
+
+/* Latin Modern Math is bundled so formulas look like LaTeX output on every system. */
+@font-face {
+	font-family: "Claude Sidebar Latin Modern Math";
+	src: url("lib/latinmodern-math.otf") format("opentype");
+	font-display: swap;
+}
+.abstractin-root math,
+.abstractin-prefs math {
+	font-family: "Claude Sidebar Latin Modern Math", "Latin Modern Math", "STIX Two Math", "DejaVu Math TeX Gyre", math;
+	font-size: 1.18em;
+}
+.abstractin-math { white-space: nowrap; }
+.abstractin-math code { background: none; padding: 0; }
+.abstractin-math-block {
+	position: relative;
+	margin: 2px 0 10px;
+}
+.abstractin-math-scroll {
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding: 4px 0;
+	scrollbar-width: none;
+}
+.abstractin-math-block math[display="block"] {
+	margin: 0 auto;
+}
+.abstractin-tex-error {
+	font-family: ui-monospace, monospace;
+	font-size: 0.88em;
+	color: var(--color-invalid, #b81d29);
+	background: none !important;
+}
+.abstractin-copy-tex {
+	position: absolute;
+	top: 0;
+	inset-inline-end: 0;
+	padding: 1px 6px !important;
+	border: 1px solid var(--abstractin-line) !important;
+	border-radius: 5px;
+	font-size: 10.5px !important;
+	color: var(--abstractin-muted) !important;
+	background: var(--abstractin-overlay);
+	opacity: 0;
+	transition: opacity 0.12s ease;
+}
+.abstractin-math-block:hover .abstractin-copy-tex,
+.abstractin-copy-tex:focus-visible {
+	opacity: 1;
+}
+
+/* Theorem-like environments. */
+.abstractin-env {
+	margin: 2px 0 10px;
+	padding: 8px 11px;
+	border-radius: 6px;
+	border: 1px solid var(--abstractin-border);
+	border-inline-start: 3px solid var(--abstractin-accent);
+	background: var(--abstractin-raised);
+}
+.abstractin-env-head {
+	margin-bottom: 4px;
+	font-size: 0.8em;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--abstractin-accent-ink);
+}
+.abstractin-env-title {
+	font-weight: 600;
+	text-transform: none;
+	letter-spacing: 0;
+}
+.abstractin-env-body > :last-child { margin-bottom: 0; }
+.abstractin-env-thm .abstractin-env-body { font-style: italic; }
+.abstractin-env-thm .abstractin-env-body math,
+.abstractin-env-thm .abstractin-env-body code { font-style: normal; }
+.abstractin-env-def {
+	border-inline-start-color: var(--accent-teal, #59adc4);
+}
+.abstractin-env-def .abstractin-env-head { color: color-mix(in srgb, var(--accent-teal, #59adc4) 65%, var(--abstractin-text)); }
+.abstractin-env-rem {
+	border-inline-start-color: var(--abstractin-faint);
+}
+.abstractin-env-rem .abstractin-env-head { color: var(--abstractin-muted); }
+.abstractin-env-proof {
+	border-color: transparent;
+	border-inline-start-color: var(--abstractin-line);
+	background: transparent;
+	padding-block: 2px;
+}
+.abstractin-env-proof .abstractin-env-head {
+	color: var(--abstractin-muted);
+	font-style: italic;
+	text-transform: none;
+	letter-spacing: 0;
+	font-size: 0.95em;
+}
+/* Formal headings and rules follow the selected accent colour. */
+.abstractin-env { --abstractin-env-heading: var(--abstractin-accent-ink); }
+.abstractin-env .abstractin-env-head,
+.abstractin-env .abstractin-env-title { color: var(--abstractin-env-heading); }
+.abstractin-env .abstractin-env-head .abstractin-ref { color: var(--abstractin-env-heading) !important; }
+
+.abstractin-qed {
+	text-align: end;
+	line-height: 1;
+	color: var(--abstractin-muted);
+}
+.abstractin-li-body > p { margin: 0; }
+
+/* ---- empty state (llm-for-zotero start page) ---- */
+
+.abstractin-empty {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 6px;
+	min-height: 150px;
+	padding: 18px 10px 10px;
+	text-align: center;
+}
+.abstractin-empty-title {
+	font-size: 1.25em;
+	font-weight: 600;
+}
+.abstractin-empty-paper {
+	max-width: 32em;
+	margin: -2px auto 4px;
+	font-style: italic;
+	color: var(--abstractin-muted);
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+}
+.abstractin-empty-sub {
+	color: var(--abstractin-muted);
+	line-height: 1.45;
+}
+
+/* ---- activity: what the assistant read, searched and how long it thought ---- */
+
+.abstractin-activity {
+	margin: 0 0 2px;
+}
+.abstractin-activity-head {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	max-width: 100%;
+	min-height: 22px;
+	margin-inline-start: -4px;
+	padding: 0 6px 0 4px;
+	border: none;
+	border-radius: var(--abstractin-radius-control);
+	font-size: 0.9em !important;
+	color: var(--abstractin-muted) !important;
+	background: transparent;
+}
+.abstractin-activity-head:hover {
+	color: var(--abstractin-text) !important;
+	background: var(--abstractin-hover);
+}
+.abstractin-activity-summary {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.abstractin-activity-chevron {
+	width: 11px;
+	height: 11px;
+	opacity: 0.7;
+	transition: transform 0.15s ease;
+}
+.abstractin-activity.abstractin-open .abstractin-activity-chevron {
+	transform: none;
+}
+.abstractin-activity-list,
+.abstractin-live-steps {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+.abstractin-activity-list {
+	margin: 2px 0 6px 5px;
+	padding-inline-start: 10px;
+	border-inline-start: 1px solid var(--abstractin-line);
+}
+.abstractin-live-steps:not(:empty) {
+	margin-bottom: 6px;
+}
+.abstractin-step {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	min-width: 0;
+	min-height: 20px;
+	font-size: 0.9em;
+	color: var(--abstractin-muted);
+	animation: abstractin-fade-in 0.16s ease-out;
+}
+.abstractin-step-icon {
+	width: 13px;
+	height: 13px;
+	opacity: 0.8;
+}
+.abstractin-step-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* ---- live answer ---- */
+
+.abstractin-live-content:empty {
+	display: none;
+}
+.abstractin-typing {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 22px;
+	padding: 2px 2px 0;
+	animation: abstractin-fade-in 0.2s ease-out;
+}
+.abstractin-spinner {
+	flex: none;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	border: 1.5px solid var(--abstractin-line);
+	border-top-color: var(--abstractin-muted);
+	animation: abstractin-spin 0.8s linear infinite;
+}
+.abstractin-elapsed {
+	font-size: 0.92em;
+	color: var(--abstractin-muted);
+}
+/* Beaver's shimmering status text. */
+.abstractin-shimmer {
+	background: linear-gradient(90deg, var(--abstractin-faint) 30%, var(--abstractin-text) 50%, var(--abstractin-faint) 70%);
+	background-size: 200% 100%;
+	background-clip: text;
+	color: transparent;
+	-webkit-text-fill-color: transparent;
+	animation: abstractin-shimmer 1.4s linear infinite;
+}
+.abstractin-seconds {
+	font-size: 0.85em;
+	font-variant-numeric: tabular-nums;
+	color: var(--abstractin-faint);
+}
+
+/* ---- quick prompts (llm-for-zotero shortcut pills) ---- */
+
+.abstractin-quick {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 0 1px;
+}
+/* Once the chat has started the prompts shrink to one sideways-scrolling row. */
+.abstractin-root[data-chatting="true"] .abstractin-quick {
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.abstractin-root[data-chatting="true"] .abstractin-pill {
+	flex: none;
+	min-height: 24px;
+	padding: 2px 10px;
+}
+.abstractin-pill {
+	display: inline-flex;
+	align-items: center;
+	max-width: 100%;
+	min-height: 26px;
+	padding: 3px 11px;
+	border: 1px solid var(--abstractin-border) !important;
+	border-radius: 999px;
+	font-size: 0.92em !important;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--abstractin-text) !important;
+	background: var(--abstractin-hover);
+	transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.abstractin-pill:hover:not(:disabled) {
+	border-color: var(--abstractin-accent) !important;
+	background: var(--abstractin-accent-soft);
+}
+.abstractin-pill:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* ---- composer (Beaver .user-message-display + .composer-controls) ---- */
+
+.abstractin-composer {
+	display: flex;
+	flex-direction: column;
+	padding: 10px 10px 6px;
+	border: 1px solid var(--abstractin-border);
+	border-radius: var(--abstractin-radius-card);
+	background: var(--abstractin-raised);
+	transition: border-color 0.15s ease;
+	cursor: text;
+}
+.abstractin-composer:focus-within {
+	border-color: var(--abstractin-border-strong);
+}
+/* Paper chip at the top of the composer (llm-for-zotero paper context chip). */
+.abstractin-context {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+	margin: -3px 0 8px -2px;
+}
+.abstractin-context-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	max-width: 100%;
+	min-height: 22px;
+	padding: 1px 3px 1px 6px;
+	border: 1px solid var(--abstractin-border);
+	border-radius: var(--abstractin-radius-control);
+	font-size: 0.88em;
+	color: var(--abstractin-muted);
+	background: var(--abstractin-hover);
+	cursor: default;
+}
+.abstractin-context-icon {
+	width: 13px;
+	height: 13px;
+	color: var(--abstractin-accent-ink);
+}
+.abstractin-context-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--abstractin-text);
+}
+/* Images attached to the message being written, and to sent messages. */
+.abstractin-attachments,
+.abstractin-user-images {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.abstractin-attachments {
+	margin: -2px 0 8px;
+}
+.abstractin-user-images {
+	margin: 1px 0 6px;
+}
+.abstractin-user-images:last-child {
+	margin-bottom: 0;
+}
+.abstractin-thumb {
+	position: relative;
+	display: inline-flex;
+	flex: none;
+	width: 64px;
+	height: 64px;
+	border: 1px solid var(--abstractin-border);
+	border-radius: var(--abstractin-radius-control);
+	background: var(--abstractin-hover);
+	overflow: hidden;
+	animation: abstractin-fade-in 0.16s ease-out;
+}
+.abstractin-user-images .abstractin-thumb {
+	width: 88px;
+	height: 72px;
+}
+.abstractin-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+.abstractin-thumb-open {
+	cursor: zoom-in;
+}
+.abstractin-thumb-open:hover {
+	border-color: var(--abstractin-border-strong);
+}
+.abstractin-thumb-missing img {
+	visibility: hidden;
+}
+.abstractin-thumb-remove {
+	position: absolute;
+	top: 3px;
+	right: 3px;
+	width: 18px !important;
+	height: 18px !important;
+	border-radius: 999px !important;
+	color: #fff !important;
+	background: rgba(0, 0, 0, 0.55) !important;
+	opacity: 0;
+	transition: opacity 0.12s ease;
+}
+.abstractin-thumb-remove .abstractin-i {
+	width: 10px !important;
+	height: 10px !important;
+}
+.abstractin-thumb:hover .abstractin-thumb-remove,
+.abstractin-thumb-remove:focus-visible {
+	opacity: 1;
+}
+.abstractin-composer.abstractin-drop {
+	border-color: var(--abstractin-accent) !important;
+	box-shadow: 0 0 0 3px var(--abstractin-accent-soft);
+}
+.abstractin-controls .abstractin-attach {
+	margin-inline-end: 2px;
+}
+.abstractin-input {
+	width: 100%;
+	min-height: 20px;
+	max-height: 180px;
+	margin: 0;
+	padding: 1px 1px;
+	border: none !important;
+	outline: none !important;
+	box-shadow: none !important;
+	resize: none;
+	appearance: none;
+	background: transparent !important;
+	color: var(--abstractin-text);
+	font: inherit;
+	line-height: 1.4;
+}
+.abstractin-input::placeholder {
+	color: var(--abstractin-faint);
+	opacity: 1;
+}
+.abstractin-controls {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	margin: 6px -4px 0;
+	cursor: default;
+}
+.abstractin-controls .abstractin-spacer {
+	flex: 1;
+	min-width: 4px;
+}
+.abstractin-controls .abstractin-ghost {
+	flex: 0 1 auto;
+}
+/* The effort label is short and must stay readable; the model name truncates instead. */
+.abstractin-controls .abstractin-effort-btn {
+	flex: none;
+}
+/* Drawing / LaTeX toggles: ghost buttons that light up in the accent colour when on. */
+.abstractin-controls {
+	container: abstractin-controls / inline-size;
+}
+.abstractin-controls .abstractin-mode {
+	flex: none;
+	padding: 0 6px;
+	transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.abstractin-controls .abstractin-mode[aria-pressed="true"] {
+	color: var(--abstractin-accent-ink) !important;
+	background: var(--abstractin-accent-soft);
+	box-shadow: inset 0 0 0 1px var(--abstractin-accent-line);
+}
+.abstractin-controls .abstractin-mode[aria-pressed="true"]:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--abstractin-accent) 20%, transparent);
+}
+/* In a narrow pane the toggles keep their icon and drop the label. */
+@container abstractin-controls (max-width: 360px) {
+	.abstractin-controls .abstractin-mode .abstractin-label {
+		display: none;
+	}
+}
+.abstractin-user-modes {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 6px;
+}
+.abstractin-user-mode {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-height: 18px;
+	padding: 0 7px 0 5px;
+	border-radius: 999px;
+	font-size: 0.8em;
+	color: var(--abstractin-accent-ink);
+	background: var(--abstractin-accent-soft);
+	white-space: normal;
+}
+.abstractin-user-mode .abstractin-i {
+	width: 11px;
+	height: 11px;
+}
+
+.abstractin-send {
+	flex: none;
+	width: 24px;
+	height: 24px;
+	margin-inline-start: 4px;
+	padding: 0;
+	border: none;
+	border-radius: 999px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--abstractin-accent-text) !important;
+	background: var(--abstractin-accent);
+	transition: filter 0.15s ease;
+}
+.abstractin-send .abstractin-i {
+	width: 15px;
+	height: 15px;
+}
+.abstractin-send:hover:not(:disabled) {
+	filter: brightness(1.1);
+}
+.abstractin-send:disabled {
+	color: var(--abstractin-faint) !important;
+	background: var(--abstractin-line);
+	cursor: default;
+}
+.abstractin-send.abstractin-stop {
+	color: var(--abstractin-text) !important;
+	background: var(--abstractin-line);
+}
+.abstractin-send.abstractin-stop .abstractin-i {
+	width: 11px;
+	height: 11px;
+}
+
+/* ---- menus (Beaver ContextMenu: overlay surface, strong border, shadow) ---- */
+
+.abstractin-menu {
+	position: absolute;
+	z-index: 20;
+	min-width: 180px;
+	max-width: min(300px, 100%);
+	max-height: min(420px, 70vh);
+	overflow-y: auto;
+	padding: 4px;
+	border: 1px solid var(--abstractin-border-strong);
+	border-radius: var(--abstractin-radius-control);
+	background: var(--abstractin-overlay);
+	box-shadow: var(--abstractin-shadow);
+	scrollbar-width: thin;
+}
+.abstractin-menu-section {
+	padding: 6px 8px 3px;
+	font-size: 0.8em;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: var(--abstractin-muted);
+	user-select: none;
+}
+.abstractin-menu-section:not(:first-child) {
+	margin-top: 4px;
+	border-top: 1px solid var(--abstractin-line);
+	padding-top: 8px;
+}
+.abstractin-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 24px;
+	padding: 3px 8px;
+	border: none;
+	border-radius: 4px;
+	text-align: start;
+	font-size: 0.95em !important;
+	color: var(--abstractin-text) !important;
+	background: transparent;
+}
+.abstractin-menu-content {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-width: 0;
+}
+.abstractin-menu-item:hover:not(:disabled),
+.abstractin-menu-item:focus-visible {
+	background: var(--abstractin-hover);
+	outline: none;
+}
+.abstractin-menu-item:disabled {
+	color: var(--abstractin-faint) !important;
+	cursor: default;
+}
+.abstractin-menu-item .abstractin-check {
+	width: 14px;
+	height: 14px;
+	color: var(--abstractin-accent-ink);
+	visibility: hidden;
+}
+.abstractin-menu-item[aria-checked="true"] .abstractin-check {
+	visibility: visible;
+}
+.abstractin-menu-item[aria-checked="true"] .abstractin-menu-label {
+	font-weight: 600;
+}
+.abstractin-menu-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.abstractin-menu-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.abstractin-menu-desc {
+	font-size: 0.85em;
+	color: var(--abstractin-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.abstractin-history-menu {
+	width: min(300px, 100%);
+}
+.abstractin-history-menu .abstractin-menu-item {
+	min-height: 36px;
+}
+.abstractin-menu-note {
+	padding: 4px 8px 6px;
+	font-size: 0.85em;
+	color: var(--abstractin-muted);
+}
+
+/* ---- corners, spacing and font (Settings → Appearance) ---- */
+
+.abstractin-root[data-corners="square"],
+.abstractin-prefs[data-corners="square"] {
+	--abstractin-radius-control: 3px;
+	--abstractin-radius-card: 4px;
+	--abstractin-radius-root: 6px;
+}
+.abstractin-root[data-corners="rounded"],
+.abstractin-prefs[data-corners="rounded"] {
+	--abstractin-radius-control: 6px;
+	--abstractin-radius-card: 10px;
+	--abstractin-radius-root: 12px;
+}
+.abstractin-root[data-corners="round"],
+.abstractin-prefs[data-corners="round"] {
+	--abstractin-radius-control: 9px;
+	--abstractin-radius-card: 16px;
+	--abstractin-radius-root: 20px;
+}
+.abstractin-root[data-density="compact"] {
+	--abstractin-log-gap: 10px;
+	gap: 6px;
+}
+.abstractin-root[data-density="compact"] .abstractin-msg { line-height: 1.4; }
+.abstractin-root[data-density="compact"] .abstractin-user { padding: 5px 9px; }
+.abstractin-root[data-density="compact"] .abstractin-composer { padding: 7px 8px 4px; }
+.abstractin-root[data-density="roomy"] {
+	--abstractin-log-gap: 28px;
+	gap: 12px;
+}
+.abstractin-root[data-density="roomy"] .abstractin-msg { line-height: 1.62; }
+.abstractin-root[data-density="roomy"] .abstractin-user { padding: 11px 14px; }
+.abstractin-root[data-density="roomy"] .abstractin-composer { padding: 13px 13px 8px; }
+.abstractin-root[data-font="sans"] {
+	font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+.abstractin-root[data-font="serif"] {
+	font-family: "Iowan Old Style", Charter, "Source Serif 4", Georgia, "Times New Roman", serif;
+}
+.abstractin-root[data-font="mono"] {
+	font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+/* ---- drawings: SVG from the assistant, in the theme's colours on the sidebar's background ---- */
+
+.abstractin-root {
+	--abstractin-d-ink: var(--abstractin-text);
+	--abstractin-d-muted: var(--abstractin-muted);
+	--abstractin-d-line: var(--abstractin-faint);
+	--abstractin-d-surface: color-mix(in srgb, var(--abstractin-text) 6%, transparent);
+	--abstractin-d-accent: var(--abstractin-accent);
+	--abstractin-d-teal: var(--accent-teal, #59adc4);
+	--abstractin-d-violet: var(--tag-purple, #a28ae5);
+	--abstractin-d-orange: var(--accent-orange, #ff794c);
+	--abstractin-d-red: var(--accent-red, #db2c3a);
+	--abstractin-d-green: var(--accent-green, #39bf68);
+	--abstractin-d-accent-soft: color-mix(in srgb, var(--abstractin-d-accent) 18%, transparent);
+	--abstractin-d-teal-soft: color-mix(in srgb, var(--abstractin-d-teal) 20%, transparent);
+	--abstractin-d-violet-soft: color-mix(in srgb, var(--abstractin-d-violet) 20%, transparent);
+	--abstractin-d-orange-soft: color-mix(in srgb, var(--abstractin-d-orange) 18%, transparent);
+	--abstractin-d-red-soft: color-mix(in srgb, var(--abstractin-d-red) 16%, transparent);
+	--abstractin-d-green-soft: color-mix(in srgb, var(--abstractin-d-green) 18%, transparent);
+}
+.abstractin-figure {
+	position: relative;
+	margin: 4px 0 12px;
+}
+.abstractin-figure-canvas svg {
+	display: block;
+	width: 100%;
+	height: auto;
+	max-height: 560px;
+	overflow: visible;
+	color: var(--abstractin-d-ink);
+	fill: var(--abstractin-d-ink);
+	font-family: inherit;
+	font-size: 12px;
+}
+.abstractin-figure-canvas svg text {
+	font-family: inherit;
+	stroke: none;
+}
+.abstractin-figure-tools {
+	position: absolute;
+	top: -4px;
+	inset-inline-end: 0;
+	display: flex;
+	gap: 2px;
+	padding: 1px;
+	border-radius: var(--abstractin-radius-control);
+	background: var(--abstractin-overlay);
+	opacity: 0;
+	transition: opacity 0.12s ease;
+}
+.abstractin-figure:hover > .abstractin-figure-tools,
+.abstractin-figure-tools:focus-within,
+.abstractin-figure-tools:has([aria-expanded="true"]) {
+	opacity: 1;
+}
+.abstractin-figure-tools .abstractin-ghost {
+	height: 22px;
+	font-size: 0.85em !important;
+}
+.abstractin-figure > .abstractin-code {
+	margin: 8px 0 0;
+}
+.abstractin-figure-pending {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 120px;
+	border: 1px dashed var(--abstractin-line);
+	border-radius: var(--abstractin-radius-card);
+}
+
+/* ---- icon-first: labels, buddies, patterns, tiles ---- */
+
+/* Icons only: button names move to tooltips, and descriptive text steps aside. */
+.abstractin-root[data-labels="icons"] .abstractin-ghost:not(.abstractin-model-btn):not(.abstractin-prompt-menu) .abstractin-label,
+.abstractin-root[data-labels="icons"] .abstractin-header-title,
+.abstractin-root[data-labels="icons"] .abstractin-empty-sub,
+.abstractin-root[data-labels="icons"] .abstractin-empty-paper,
+.abstractin-root[data-labels="icons"] .abstractin-by {
+	display: none;
+}
+.abstractin-root[data-labels="icons"] .abstractin-ghost:not(.abstractin-model-btn):not(.abstractin-prompt-menu) {
+	gap: 0;
+	min-width: 24px;
+	justify-content: center;
+	padding: 0 5px;
+}
+.abstractin-root[data-labels="icons"] .abstractin-header {
+	gap: 4px;
+}
+/* With the title hidden, the buddy icon pushes the header buttons to the right. */
+.abstractin-root[data-labels="icons"] .abstractin-header > .abstractin-header-icon {
+	margin-inline-end: auto;
+}
+.abstractin-root[data-labels="icons"] .abstractin-back {
+	padding: 0 9px !important;
+}
+
+/* Buddy colours: outline in the text colour, the soft body washed with the accent. */
+.abstractin-mascot {
+	color: var(--abstractin-text);
+}
+.abstractin-mascot .abstractin-duo {
+	opacity: 0.28;
+}
+.abstractin-root[data-labels="icons"] .abstractin-empty {
+	min-height: 180px;
+	gap: 10px;
+}
+.abstractin-root[data-labels="icons"] .abstractin-mascot {
+	width: 96px;
+	height: 96px;
+}
+
+/* Patterns sit in the backdrop, so the backdrop also shows for flat style when one is on. */
+.abstractin-root:not([data-pattern="none"]) {
+	isolation: isolate;
+}
+.abstractin-root:not([data-pattern="none"]) > .abstractin-backdrop {
+	display: block;
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	overflow: hidden;
+	border-radius: inherit;
+	pointer-events: none;
+}
+.abstractin-root:not([data-pattern="none"]) > .abstractin-backdrop::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	background-color: var(--abstractin-text);
+	opacity: 0.07;
+	mask-repeat: repeat;
+}
+.abstractin-root[data-pattern="math"] > .abstractin-backdrop::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' font-family='serif' font-size='18' fill='black'%3E%3Ctext x='12' y='30'%3E%E2%88%91%3C/text%3E%3Ctext x='78' y='22' font-size='14'%3E%CF%80%3C/text%3E%3Ctext x='104' y='70'%3E%E2%88%AB%3C/text%3E%3Ctext x='40' y='84' font-size='13'%3E%CE%BB%3C/text%3E%3Ctext x='16' y='124' font-size='15'%3E%E2%88%9E%3C/text%3E%3Ctext x='86' y='122' font-size='13'%3E%E2%88%82%3C/text%3E%3C/svg%3E"); opacity: 0.09; }
+.abstractin-root[data-pattern="grid"] > .abstractin-backdrop::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M24 0H0V24' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E"); opacity: 0.06; }
+.abstractin-root[data-pattern="dots"] > .abstractin-backdrop::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Ccircle cx='2' cy='2' r='1.2' fill='black'/%3E%3C/svg%3E"); opacity: 0.12; }
+.abstractin-root[data-pattern="stars"] > .abstractin-backdrop::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' fill='black'%3E%3Cpath d='M20 12l1.6 5 5 1.6-5 1.6-1.6 5-1.6-5-5-1.6 5-1.6z'/%3E%3Cpath d='M66 50l1 3 3 1-3 1-1 3-1-3-3-1 3-1z'/%3E%3Ccircle cx='50' cy='16' r='1.3'/%3E%3Ccircle cx='14' cy='70' r='1.1'/%3E%3C/svg%3E"); background-color: var(--abstractin-accent); opacity: 0.22; }
+
+/* Tiles: icon cards used for visual choices (Settings, setup wizard). */
+.abstractin-tiles {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.abstractin-tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
+	width: 74px;
+	min-height: 74px;
+	padding: 8px 4px 6px;
+	border: 1px solid var(--abstractin-line) !important;
+	border-radius: var(--abstractin-radius-card);
+	color: var(--abstractin-text) !important;
+	background: var(--abstractin-hover) !important;
+	transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.abstractin-tile:hover {
+	transform: translateY(-1px);
+	border-color: var(--abstractin-accent-line) !important;
+}
+.abstractin-tile[aria-checked="true"] {
+	border-color: var(--abstractin-accent) !important;
+	background: var(--abstractin-accent-soft) !important;
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--abstractin-accent) 14%, transparent);
+}
+.abstractin-tile-icon {
+	width: 36px !important;
+	height: 36px !important;
+}
+.abstractin-tile-label {
+	font-size: 0.82em;
+	color: var(--abstractin-muted);
+}
+.abstractin-tile[aria-checked="true"] .abstractin-tile-label {
+	color: var(--abstractin-accent-ink);
+	font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+	.abstractin-tile:hover { transform: none; }
+}
+
+/* ---- theorem links ---- */
+
+.abstractin-ref {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 3px;
+	padding: 0 5px 0 4px;
+	border-radius: 999px;
+	font-size: 0.92em;
+	font-weight: 550;
+	white-space: nowrap;
+	vertical-align: baseline;
+	cursor: pointer;
+	color: var(--abstractin-accent-ink);
+	background: var(--abstractin-accent-soft);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--abstractin-accent) 22%, transparent);
+	transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+.abstractin-ref:hover,
+.abstractin-ref:focus-visible {
+	outline: none;
+	background: color-mix(in srgb, var(--abstractin-accent) 22%, transparent);
+	box-shadow: inset 0 0 0 1px var(--abstractin-accent-line);
+}
+.abstractin-ref-icon {
+	align-self: center;
+	width: 11px !important;
+	height: 11px !important;
+}
+.abstractin-ref-missing {
+	cursor: help;
+	color: var(--abstractin-muted);
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--abstractin-line);
+	text-decoration: line-through dotted;
+}
+.abstractin-env-num {
+	letter-spacing: 0;
+}
+/* "Back" floats over the bottom-left of the conversation after following a link. */
+.abstractin-back {
+	position: absolute;
+	left: 6px;
+	bottom: 10px;
+	z-index: 5;
+	height: 28px !important;
+	padding: 0 11px 0 9px !important;
+	border: 1px solid var(--abstractin-accent-line) !important;
+	border-radius: 999px !important;
+	color: var(--abstractin-accent-ink) !important;
+	background: var(--abstractin-overlay) !important;
+	box-shadow: var(--abstractin-shadow);
+	animation: abstractin-fade-in 0.15s ease-out;
+}
+.abstractin-back:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--abstractin-accent) 16%, var(--abstractin-overlay)) !important;
+}
+.abstractin-root[data-style="glass"] .abstractin-back {
+	backdrop-filter: blur(var(--abstractin-blur, 18px)) saturate(170%);
+}
+
+/* ---- search across chats ---- */
+
+.abstractin-search-menu {
+	width: min(340px, 100%);
+	max-width: 100%;
+	padding: 6px;
+}
+.abstractin-search-input {
+	width: 100%;
+	height: 28px;
+	margin: 0 0 4px;
+	padding: 0 9px;
+	border: 1px solid var(--abstractin-border-strong);
+	border-radius: var(--abstractin-radius-control);
+	font: inherit;
+	color: var(--abstractin-text);
+	background: var(--abstractin-hover);
+	outline: none;
+}
+.abstractin-search-input:focus {
+	border-color: var(--abstractin-accent);
+	box-shadow: 0 0 0 2px var(--abstractin-accent-soft);
+}
+.abstractin-search-results .abstractin-menu-item {
+	align-items: flex-start;
+	min-height: 40px;
+	padding-block: 5px;
+}
+.abstractin-search-results .abstractin-menu-desc {
+	white-space: normal;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+/* A message reached from search glows briefly. */
+.abstractin-flash {
+	animation: abstractin-flash 1.8s ease-out;
+	border-radius: var(--abstractin-radius-card);
+}
+@keyframes abstractin-flash {
+	0%, 35% { box-shadow: 0 0 0 3px var(--abstractin-accent-line); }
+	100% { box-shadow: 0 0 0 3px transparent; }
+}
+
+@keyframes abstractin-spin {
+	to { transform: rotate(360deg); }
+}
+@keyframes abstractin-shimmer {
+	from { background-position: 100% 0; }
+	to { background-position: -100% 0; }
+}
+@keyframes abstractin-fade-in {
+	from { opacity: 0; transform: translateY(3px); }
+	to { opacity: 1; transform: none; }
+}
+/* New content eases in (Beaver fadeInShift); menus pop from their anchor. */
+.abstractin-live-content > .abstractin-enter,
+.abstractin-menu {
+	animation: abstractin-fade-in 0.16s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+	.abstractin-spinner { animation-duration: 2.4s; }
+	.abstractin-shimmer,
+	.abstractin-mascot,
+	.abstractin-mascot > svg,
+	.abstractin-mascot .abstractin-mascot-tail,
+	.abstractin-mascot .abstractin-mascot-puffin-wing,
+	.abstractin-live-content > .abstractin-enter,
+	.abstractin-menu,
+	.abstractin-typing,
+	.abstractin-back,
+	.abstractin-jump { animation: none; }
+	.abstractin-shimmer { color: var(--abstractin-muted); -webkit-text-fill-color: currentColor; background: none; }
+}
+
+/* =====================================================================
+ * Glass style (Settings → Appearance → Style, the default).
+ * A soft glow of the accent colour, and optionally the user's image, sit
+ * behind the sidebar in .abstractin-backdrop; cards are translucent over it. Only
+ * floating surfaces (composer, menus, jump button) blur what is behind them,
+ * so a long conversation stays cheap to scroll. Opacity, blur and glow come
+ * from Settings as --abstractin-glass-pct, --abstractin-blur and --abstractin-glow-strength.
+ * ===================================================================== */
+
+.abstractin-root[data-style="glass"] {
+	--abstractin-glass-tint: #ffffff;
+	--abstractin-glass-strong-tint: #ffffff;
+	--abstractin-glass: color-mix(in srgb, var(--abstractin-glass-tint) var(--abstractin-glass-pct, 55%), transparent);
+	--abstractin-glass-strong: color-mix(in srgb, var(--abstractin-glass-strong-tint) var(--abstractin-glass-strong-pct, 85%), transparent);
+	--abstractin-glass-edge: color-mix(in srgb, #ffffff 75%, transparent);
+	--abstractin-glass-line: rgba(30, 40, 70, 0.1);
+	--abstractin-glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+	--abstractin-glass-shadow: 0 10px 28px -12px rgba(25, 35, 70, 0.28), 0 1px 3px rgba(25, 35, 70, 0.07);
+
+	--abstractin-raised: var(--abstractin-glass);
+	--abstractin-overlay: var(--abstractin-glass-strong);
+	--abstractin-border: var(--abstractin-glass-line);
+	--abstractin-border-strong: color-mix(in srgb, var(--abstractin-accent) 35%, var(--abstractin-glass-line));
+	--abstractin-shadow: var(--abstractin-glass-shadow);
+	--abstractin-hover: rgba(255, 255, 255, 0.55);
+}
+@media (prefers-color-scheme: dark) {
+	.abstractin-root[data-style="glass"] {
+		--abstractin-glass-tint: #45454d;
+		--abstractin-glass-strong-tint: #2a2a30;
+		--abstractin-glass-edge: rgba(255, 255, 255, 0.14);
+		--abstractin-glass-line: rgba(255, 255, 255, 0.1);
+		--abstractin-glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+		--abstractin-glass-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.3);
+		--abstractin-hover: rgba(255, 255, 255, 0.08);
+	}
+}
+
+/* The backdrop: an optional image, a veil that fades it into the pane, and the glow. */
+.abstractin-backdrop {
+	display: none;
+}
+.abstractin-root[data-style="glass"],
+.abstractin-root[data-bg="image"] {
+	isolation: isolate;
+	padding: 10px 9px;
+	border-radius: var(--abstractin-radius-root);
+}
+.abstractin-root[data-style="glass"] > .abstractin-backdrop,
+.abstractin-root[data-bg="image"] > .abstractin-backdrop {
+	display: block;
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	overflow: hidden;
+	border-radius: inherit;
+	pointer-events: none;
+	box-shadow: inset 0 0 0 1px var(--abstractin-line);
+}
+.abstractin-backdrop-image {
+	display: none;
+}
+.abstractin-root[data-bg="image"] .abstractin-backdrop-image {
+	display: block;
+	position: absolute;
+	/* Oversized so the blur never shows a soft transparent edge. */
+	inset: calc(var(--abstractin-bg-blur, 0px) * -3);
+	/* background-image is set inline by applyAppearance(). */
+	background-position: center;
+	background-size: cover;
+	background-repeat: no-repeat;
+	filter: blur(var(--abstractin-bg-blur, 0px));
+}
+.abstractin-backdrop::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+}
+.abstractin-root[data-style="glass"] .abstractin-backdrop::after {
+	background:
+		radial-gradient(70% 38% at 0% 0%, color-mix(in srgb, var(--abstractin-accent) var(--abstractin-glow-strength, 30%), transparent), transparent 72%),
+		radial-gradient(60% 34% at 100% 42%, color-mix(in srgb, var(--accent-teal, #59adc4) calc(var(--abstractin-glow-strength, 30%) * 0.8), transparent), transparent 72%),
+		radial-gradient(75% 36% at 20% 100%, color-mix(in srgb, var(--tag-purple, #a28ae5) var(--abstractin-glow-strength, 30%), transparent), transparent 72%),
+		linear-gradient(165deg, color-mix(in srgb, var(--abstractin-accent) 5%, var(--abstractin-ground)), var(--abstractin-ground));
+}
+.abstractin-root[data-bg="image"] .abstractin-backdrop::after {
+	background: color-mix(in srgb, var(--abstractin-ground) var(--abstractin-bg-veil, 45%), transparent);
+}
+.abstractin-root[data-style="glass"][data-bg="image"] .abstractin-backdrop::after {
+	background:
+		radial-gradient(70% 38% at 0% 0%, color-mix(in srgb, var(--abstractin-accent) var(--abstractin-glow-strength, 30%), transparent), transparent 72%),
+		radial-gradient(75% 36% at 20% 100%, color-mix(in srgb, var(--tag-purple, #a28ae5) var(--abstractin-glow-strength, 30%), transparent), transparent 72%),
+		color-mix(in srgb, var(--abstractin-ground) var(--abstractin-bg-veil, 45%), transparent);
+}
+
+/* Cards: translucent, a bright top edge and a soft drop shadow. */
+.abstractin-root[data-style="glass"] :is(.abstractin-user, .abstractin-code, .abstractin-env:not(.abstractin-env-proof), .abstractin-table-wrap) {
+	border-color: var(--abstractin-glass-line);
+	background: var(--abstractin-glass);
+	box-shadow: var(--abstractin-glass-sheen), 0 4px 14px -8px rgba(25, 35, 70, 0.2);
+}
+.abstractin-root[data-style="glass"] .abstractin-env:not(.abstractin-env-proof) {
+	border-inline-start-color: var(--abstractin-accent);
+}
+.abstractin-root[data-style="glass"] .abstractin-env-def {
+	border-inline-start-color: var(--accent-teal, #59adc4);
+}
+.abstractin-root[data-style="glass"] .abstractin-env-rem {
+	border-inline-start-color: var(--abstractin-faint);
+}
+.abstractin-root[data-style="glass"][data-bubble="accent"] .abstractin-user {
+	border-color: color-mix(in srgb, var(--abstractin-accent) 30%, transparent);
+	background: linear-gradient(135deg,
+		color-mix(in srgb, var(--abstractin-accent) 20%, var(--abstractin-glass)),
+		color-mix(in srgb, var(--tag-purple, #a28ae5) 12%, var(--abstractin-glass)));
+}
+.abstractin-root[data-style="glass"] .abstractin-user-edit {
+	background: var(--abstractin-glass-strong) !important;
+}
+.abstractin-root[data-style="glass"] .abstractin-rich pre {
+	background: var(--abstractin-glass);
+	border-color: var(--abstractin-glass-line);
+}
+.abstractin-root[data-style="glass"] .abstractin-code pre {
+	background: transparent;
+}
+.abstractin-root[data-style="glass"] .abstractin-code-head {
+	background: color-mix(in srgb, var(--abstractin-glass-strong) 40%, transparent);
+}
+
+/* Floating surfaces: frosted. */
+.abstractin-root[data-style="glass"] :is(.abstractin-composer, .abstractin-menu, .abstractin-jump) {
+	border: 1px solid var(--abstractin-glass-edge) !important;
+	backdrop-filter: blur(var(--abstractin-blur, 18px)) saturate(170%);
+	box-shadow: var(--abstractin-glass-sheen), var(--abstractin-glass-shadow);
+}
+.abstractin-root[data-style="glass"] .abstractin-composer {
+	background: var(--abstractin-glass);
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.abstractin-root[data-style="glass"] .abstractin-composer:focus-within {
+	border-color: color-mix(in srgb, var(--abstractin-accent) 45%, var(--abstractin-glass-edge)) !important;
+	box-shadow:
+		var(--abstractin-glass-sheen),
+		0 0 0 3px color-mix(in srgb, var(--abstractin-accent) 16%, transparent),
+		var(--abstractin-glass-shadow);
+}
+.abstractin-root[data-style="glass"] .abstractin-menu {
+	padding: 5px;
+	border-radius: var(--abstractin-radius-card);
+	background: var(--abstractin-glass-strong);
+	backdrop-filter: blur(calc(var(--abstractin-blur, 18px) * 1.5)) saturate(180%);
+}
+.abstractin-root[data-style="glass"] .abstractin-menu-item {
+	border-radius: 7px;
+}
+.abstractin-root[data-style="glass"] .abstractin-menu-item:hover:not(:disabled),
+.abstractin-root[data-style="glass"] .abstractin-menu-item:focus-visible {
+	background: color-mix(in srgb, var(--abstractin-accent) 14%, transparent);
+}
+.abstractin-root[data-style="glass"] .abstractin-jump {
+	background: var(--abstractin-glass-strong) !important;
+}
+
+/* Paper chip and quick prompts: small glass pills. */
+.abstractin-root[data-style="glass"] .abstractin-context-chip {
+	border-color: var(--abstractin-glass-line);
+	border-radius: 999px;
+	padding-inline-start: 8px;
+	background: var(--abstractin-hover);
+}
+.abstractin-root[data-style="glass"] .abstractin-pill {
+	border-color: var(--abstractin-glass-edge) !important;
+	background: var(--abstractin-glass);
+	box-shadow: var(--abstractin-glass-sheen), 0 2px 8px -4px rgba(25, 35, 70, 0.2);
+	transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.abstractin-root[data-style="glass"] .abstractin-pill:hover:not(:disabled) {
+	border-color: color-mix(in srgb, var(--abstractin-accent) 55%, transparent) !important;
+	background: color-mix(in srgb, var(--abstractin-accent) 14%, var(--abstractin-glass));
+	transform: translateY(-1px);
+}
+
+/* Send: an accent-to-violet gem with a glow. */
+.abstractin-root[data-style="glass"] .abstractin-send {
+	width: 26px;
+	height: 26px;
+	background: linear-gradient(135deg, var(--abstractin-accent), color-mix(in srgb, var(--abstractin-accent) 55%, var(--tag-purple, #a28ae5)));
+	box-shadow:
+		inset 0 1px 0 rgba(255, 255, 255, 0.35),
+		0 4px 12px -3px color-mix(in srgb, var(--abstractin-accent) 70%, transparent);
+	transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.abstractin-root[data-style="glass"] .abstractin-send:hover:not(:disabled) {
+	transform: translateY(-1px);
+}
+.abstractin-root[data-style="glass"] .abstractin-send:disabled,
+.abstractin-root[data-style="glass"] .abstractin-send.abstractin-stop {
+	background: var(--abstractin-hover);
+	box-shadow: inset 0 0 0 1px var(--abstractin-glass-line);
+}
+
+/* Error card keeps its red, on glass. */
+.abstractin-root[data-style="glass"] .abstractin-error {
+	background: color-mix(in srgb, var(--abstractin-red) 9%, var(--abstractin-glass));
+	box-shadow: var(--abstractin-glass-sheen);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.abstractin-root[data-style="glass"] :is(.abstractin-pill, .abstractin-send):hover:not(:disabled) {
+		transform: none;
+	}
+}
+
+/* =====================================================================
+ * Settings pane (Zotero Settings → AbstractIn)
+ * Card layout after llm-for-zotero's preference sections. Literal surface
+ * colours on purpose: the Settings content area is --material-sidepane, and
+ * Zotero's own mix tokens either vanish against it (light) or sink (dark).
+ * ===================================================================== */
+
+.abstractin-prefs {
+	--abstractin-card: #ffffff;
+	--abstractin-card-head: #fafafa;
+	--abstractin-field: #ffffff;
+	--abstractin-stroke: #dadada;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	width: 100%;
+	min-width: 0;
+	max-width: 680px;
+	padding-bottom: 12px;
+	color: var(--abstractin-text);
+	font-size: 13px;
+	user-select: text;
+}
+@media (prefers-color-scheme: dark) {
+	.abstractin-prefs {
+		--abstractin-card: #3a3a3a;
+		--abstractin-card-head: #333333;
+		--abstractin-field: #282828;
+		--abstractin-stroke: #4f4f4f;
+	}
+}
+.abstractin-card {
+	border: 1px solid var(--abstractin-stroke);
+	border-radius: var(--abstractin-radius-card);
+	background: var(--abstractin-card);
+	overflow: hidden;
+}
+.abstractin-card-head {
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--abstractin-stroke);
+	background: var(--abstractin-card-head);
+}
+.abstractin-card-title {
+	margin: 0;
+	font-size: 1.08em;
+	font-weight: 600;
+}
+.abstractin-card-desc {
+	margin: 2px 0 0;
+	font-size: 0.92em;
+	line-height: 1.45;
+	color: var(--abstractin-muted);
+}
+.abstractin-card-body {
+	display: flex;
+	flex-direction: column;
+}
+.abstractin-row {
+	display: grid;
+	grid-template-columns: minmax(120px, 34%) minmax(0, 1fr);
+	align-items: center;
+	gap: 6px 14px;
+	padding: 10px 14px;
+}
+.abstractin-row + .abstractin-row,
+.abstractin-card-body > * + .abstractin-row,
+.abstractin-card-body > .abstractin-row + * {
+	border-top: 1px solid var(--abstractin-stroke);
+}
+.abstractin-row-stack {
+	grid-template-columns: minmax(0, 1fr);
+}
+.abstractin-row-control > * {
+	min-width: 0;
+}
+.abstractin-row-label {
+	font-weight: 500;
+}
+.abstractin-row-hint {
+	grid-column: 1 / -1;
+	margin-top: -2px;
+	font-size: 0.88em;
+	line-height: 1.4;
+	color: var(--abstractin-muted);
+}
+.abstractin-row-stack .abstractin-row-hint {
+	grid-column: auto;
+}
+.abstractin-row-control {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	min-width: 0;
+}
+
+/* Assistant rows: collapsible, with a status dot (llm-for-zotero Agent tab). */
+.abstractin-agent + .abstractin-agent {
+	border-top: 1px solid var(--abstractin-stroke);
+}
+.abstractin-agent > summary {
+	display: grid;
+	grid-template-columns: auto 1fr auto auto;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 14px;
+	cursor: pointer;
+	list-style: none;
+}
+.abstractin-agent > summary:hover {
+	background: var(--abstractin-hover);
+}
+.abstractin-agent-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--abstractin-faint);
+}
+.abstractin-agent[data-found="true"] .abstractin-agent-dot {
+	background: var(--accent-green, #39bf68);
+}
+.abstractin-agent-name {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.abstractin-agent-name strong {
+	font-weight: 600;
+}
+.abstractin-agent-status {
+	font-size: 0.88em;
+	color: var(--abstractin-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.abstractin-badge {
+	padding: 1px 8px;
+	border-radius: 999px;
+	font-size: 0.82em;
+	font-weight: 600;
+	color: var(--abstractin-accent-ink);
+	background: var(--abstractin-accent-soft);
+}
+.abstractin-agent-chevron {
+	width: 12px;
+	height: 12px;
+	color: var(--abstractin-muted);
+	transition: transform 0.15s ease;
+}
+.abstractin-agent[open] .abstractin-agent-chevron {
+	transform: rotate(180deg);
+}
+.abstractin-agent-body {
+	border-top: 1px solid var(--abstractin-stroke);
+	background: color-mix(in srgb, var(--abstractin-card-head) 60%, var(--abstractin-card));
+}
+
+/* Form controls */
+.abstractin-field,
+.abstractin-select,
+.abstractin-textarea {
+	width: 100%;
+	min-width: 0;
+	min-height: 28px;
+	margin: 0;
+	padding: 4px 8px;
+	font: inherit;
+	color: var(--abstractin-text);
+	background: var(--abstractin-field);
+	border: 1px solid var(--abstractin-stroke);
+	border-radius: var(--abstractin-radius-control);
+}
+/* Zotero's chrome drops the native dropdown arrow once a select is restyled, so draw one. */
+.abstractin-select {
+	appearance: none;
+	padding-inline-end: 28px;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+	background-size: 12px 12px;
+	cursor: pointer;
+}
+.abstractin-textarea {
+	resize: vertical;
+	line-height: 1.45;
+}
+/* Prompt fields size themselves to their text instead of showing a resize grip. */
+.abstractin-textarea.abstractin-autogrow {
+	resize: none;
+	overflow: hidden;
+	min-height: 28px;
+}
+.abstractin-field:focus,
+.abstractin-select:focus,
+.abstractin-textarea:focus {
+	outline: none;
+	border-color: var(--abstractin-accent);
+	box-shadow: 0 0 0 2px var(--abstractin-accent-soft);
+}
+.abstractin-field::placeholder,
+.abstractin-textarea::placeholder {
+	color: var(--abstractin-faint);
+	opacity: 1;
+}
+.abstractin-button {
+	min-height: 28px;
+	padding: 3px 12px;
+	border: 1px solid var(--abstractin-stroke);
+	border-radius: var(--abstractin-radius-control);
+	color: var(--abstractin-text);
+	background: var(--abstractin-field);
+}
+.abstractin-button:hover {
+	background: var(--abstractin-hover);
+}
+.abstractin-button-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.abstractin-agent-add-actions {
+	padding: 10px 14px 14px;
+	gap: 8px;
+}
+
+/* Switch */
+.abstractin-switch {
+	position: relative;
+	display: inline-flex;
+	flex: none;
+	width: 32px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	border-radius: 999px;
+	background: var(--abstractin-line);
+	transition: background-color 0.15s ease;
+}
+.abstractin-switch::after {
+	content: "";
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: #fff;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+	transition: transform 0.15s ease;
+}
+.abstractin-switch[aria-checked="true"] {
+	background: var(--abstractin-accent);
+}
+.abstractin-switch[aria-checked="true"]::after {
+	transform: translateX(14px);
+}
+
+/* Accent swatches */
+.abstractin-swatches {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+.abstractin-swatch {
+	position: relative;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.abstractin-swatch[aria-checked="true"] {
+	box-shadow: 0 0 0 2px var(--abstractin-card), 0 0 0 4px var(--abstractin-text);
+}
+.abstractin-swatch-custom {
+	overflow: hidden;
+	background: conic-gradient(#f55, #fc3, #5d5, #3cf, #66f, #e5e, #f55);
+}
+.abstractin-swatch-custom input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	cursor: pointer;
+}
+.abstractin-segmented {
+	display: inline-flex;
+	padding: 2px;
+	gap: 2px;
+	border: 1px solid var(--abstractin-stroke);
+	border-radius: var(--abstractin-radius-control);
+	background: var(--abstractin-hover);
+}
+.abstractin-segmented button {
+	min-height: 22px;
+	padding: 1px 10px;
+	border: none;
+	border-radius: 4px;
+	color: var(--abstractin-muted);
+	background: transparent;
+}
+.abstractin-segmented button[aria-checked="true"] {
+	color: var(--abstractin-text);
+	font-weight: 600;
+	background: var(--abstractin-field);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+/* Quick prompt editor */
+.abstractin-prompt-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.abstractin-prompt-row {
+	display: grid;
+	grid-template-columns: minmax(90px, 30%) minmax(0, 1fr) auto;
+	gap: 6px;
+	align-items: start;
+}
+.abstractin-prompt-tools {
+	display: flex;
+}
+.abstractin-prefs .abstractin-icon {
+	width: 26px;
+	height: 28px;
+}
+.abstractin-range {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: min(260px, 100%);
+}
+.abstractin-range input[type="range"] {
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	accent-color: var(--abstractin-accent);
+}
+.abstractin-range-value {
+	min-width: 3.2em;
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+	color: var(--abstractin-muted);
+}
+.abstractin-bg-preview {
+	flex: none;
+	width: 44px;
+	height: 28px;
+	border: 1px solid var(--abstractin-stroke);
+	border-radius: 5px;
+	background: center / cover no-repeat;
+}
+
+/* Behaviour: hidden thinking steps and quick prompts. */
+.abstractin-root[data-steps="hidden"] .abstractin-activity,
+.abstractin-root[data-steps="hidden"] .abstractin-live-steps {
+	display: none;
+}
+.abstractin-root[data-quick="hidden"] .abstractin-quick {
+	display: none;
+}
+
+/* ---- first-run setup wizard ---- */
+
+.abstractin-wizard {
+	position: absolute;
+	inset: 0;
+	z-index: 30;
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 10px 8px;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--abstractin-ground) 55%, transparent);
+	overflow-y: auto;
+	background: var(--abstractin-ground);
+	animation: abstractin-fade-in 0.2s ease-out;
+}
+.abstractin-wizard-panel {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: 100%;
+	max-width: 420px;
+	min-height: 0;
+	padding: 18px 14px 12px;
+	border: 1px solid var(--abstractin-border-strong);
+	border-radius: var(--abstractin-radius-root, 18px);
+	background: var(--abstractin-overlay);
+	box-shadow: var(--abstractin-shadow);
+}
+.abstractin-wizard-skip {
+	position: absolute;
+	top: 8px;
+	inset-inline-end: 8px;
+}
+.abstractin-wizard-stage {
+	flex: 1;
+}
+.abstractin-wizard-enter {
+	animation: abstractin-wizard-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes abstractin-wizard-in {
+	from { opacity: 0; transform: translateX(14px); }
+	to { opacity: 1; transform: none; }
+}
+.abstractin-wizard-step {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	text-align: center;
+}
+.abstractin-wizard-hero {
+	width: 64px !important;
+	height: 64px !important;
+	color: var(--abstractin-accent-ink);
+}
+.abstractin-wizard-hero.abstractin-mascot {
+	width: 104px !important;
+	height: 104px !important;
+	color: var(--abstractin-text);
+}
+.abstractin-wizard-title {
+	font-size: 1.35em;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+.abstractin-wizard-sub {
+	color: var(--abstractin-muted);
+}
+.abstractin-wizard-section {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 7px;
+	width: 100%;
+}
+.abstractin-wizard-section-head {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 0.8em;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--abstractin-muted);
+}
+.abstractin-wizard-section-head .abstractin-i {
+	width: 13px;
+	height: 13px;
+}
+.abstractin-wizard .abstractin-tiles {
+	justify-content: center;
+}
+.abstractin-wizard .abstractin-select {
+	min-width: 200px;
+}
+.abstractin-wizard .abstractin-swatches {
+	justify-content: center;
+}
+.abstractin-tile[aria-pressed="true"] {
+	border-color: var(--abstractin-accent) !important;
+	background: var(--abstractin-accent-soft) !important;
+}
+.abstractin-tile[data-missing="true"] {
+	position: relative;
+	opacity: 0.6;
+}
+.abstractin-tile[data-missing="true"]::after {
+	content: "";
+	position: absolute;
+	top: 6px;
+	inset-inline-end: 6px;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--abstractin-faint);
+}
+.abstractin-wizard-nav {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.abstractin-wizard-dots {
+	flex: 1;
+	display: flex;
+	justify-content: center;
+	gap: 6px;
+}
+.abstractin-wizard-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 999px;
+	background: var(--abstractin-line);
+	transition: width 0.2s ease, background-color 0.2s ease;
+}
+.abstractin-wizard-dot-done {
+	background: var(--abstractin-accent-line);
+}
+.abstractin-wizard-dot[aria-current="step"] {
+	width: 20px;
+	background: var(--abstractin-accent);
+}
+.abstractin-wizard-prev,
+.abstractin-wizard-next {
+	width: 36px !important;
+	height: 36px !important;
+	border-radius: 999px !important;
+}
+.abstractin-wizard-next {
+	color: var(--abstractin-accent-text) !important;
+	background: linear-gradient(135deg, var(--abstractin-accent), color-mix(in srgb, var(--abstractin-accent) 55%, var(--tag-purple, #a28ae5))) !important;
+	box-shadow: 0 4px 12px -3px color-mix(in srgb, var(--abstractin-accent) 70%, transparent);
+}
+.abstractin-wizard-next .abstractin-duo {
+	fill: currentColor;
+	opacity: 0.3;
+}
+.abstractin-wizard-next .abstractin-i,
+.abstractin-wizard-prev .abstractin-i {
+	width: 18px;
+	height: 18px;
+}
+@media (prefers-reduced-motion: reduce) {
+	.abstractin-wizard,
+	.abstractin-wizard-enter { animation: none; }
+}
+.abstractin-wizard .abstractin-tiles {
+	gap: 6px;
+}
+.abstractin-wizard .abstractin-tile {
+	width: 62px;
+	min-height: 64px;
+	padding: 7px 2px 5px;
+}
+.abstractin-wizard .abstractin-tile-icon {
+	width: 30px !important;
+	height: 30px !important;
+}
+
+/* ---- clarifications panel ---- */
+
+.abstractin-panel {
+	position: absolute;
+	inset: 0;
+	z-index: 25;
+	display: flex;
+	flex-direction: column;
+	padding: 10px 9px;
+	border-radius: inherit;
+	background: var(--abstractin-overlay);
+	backdrop-filter: blur(var(--abstractin-blur, 18px)) saturate(160%);
+	animation: abstractin-fade-in 0.18s ease-out;
+}
+.abstractin-panel-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 28px;
+	margin-bottom: 8px;
+}
+.abstractin-panel-title {
+	flex: 1;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 650;
+}
+.abstractin-panel-title .abstractin-i {
+	width: 18px;
+	height: 18px;
+	color: var(--abstractin-accent-ink);
+}
+.abstractin-panel-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	user-select: text;
+}
+.abstractin-reading-bar {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 8px;
+	padding: 0;
+}
+.abstractin-reading-status {
+	font-size: 11px;
+	color: var(--abstractin-muted);
+	text-align: center;
+}
+.abstractin-reading-status:empty { display: none; }
+.abstractin-reading-source-status { font-size: 11px; color: var(--abstractin-muted); }
+.abstractin-reading-source-status:empty { display: none; }
+.abstractin-reading-tools, .abstractin-workspace-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.abstractin-reading-tools[hidden] { display: none; }
+.abstractin-reading-tool {
+	font: inherit;
+	font-size: 11px;
+	padding: 5px 8px;
+	border: 1px solid var(--abstractin-border);
+	border-radius: var(--abstractin-radius-control);
+	color: var(--abstractin-text);
+	background: var(--abstractin-ground);
+	cursor: pointer;
+}
+.abstractin-reading-tool:hover:not(:disabled) { background: var(--abstractin-hover); }
+.abstractin-reading-tool:disabled { opacity: 0.5; cursor: default; }
+.abstractin-controls .abstractin-reading-evidence-mode {
+	flex: 0 0 auto;
+	gap: 3px;
+	padding: 3px 5px;
+	color: var(--abstractin-muted);
+}
+.abstractin-reading-evidence-mode[hidden] { display: none !important; }
+.abstractin-reading-evidence-mode .abstractin-label { display: none; }
+.abstractin-reading-evidence-mode .abstractin-chevron { width: 10px; height: 10px; }
+.abstractin-workspace-recap-entry { margin-block: 10px; }
+.abstractin-workspace-recap { font-size: 12px; }
+.abstractin-reading-record {
+	font-size: 10px;
+	color: var(--abstractin-muted);
+}
+.abstractin-reading-primary {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 40px;
+	padding: 9px 14px;
+	border: 1px solid var(--abstractin-accent);
+	border-radius: var(--abstractin-radius-control);
+	background: var(--abstractin-accent);
+	color: var(--abstractin-accent-text);
+	font: inherit;
+	font-weight: 650;
+	cursor: pointer;
+}
+.abstractin-reading-primary:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--abstractin-accent) 85%, var(--abstractin-text));
+}
+.abstractin-reading-primary:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+.abstractin-reading-primary .abstractin-i {
+	width: 20px;
+	height: 20px;
+}
+.abstractin-reading-primary .abstractin-i .abstractin-duo {
+	fill: currentColor;
+}
+.abstractin-reading-form {
+	gap: 12px;
+}
+.abstractin-reading-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.abstractin-reading-field input, .abstractin-reading-field select {
+	width: 100%;
+	min-width: 0;
+	padding: 6px;
+	font: inherit;
+	color: var(--abstractin-text);
+	background: var(--abstractin-ground);
+	border: 1px solid var(--abstractin-border-strong);
+	border-radius: var(--abstractin-radius-control);
+}
+.abstractin-clar-item {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	width: 100%;
+	padding: 9px 10px;
+	border: 1px solid var(--abstractin-border) !important;
+	border-radius: var(--abstractin-radius-card);
+	text-align: start;
+	color: var(--abstractin-text) !important;
+	background: var(--abstractin-raised) !important;
+	transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.abstractin-clar-item:hover,
+.abstractin-clar-item:focus-visible {
+	border-color: var(--abstractin-accent-line) !important;
+	transform: translateY(-1px);
+}
+.abstractin-clar-item-top {
+	display: flex;
+	gap: 7px;
+}
+.abstractin-clar-quote-icon {
+	flex: none;
+	width: 16px !important;
+	height: 16px !important;
+	color: var(--abstractin-accent-ink);
+}
+.abstractin-clar-passage {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	overflow: hidden;
+	font-style: italic;
+	line-height: 1.4;
+}
+.abstractin-clar-meta {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-inline-start: 23px;
+	font-size: 0.82em;
+	color: var(--abstractin-muted);
+}
+.abstractin-clar-page {
+	padding: 0 6px;
+	border-radius: 999px;
+	font-weight: 600;
+	color: var(--abstractin-accent-ink);
+	background: var(--abstractin-accent-soft);
+}
+.abstractin-clar-backend {
+	width: 13px !important;
+	height: 13px !important;
+	margin-inline-start: auto;
+}
+.abstractin-clar-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 220px;
+	text-align: center;
+}
+.abstractin-clar-empty-title {
+	font-weight: 650;
+}
+.abstractin-clar-empty-sub {
+	color: var(--abstractin-muted);
+}
+.abstractin-clar-empty-icon {
+	width: 48px !important;
+	height: 48px !important;
+	color: var(--abstractin-accent-ink);
+}
+.abstractin-clar-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.abstractin-clar-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	padding: 2px 0 4px;
+	background: var(--abstractin-overlay);
+}
+.abstractin-clar-actions .abstractin-spacer {
+	flex: 1;
+}
+.abstractin-clar-delete:hover:not(:disabled) {
+	color: var(--accent-red, #db2c3a) !important;
+}
+.abstractin-clar-section {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+.abstractin-clar-heading {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 0.78em;
+	font-weight: 650;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--abstractin-muted);
+}
+.abstractin-clar-heading .abstractin-i {
+	width: 14px;
+	height: 14px;
+}
+.abstractin-clar-passage-full {
+	margin: 0;
+	padding: 8px 11px;
+	border-inline-start: 3px solid var(--abstractin-accent);
+	border-radius: var(--abstractin-radius-control);
+	font-style: italic;
+	line-height: 1.5;
+	background: var(--abstractin-accent-soft);
+}
+.abstractin-clar-prompt,
+.abstractin-clar-instructions pre {
+	margin: 0;
+	padding: 8px 10px;
+	border: 1px solid var(--abstractin-line);
+	border-radius: var(--abstractin-radius-control);
+	font-family: ui-monospace, "SF Mono", Menlo, monospace;
+	font-size: 0.86em;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	background: var(--abstractin-hover);
+}
+.abstractin-clar-instructions summary {
+	cursor: pointer;
+	font-size: 0.85em;
+	color: var(--abstractin-muted);
+}
+.abstractin-clar-instructions pre {
+	margin-top: 6px;
+	max-height: 220px;
+	overflow-y: auto;
+}
+.abstractin-clar-answer {
+	padding: 8px 11px;
+	border: 1px solid var(--abstractin-border);
+	border-radius: var(--abstractin-radius-card);
+	background: var(--abstractin-raised);
+}
+@media (prefers-reduced-motion: reduce) {
+	.abstractin-panel { animation: none; }
+	.abstractin-clar-item:hover { transform: none; }
+}
+/* Panels and the wizard need room even when the chat is short. */
+.abstractin-root:has(> .abstractin-panel),
+.abstractin-root:has(> .abstractin-wizard) {
+	min-height: 520px;
+}
+
+/* Keep reader replies selectable and make the source-copy affordance visible. */
+.abstractin-reader-panel .abstractin-rich,
+.abstractin-reader-panel .abstractin-rich math { -moz-user-select: text; user-select: text; }
+.abstractin-reader-panel .abstractin-copy-tex { opacity: 0.65; }
+.abstractin-reader-panel .abstractin-copy-tex:hover { opacity: 1; }
+
+/* Dedicated Lucide symbols distinguish reading modes from general controls. */
+.abstractin-reading-mode-menu {
+	box-sizing: border-box;
+	width: min(360px, 100%);
+	min-width: 0;
+	max-width: min(360px, 100%);
+}
+.abstractin-root .abstractin-reading-mode-menu .abstractin-menu-item {
+	display: block;
+	appearance: none;
+	height: auto !important;
+	min-height: 64px;
+	max-height: none !important;
+	padding: 10px 8px;
+	box-sizing: border-box;
+	line-height: 1.45;
+	white-space: normal;
+}
+/* Put layout inside the button: native Gecko button rules can constrain the
+   button's anonymous content box even when its display is grid/flex. */
+.abstractin-root .abstractin-reading-mode-menu .abstractin-menu-content {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+.abstractin-root .abstractin-reading-mode-menu .abstractin-menu-text {
+	display: block;
+	flex: 1 1 0;
+	min-width: 0;
+}
+.abstractin-root .abstractin-reading-mode-menu .abstractin-menu-label,
+.abstractin-root .abstractin-reading-mode-menu .abstractin-menu-desc {
+	display: block;
+	line-height: 1.45;
+	white-space: normal !important;
+	overflow: visible;
+	text-overflow: clip;
+	overflow-wrap: anywhere;
+}
+.abstractin-root .abstractin-reading-mode-menu .abstractin-menu-desc { margin-top: 3px; }
+.abstractin-root .abstractin-reading-mode-menu .abstractin-check,
+.abstractin-root .abstractin-reading-mode-menu .abstractin-reading-menu-icon {
+	flex: 0 0 16px;
+	width: 16px;
+	height: 16px;
+	margin-top: 3px;
+}
+.abstractin-root .abstractin-header > .abstractin-header-icon {
+	display: block;
+	flex: 0 0 24px;
+	width: 24px;
+	height: 24px;
+}
+
+/* Keep every formal environment's left rule in the selected accent. */
+.abstractin-env { border-inline-start-color: var(--abstractin-accent) !important; }
+
+
+
+/* Reading shortcuts sit immediately above the composer. */
+.abstractin-reading-bar {
+	flex: 0 0 auto;
+	gap: 6px;
+}
+.abstractin-reading-assistant {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+.abstractin-reading-invitation {
+	flex: 0 0 auto;
+	font-size: 11px;
+	color: var(--abstractin-muted);
+}
+.abstractin-reading-assistant .abstractin-quick {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+.abstractin-reading-assistant .abstractin-quick[hidden] { display: none; }
+.abstractin-reading-assistant .abstractin-prompt-menu {
+	min-width: 0;
+	padding: 4px 6px;
+}
+.abstractin-reading-assistant .abstractin-prompt-menu .abstractin-label { display: inline; }
+.abstractin-reading-bar .abstractin-start-reading[hidden] { display: none; }
+.abstractin-reading-bar .abstractin-reading-status { text-align: start; }
+.abstractin-reading-source-status { max-height: 2.8em; overflow-y: auto; }
+.abstractin-reading-assistant { flex-wrap: wrap; }
+.abstractin-discussion-companion {
+	flex: 0 0 48px;
+	width: 48px;
+	aspect-ratio: 1;
+	pointer-events: none;
+}
+.abstractin-root .abstractin-discussion-companion .abstractin-mascot {
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	animation: none;
+}
+.abstractin-root .abstractin-discussion-companion .abstractin-mascot > svg { animation: none; }
+
+.abstractin-root[data-reading-intro="true"] .abstractin-reading-bar { display: none; }
+.abstractin-reading-welcome .abstractin-start-reading { width: auto; align-self: center; }
+.abstractin-reading-welcome .abstractin-mascot { flex: none; width: 96px; height: 96px; }
+.abstractin-reading-setup-question p { margin: 0 0 8px; }
+.abstractin-reading-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.abstractin-reading-choice {
+	font: inherit;
+	color: var(--abstractin-text);
+	background: var(--abstractin-ground);
+	border: 1px solid var(--abstractin-border);
+	border-radius: var(--abstractin-radius-control);
+	padding: 5px 9px;
+	cursor: pointer;
+}
+.abstractin-reading-choice:hover:not(:disabled) { background: var(--abstractin-hover); }
+.abstractin-reading-choice:disabled { opacity: .5; cursor: default; }
+.abstractin-reading-statusbar {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	gap: 2px 10px;
+	color: var(--abstractin-muted);
+}
+.abstractin-reading-statusbar:has(.abstractin-reading-status:empty):has(.abstractin-reading-source-status:empty) { display: none; }
+.abstractin-reading-statusbar .abstractin-reading-status { text-align: start; }
+
+.abstractin-wizard-models { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: start; }
+.abstractin-wizard-models > label { font-size: 12px; color: var(--abstractin-muted); }
+.abstractin-wizard-section { width: 100%; }
+.abstractin-wizard-section-label { margin-bottom: 6px; font-weight: 500; }
+.abstractin-wizard-section > .abstractin-select { width: 100%; }
+
+.abstractin-discussion-name { padding: 4px 12px; font-size: 11px; color: var(--abstractin-muted); overflow-wrap: anywhere; }
+.abstractin-discussion-budget { padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.abstractin-chapter-choice, .abstractin-discussion-transfer { padding: 14px; max-height: 80%; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.abstractin-discussion-transfer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }

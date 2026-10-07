@@ -1,10 +1,10 @@
 {
 	"manifest_version": 2,
-	"name": "Claude Sidebar integration tester",
+	"name": "AbstractIn integration tester",
 	"version": "1.0.0",
 	"applications": {
 		"zotero": {
-			"id": "zusia-tester@firekern.github.io",
+			"id": "abstractin-tester@shen-zhang-42.github.io",
 			"update_url": "https://example.com/none.json",
 			"strict_min_version": "6.999",
 			"strict_max_version": "10.*"

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>AbstractIn harness</title>
 <link rel="stylesheet" href="zotero-tokens.css">
-<link rel="stylesheet" href="../src/content/zusia.css">
+<link rel="stylesheet" href="../src/content/abstractin.css">
 <style>
 	html, body { margin: 0; background: var(--color-sidepane); color: var(--fill-primary); }
 	body { font: 13px "Noto Sans", Cantarell, system-ui, sans-serif; padding: 12px; }
@@ -41,20 +41,21 @@
 		getMainWindow: () => window,
 	};
 	var Services = { scriptloader: { loadSubScript: (u, scope) => { scope.module.exports = window.katex; } } };
-	var Zusia;
+	var AbstractIn;
 </script>
-<script src="../src/content/zusia.js"></script>
+<script src="../src/content/abstractin.js"></script>
 <script src="../src/content/icon-assets.js"></script>
 <script src="../src/content/reading.js"></script>
 <script src="../src/content/reading-workflow.js"></script>
 <script src="../src/content/reader-panel.js"></script>
 <script src="../src/content/agents.js"></script>
+<script src="../src/content/chats.js"></script>
 </head>
 <body class="no-anim">
 <script>
 	// ?scenario=chat|empty|streaming|prefs  &fixture=<name>  &width=<px>  &theme=<json>
 	const params = new URLSearchParams(location.search);
-	const CS = Zusia;
+	const CS = AbstractIn;
 	CS.rootURI = "../src/";
 	CS.iconBase = "../src/content/icons/";
 	CS.findBinary = async key => { if (key === "codex") throw new Error("missing"); return "/bin/" + key; };
@@ -79,15 +80,15 @@
 	}
 	function sidebar(body) {
 		CS.renderSkeleton(document, body);
-		const root = body.querySelector(".zs-root");
+		const root = body.querySelector(".abstractin-root");
 		root._installed = { claude: "/bin/claude", codex: null, agy: "/bin/agy" };
 		const view = {
 			doc: document, root, ctx: { dir: "/tmp/harness" },
-			logEl: root.querySelector(".zs-log"),
-			input: root.querySelector(".zs-input"),
+			logEl: root.querySelector(".abstractin-log"),
+			input: root.querySelector(".abstractin-input"),
 			send() {},
 		};
-		root.querySelector(".zs-log").style.maxHeight = "none";
+		root.querySelector(".abstractin-log").style.maxHeight = "none";
 		CS._views.set(root, view);
 		CS.renderPaperChip(root, { label: "Dohare et al., 2024", title: "Loss of plasticity in deep continual learning" });
 		return view;
@@ -115,7 +116,7 @@
 	if (scenario === "prefs") {
 		const body = pane("Settings pane");
 		CS.renderPrefsPane(document, body);
-		body.querySelector(".zs-agent").open = true;
+		body.querySelector(".abstractin-agent").open = true;
 	}
 	else {
 		const view = sidebar(pane("Claude"));
@@ -130,7 +131,7 @@
 			const toolbar = document.createElement("div");
 			view.root.before(toolbar);
 			CS.renderReaderToolbar({ reader: { type: "pdf", itemID: 1 }, doc: document, append: node => toolbar.append(node) });
-			if (scenario === "menu-reading") view.root.querySelector(".zs-reading-evidence-mode").click();
+			if (scenario === "menu-reading") view.root.querySelector(".abstractin-reading-evidence-mode").click();
 		}
 		else if (scenario === "clarifications") {
 			const clar = (id, day, passage, page, answer) => ({ id, ts: Date.parse("2026-09-" + day + "T10:00:00Z"), passage, pageLabel: page,
@@ -145,7 +146,7 @@
 			CS.renderMessages(view, []);
 			CS.setBusy(view, false);
 			CS.openClarifications(view.root).then(() => {
-				if (params.get("detail")) document.querySelectorAll(".zs-clar-item")[1].click();
+				if (params.get("detail")) document.querySelectorAll(".abstractin-clar-item")[1].click();
 			});
 		}
 		else if (scenario === "wizard") {
@@ -153,7 +154,7 @@
 			CS.renderMessages(view, []);
 			CS.setBusy(view, false);
 			for (let i = 0; i < Number(params.get("step") || 0); i++) {
-				document.querySelector(".zs-wizard-next").click();
+				document.querySelector(".abstractin-wizard-next").click();
 			}
 		}
 		else if (scenario === "empty") {
@@ -200,7 +201,7 @@
 					{ kind: "read", target: "paper.txt", label: "Read paper.txt" },
 				],
 			});
-			view.logEl.querySelector(".zs-live-steps") && CS._pending;
+			view.logEl.querySelector(".abstractin-live-steps") && CS._pending;
 		}
 		else {
 			CS.renderMessages(view, conversation);
@@ -208,9 +209,9 @@
 			view.input.value = scenario === "chat" ? "" : "What is the convolution theorem?";
 			CS.setBusy(view, false);
 			const openAfterLayout = (selector) => view.root.querySelector(selector).click();
-			if (scenario === "menu-model") openAfterLayout(".zs-model-btn");
-			if (scenario === "menu-effort") openAfterLayout(".zs-effort-btn");
-			if (scenario === "menu-more") openAfterLayout(".zs-turn.zs-last .zs-more");
+			if (scenario === "menu-model") openAfterLayout(".abstractin-model-btn");
+			if (scenario === "menu-effort") openAfterLayout(".abstractin-effort-btn");
+			if (scenario === "menu-more") openAfterLayout(".abstractin-turn.abstractin-last .abstractin-more");
 			if (scenario === "menu-history") {
 				CS.listArchives = () => ({
 					catch() { return this; },
@@ -220,11 +221,11 @@
 						{ path: "c", title: "Explain the method simply, with an example I can compute by hand", count: 8, ts: Date.parse("2026-09-03T09:15:00") },
 					]); return this; },
 				});
-				openAfterLayout(".zs-history");
+				openAfterLayout(".abstractin-history");
 			}
 			if (params.get("debug")) {
-				const menu = view.root.querySelector(".zs-menu");
-				const more = view.root.querySelector(".zs-turn.zs-last .zs-more");
+				const menu = view.root.querySelector(".abstractin-menu");
+				const more = view.root.querySelector(".abstractin-turn.abstractin-last .abstractin-more");
 				const banner = document.createElement("div");
 				banner.className = "overflow-banner";
 				banner.textContent = "DEBUG menu=" + !!menu + " more=" + !!more + " expanded=" + (more && more.getAttribute("aria-expanded")) + " style=" + (menu && menu.getAttribute("style"));
@@ -232,13 +233,13 @@
 			}
 		}
 	}
-	requestAnimationFrame(() => document.querySelectorAll(".zs-log").forEach(log => CS.fitWideContent(log)));
+	requestAnimationFrame(() => document.querySelectorAll(".abstractin-log").forEach(log => CS.fitWideContent(log)));
 	// Flag horizontal overflow loudly in the screenshot.
 	requestAnimationFrame(() => setTimeout(() => {
 		const problems = [];
 		for (const body of document.querySelectorAll(".pane-body")) {
 			const limit = body.getBoundingClientRect().right + 1;
-			for (const el of body.querySelectorAll(".zs-root, .zs-header, .zs-icon, .zs-msg, .zs-composer, .zs-controls, .zs-card")) {
+			for (const el of body.querySelectorAll(".abstractin-root, .abstractin-header, .abstractin-icon, .abstractin-msg, .abstractin-composer, .abstractin-controls, .abstractin-card")) {
 				if (el.getBoundingClientRect().right > limit) {
 					problems.push(el.className);
 				}

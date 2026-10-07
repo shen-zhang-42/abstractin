@@ -10,14 +10,14 @@ async function snapshot(win, p, panel, path) {
  await IOUtils.write(path, new Uint8Array(await blob.arrayBuffer()));
 }
 async function run() {
- const out = Zotero.Prefs.get('extensions.zusia-tester.outDir', true);
+ const out = Zotero.Prefs.get('extensions.abstractin-tester.outDir', true);
  try {
   await Zotero.uiReadyPromise;
   let p;
   for (let i = 0; i < 200 && !p; i++) { p = Zotero.AbstractIn; if (!p) await Zotero.Promise.delay(100); }
   if (!p) throw new Error('Plugin startup timed out');
   const win = Zotero.getMainWindow(), doc = win.document;
-  const catalogFixture = Zotero.Prefs.get('extensions.zusia-tester.catalogFixture', true);
+  const catalogFixture = Zotero.Prefs.get('extensions.abstractin-tester.catalogFixture', true);
   if (catalogFixture) {
    const findBinary = p.findBinary;
    try {
@@ -28,20 +28,20 @@ async function run() {
    } finally { p.findBinary = findBinary; }
   }
   win.resizeTo(1000, 900);
-  const panel = p.el(doc, 'section', 'zs-reader-panel');
+  const panel = p.el(doc, 'section', 'abstractin-reader-panel');
   panel.style.cssText = 'position:fixed;top:10px;left:10px;height:800px;z-index:10000;max-width:none;';
   const toolbar = p.el(doc, 'div'); panel.append(toolbar);
   p.renderReaderToolbar({ reader: { type: 'pdf', itemID: 1, _window: win }, doc, append: node => toolbar.append(node) });
-  const body = p.el(doc, 'div', 'zs-reader-view'); panel.append(body);
+  const body = p.el(doc, 'div', 'abstractin-reader-view'); panel.append(body);
   doc.documentElement.append(panel);
   p.renderSkeleton(doc, body);
-  const root = body.querySelector('.zs-root');
-  const view = { doc, root, ctx: { dir: '/tmp/appearance', paperItem: { getField: () => 'Theory of Statistics', getCreators: () => [] }, reading: { type: 'book', language: 'English' } }, logEl: root.querySelector('.zs-log'), input: root.querySelector('.zs-input') };
+  const root = body.querySelector('.abstractin-root');
+  const view = { doc, root, ctx: { dir: '/tmp/appearance', paperItem: { getField: () => 'Theory of Statistics', getCreators: () => [] }, reading: { type: 'book', language: 'English' } }, logEl: root.querySelector('.abstractin-log'), input: root.querySelector('.abstractin-input') };
   p._views.set(root, view);
   Zotero.Prefs.set('extensions.abstractin.readingEvidenceMode', 'knowledge', true);
   Zotero.Prefs.set('ui.prefersReducedMotion', 0, true);
   p.renderMessages(view, []); p.updateReadingControls(view);
-  const missing = [...root.querySelectorAll('.zs-i')].filter(icon => icon.dataset.icon !== 'stop' && !icon.querySelector('svg')).map(icon => icon.dataset.icon);
+  const missing = [...root.querySelectorAll('.abstractin-i')].filter(icon => icon.dataset.icon !== 'stop' && !icon.querySelector('svg')).map(icon => icon.dataset.icon);
   check('every header and composer control contains SVG', !missing.length, missing);
   const rect = node => { const r = node.getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:r.width, height:r.height }; };
   for (const dark of [false, true]) {
@@ -55,22 +55,22 @@ async function run() {
     await Zotero.Promise.delay(150);
     check(tag + ' theme applied', win.matchMedia('(prefers-color-scheme: dark)').matches === dark);
     await snapshot(win, p, panel, PathUtils.join(out, tag + '-empty.png'));
-    const anchor = root.querySelector('.zs-reading-evidence-mode'); p.openReadingEvidenceMenu(root, anchor);
+    const anchor = root.querySelector('.abstractin-reading-evidence-mode'); p.openReadingEvidenceMenu(root, anchor);
     await Zotero.Promise.delay(350);
-    const menu = root.querySelector('.zs-reading-mode-menu');
-    const rows = [...menu.querySelectorAll('.zs-menu-item')];
-    for (const selector of ['.zs-header-icon svg', '.zs-empty .zs-mascot svg', '.zs-start-reading svg']) {
+    const menu = root.querySelector('.abstractin-reading-mode-menu');
+    const rows = [...menu.querySelectorAll('.abstractin-menu-item')];
+    for (const selector of ['.abstractin-header-icon svg', '.abstractin-empty .abstractin-mascot svg', '.abstractin-start-reading svg']) {
      const svg = root.querySelector(selector), r = svg && rect(svg);
      check(tag + ' visible ' + selector, !!r && r.width > 0 && r.height > 0, r);
     }
     check(tag + ' toolbar avatar', !!toolbar.querySelector('svg[stroke="#808088"]'));
-    check(tag + ' distinct app and reading icons', root.querySelector('.zs-header-icon').dataset.icon === 'app' && root.querySelector('.zs-start-reading .zs-i').dataset.icon === 'book');
+    check(tag + ' distinct app and reading icons', root.querySelector('.abstractin-header-icon').dataset.icon === 'app' && root.querySelector('.abstractin-start-reading .abstractin-i').dataset.icon === 'book');
     check(tag + ' separated menu rows', rect(rows[1]).top >= rect(rows[0]).bottom, rows.map(rect));
     for (const row of rows) {
-     const symbol = rect(row.querySelector('.zs-reading-menu-icon'));
-     const text = rect(row.querySelector('.zs-menu-text'));
-     const label = rect(row.querySelector('.zs-menu-label'));
-     const desc = rect(row.querySelector('.zs-menu-desc'));
+     const symbol = rect(row.querySelector('.abstractin-reading-menu-icon'));
+     const text = rect(row.querySelector('.abstractin-menu-text'));
+     const label = rect(row.querySelector('.abstractin-menu-label'));
+     const desc = rect(row.querySelector('.abstractin-menu-desc'));
      check(tag + ' symbol before text', symbol.right <= text.left, { symbol, text });
      check(tag + ' description below label', desc.top >= label.bottom, { label, desc });
      check(tag + ' description contained', desc.bottom <= rect(row).bottom && desc.right <= rect(menu).right, { desc, row: rect(row), menu: rect(menu) });
@@ -80,8 +80,8 @@ async function run() {
   }
 
   p.closeMenu(root);
-  const companion = root.querySelector('.zs-empty .zs-mascot > svg');
-  const float = companion.getAnimations().find(animation => animation.animationName === 'zs-mascot-float');
+  const companion = root.querySelector('.abstractin-empty .abstractin-mascot > svg');
+  const float = companion.getAnimations().find(animation => animation.animationName === 'abstractin-mascot-float');
   check('companion has continuous float animation', !!float && float.effect.getTiming().iterations === Infinity);
   if (float) {
    float.pause();
@@ -95,17 +95,17 @@ async function run() {
   for (const width of [280, 380, 520, 900]) {
    panel.style.width = width + 'px';
    p.renderMessages(view, []);
-   const bar = root.querySelector('.zs-reading-bar');
+   const bar = root.querySelector('.abstractin-reading-bar');
    const emptyHeight = rect(bar).height;
    p.renderMessages(view, [{ role: 'user', text: 'Explain this passage.' }, { role: 'assistant', backend: 'codex', text: 'Here is the explanation.' }]);
-   const dock = root.querySelector('.zs-discussion-companion');
+   const dock = root.querySelector('.abstractin-discussion-companion');
    const dockSvg = dock.querySelector('svg');
    const tag = 'discussion-' + width;
    check(tag + ' companion uses reading control area', dock.parentElement === bar);
    check(tag + ' no extra row', Math.abs(rect(bar).height - emptyHeight) < 0.5);
    check(tag + ' companion fits controls', rect(dock).right <= rect(bar).right && rect(dock).bottom <= rect(bar).bottom);
    check(tag + ' companion scales to space', rect(dockSvg).width >= 32 && rect(dockSvg).width <= 80);
-   check(tag + ' companion is stationary', win.getComputedStyle(dockSvg).animationName === 'none' && win.getComputedStyle(dock.querySelector('.zs-mascot-spark')).animationName === 'none');
+   check(tag + ' companion is stationary', win.getComputedStyle(dockSvg).animationName === 'none' && win.getComputedStyle(dock.querySelector('.abstractin-mascot-spark')).animationName === 'none');
    for (const button of bar.querySelectorAll('button')) {
     const r = rect(button), d = rect(dock);
     if (!r.width || !r.height) continue;
@@ -117,7 +117,7 @@ async function run() {
   }
   Zotero.Prefs.set('ui.prefersReducedMotion', 1, true);
   await Zotero.Promise.delay(100);
-  check('reduced motion stops companion floating', win.getComputedStyle(root.querySelector('.zs-empty .zs-mascot > svg')).animationName === 'none');
+  check('reduced motion stops companion floating', win.getComputedStyle(root.querySelector('.abstractin-empty .abstractin-mascot > svg')).animationName === 'none');
 
  }
  catch(e) { results.errors.push(String(e) + '\n' + e.stack); }

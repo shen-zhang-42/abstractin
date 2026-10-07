@@ -114,7 +114,7 @@ export async function stage() {
 				let reader = Zotero.Reader._readers.find(r => r.tabID === win.Zotero_Tabs.selectedID);
 				if (reader) roots.push(reader._iframeWindow.document);
 				for (let root of roots) {
-					let target = [...root.querySelectorAll(scope ? scope + " button, " + scope + " .zs-menu-item" : "button")]
+					let target = [...root.querySelectorAll(scope ? scope + " button, " + scope + " .abstractin-menu-item" : "button")]
 						.filter(b => b.getBoundingClientRect().width)
 						.find(b => b.textContent.trim().startsWith(${JSON.stringify(text)}));
 					if (target) return target;
@@ -173,6 +173,6 @@ export async function stage() {
 			return marks;
 		},
 	};
-	api.pid = Number(execFileSync("pgrep", ["-f", "zusia-demo/profile -no-remote"]).toString().trim().split("\n")[0]);
+	api.pid = Number(execFileSync("pgrep", ["-f", "abstractin-demo/profile -no-remote"]).toString().trim().split("\n")[0]);
 	return api;
 }

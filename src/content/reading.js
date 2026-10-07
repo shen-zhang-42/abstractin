@@ -2,7 +2,7 @@
 
 // AbstractIn owns document identity, UI, agent transport and Zotero records.
 // Reading strategies remain in the user's original, locally installed skills.
-Object.assign(Zusia, {
+Object.assign(AbstractIn, {
 	_readingStates: new Map(),
 
 	getReadingEvidenceMode() {
@@ -15,12 +15,9 @@ Object.assign(Zusia, {
 	},
 
 	requestsReadingSource(question) {
-		// Numbered claims belong to this document; general knowledge cannot
-		// establish which theorem/section the author assigned that number to.
-		return /\b(?:theorem|lemma|proposition|corollary|definition|example|equation|section|chapter|figure|table|appendix)\s*(?:no\.?\s*)?[([]?\d+(?:\.\d+)*\b/i.test(question) ||
-			/(?:定理|引理|命题|推论|定义|例题|公式|方程|章节|小节|第)\s*\d+(?:\.\d+)*(?:\s*[章节页])?/.test(question) ||
-			/\b(?:read|search|look up|look at|consult|check|verify)\b[^.!?;]{0,60}\b(?:pdf|document|source|paper|book|section|chapter|theorem|passage)\b/i.test(question) ||
-			/(?:阅读|读取|搜索|检索|查阅|查看|核对|看一下|去看|看看)[^，。；]{0,30}(?:pdf|文档|原文|书|论文|章节|节|定理|页)/i.test(question);
+		// Mentioning a numbered theorem is not permission to read another chapter.
+		return /\b(?:read|search|look up|look at|consult|check|verify)\b[^.!?;]{0,80}\b(?:pdf|document|source|paper|book|section|chapter|theorem|lemma|proof|passage)\b/i.test(question) ||
+			/(?:阅读|读取|搜索|检索|查阅|查看|核对|看一下|去看|看看)[^，。；]{0,40}(?:pdf|文档|原文|书|论文|章节|节|定理|引理|证明|页)/i.test(question);
 	},
 
 	requestsCurrentReadingPage(question) {
@@ -227,12 +224,12 @@ Object.assign(Zusia, {
 		view.readingSetup = { step: "title", attachments, attachment: attachments.find(item => item.id === active?.id) || attachments[0],
 			type: this.readingType(view.ctx.paperItem), title: this.safeField(view.ctx.paperItem, "title") || "", goal: "" };
 		view.root.dataset.readingIntro = "true";
-		let welcome = view.logEl.querySelector(".zs-empty");
-		if (welcome) welcome.querySelector(".zs-start-reading")?.remove();
+		let welcome = view.logEl.querySelector(".abstractin-empty");
+		if (welcome) welcome.querySelector(".abstractin-start-reading")?.remove();
 		else {
-			welcome = this.el(view.doc, "div", "zs-empty zs-reading-welcome");
-			welcome.append(this.svgIcon(view.doc, this.MASCOTS[this.getAppearance().mascot].icon, "zs-mascot"),
-				this.el(view.doc, "div", "zs-empty-title", "let's start reading"));
+			welcome = this.el(view.doc, "div", "abstractin-empty abstractin-reading-welcome");
+			welcome.append(this.svgIcon(view.doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"),
+				this.el(view.doc, "div", "abstractin-empty-title", "let's start reading"));
 			view.logEl.appendChild(welcome);
 		}
 		this.updateControls(root);
@@ -244,8 +241,8 @@ Object.assign(Zusia, {
 	appendReadingSetupQuestion(view, error = "") {
 		let state = view.readingSetup;
 		if (!state) return;
-		view.logEl.querySelectorAll(".zs-reading-choices button").forEach(button => { button.disabled = true; });
-		let card = this.el(view.doc, "div", "zs-msg zs-assistant zs-reading-setup-question");
+		view.logEl.querySelectorAll(".abstractin-reading-choices button").forEach(button => { button.disabled = true; });
+		let card = this.el(view.doc, "div", "abstractin-msg abstractin-assistant abstractin-reading-setup-question");
 		let choices = [];
 		let question;
 		if (error) { question = error; choices = [["Try again", "retry"]]; }
@@ -270,9 +267,9 @@ Object.assign(Zusia, {
 			choices = [["Start at the current page", "skip"]];
 		}
 		card.appendChild(this.el(view.doc, "p", null, question));
-		let buttons = this.el(view.doc, "div", "zs-reading-choices");
+		let buttons = this.el(view.doc, "div", "abstractin-reading-choices");
 		for (let [label, answer] of choices) {
-			let button = this.el(view.doc, "button", "zs-reading-choice", label);
+			let button = this.el(view.doc, "button", "abstractin-reading-choice", label);
 			button.type = "button";
 			button.addEventListener("click", () => this.answerReadingSetup(view, answer, label));
 			buttons.appendChild(button);
@@ -303,8 +300,8 @@ Object.assign(Zusia, {
 				if (matches.length !== 1) { this.appendReadingSetupQuestion(view); return; }
 				state.attachment = matches[0];
 			}
-			view.logEl.querySelectorAll(".zs-reading-choices button").forEach(button => { button.disabled = true; });
-			view.logEl.appendChild(this.el(view.doc, "div", "zs-msg zs-user zs-reading-setup-answer", label));
+			view.logEl.querySelectorAll(".abstractin-reading-choices button").forEach(button => { button.disabled = true; });
+			view.logEl.appendChild(this.el(view.doc, "div", "abstractin-msg abstractin-user abstractin-reading-setup-answer", label));
 			view.input.value = "";
 			this.autoGrow(view.input);
 			if (state.step === "title") { state.title = answer; state.step = "type"; }
@@ -315,8 +312,8 @@ Object.assign(Zusia, {
 		}
 		state.busy = true;
 		view.input.disabled = true;
-		view.root.querySelector(".zs-send").disabled = true;
-		let status = this.el(view.doc, "div", "zs-notice zs-reading-setup-progress", "Getting ready to read…");
+		view.root.querySelector(".abstractin-send").disabled = true;
+		let status = this.el(view.doc, "div", "abstractin-notice abstractin-reading-setup-progress", "Getting ready to read…");
 		status.setAttribute("role", "status");
 		view.logEl.appendChild(status);
 		try {
@@ -406,7 +403,7 @@ Object.assign(Zusia, {
 
 	updateReadingControls(view) {
 		let reading = view.ctx.reading;
-		let evidence = view.root.querySelector(".zs-reading-evidence-mode");
+		let evidence = view.root.querySelector(".abstractin-reading-evidence-mode");
 		if (evidence) {
 			let mode = this.getReadingEvidenceMode();
 			evidence.hidden = !reading;
@@ -415,30 +412,33 @@ Object.assign(Zusia, {
 			evidence.title = label + " — change reading discussion mode";
 			evidence.setAttribute("aria-label", evidence.title);
 			let icon = mode === "knowledge" ? "readingKnowledge" : "readingSource";
-			let current = evidence.querySelector(".zs-i:not(.zs-chevron)");
+			let current = evidence.querySelector(".abstractin-i:not(.abstractin-chevron)");
 			if (current?.dataset.icon !== icon) current?.replaceWith(this.svgIcon(view.doc, icon));
 		}
-		let label = view.root.querySelector(".zs-reading-status");
+		let label = view.root.querySelector(".abstractin-reading-status");
 		if (label) label.textContent = reading ?
 			(reading.type === "book" ? "Book" : "Paper") + " · " + (this.getLanguage() || "Same as my question") + " · " + this.BACKENDS[this.readingAgent()].label : "";
-		let button = view.root.querySelector(".zs-start-reading");
+		let button = view.root.querySelector(".abstractin-start-reading");
 		if (button) {
 			button.setLabel("Start Reading");
 			button.title = "Start Reading";
 			button.hidden = !!reading || !!view.readingSetup || view.root.dataset.chatting === "true";
 		}
-		let tools = view.root.querySelector(".zs-reading-tools");
+		let tools = view.root.querySelector(".abstractin-reading-tools");
 		if (tools) tools.hidden = !reading;
-		let workspace = view.root.querySelector(".zs-reading-workspace");
+		let workspace = view.root.querySelector(".abstractin-reading-workspace");
 		if (workspace && reading) workspace.textContent = reading.type === "book" ? "Contents & records" : "Summary & records";
-		let resume = view.root.querySelector(".zs-reading-resume-here");
+		let resume = view.root.querySelector(".abstractin-reading-resume-here");
 		if (resume) resume.hidden = !reading?.referenceNavigation;
-		let sourceStatus = view.root.querySelector(".zs-reading-source-status");
+		let sourceStatus = view.root.querySelector(".abstractin-reading-source-status");
 		if (sourceStatus) sourceStatus.textContent = reading && this.getReadingEvidenceMode() === "knowledge" ?
 			"Knowledge discussion · context first · verify sources when needed" : reading?.pdfSource ? (reading.pdfSource.status === "ready" ?
 			"PDF text ready · " + reading.pdfSource.extractedPages + "/" + reading.pdfSource.totalPages + " pages" +
 			(reading.pdfSource.pageMapping ? "" : " · page links unverified") : reading.pdfSource.status === "context-only" ?
 			"Discussion context ready · full PDF text not loaded" : "PDF text unavailable — use a selected passage or page image") : "";
+		let quick = view.root.querySelector(".abstractin-quick");
+		let type = reading?.type === "book" ? "book" : "paper";
+		if (quick && quick.dataset.materialType !== type) { this.closeMenu(view.root); this.renderQuickPrompts(view.root, quick); }
 	},
 
 	readingPrompt(ctx, selection) {
@@ -606,7 +606,7 @@ Object.assign(Zusia, {
 			}
 			if (ctx.reading.evidenceMode !== "knowledge" && ctx.reading.pdfSource?.status === "ready" && Number.isInteger(source.pageIndex) && source.pageIndex >= 0) {
 				if (ctx.reading.pdfSource.pageMapping && source.pageIndex < ctx.reading.pdfSource.totalPages) pageVerified = normalize(this.pdfPageText(sourceText, source.pageIndex)).includes(quote);
-				if (!pageVerified) {
+				if (!pageVerified && (!ctx.discussion || ctx.reading.pdfSource.allowedPages?.includes(source.pageIndex))) {
 					try { pageVerified = normalize((await this.readNativeReadingPage(ctx, source.pageIndex)).text).includes(quote); }
 					catch (e) { /* Retain an independently verified excerpt without a page link. */ }
 				}
@@ -633,6 +633,7 @@ Object.assign(Zusia, {
 			let paragraphs = [...template.content.querySelectorAll("p")].map(n => n.textContent);
 			return paragraphs.includes("Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key) &&
 				paragraphs.includes("Scope: " + scope.level + "; id: " + scope.id) &&
+				(!ctx.discussion || paragraphs.includes("Discussion: " + ctx.discussion.id)) &&
 				(topic ? paragraphs.includes("Topic: " + topic) : note.key === record.updateNoteKey);
 		});
 		let note = existing || new Zotero.Item("note");
@@ -645,6 +646,7 @@ Object.assign(Zusia, {
 		if (ctx.reading.evidenceMode === "knowledge") add("Discussion mode: Knowledge discussion — supplementary reasoning; original PDF not searched for this answer.");
 		add("Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key);
 		add("Scope: " + scope.level + "; id: " + scope.id);
+		if (ctx.discussion) add("Discussion: " + ctx.discussion.id);
 		if (scope.title) add("Scope title: " + scope.title);
 		if (topic) add("Topic: " + topic);
 		if (existing) add("Updated from follow-up discussion. The concise discussion replaces the earlier version.");

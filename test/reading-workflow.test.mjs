@@ -25,8 +25,8 @@ async function setup(type = "book") {
 		async saveTx() { if (!notes.includes(this)) notes.push(this); }
 	};
 	const body = document.createElement("div"); document.body.append(body); p.renderSkeleton(document, body);
-	const root = body.querySelector(".zs-root");
-	const view = { root, doc: document, ctx, input: root.querySelector(".zs-input"), logEl: root.querySelector(".zs-log") };
+	const root = body.querySelector(".abstractin-root");
+	const view = { root, doc: document, ctx, input: root.querySelector(".abstractin-input"), logEl: root.querySelector(".abstractin-log") };
 	p._views.set(root, view);
 	await writeFile(join(dir, "source-text.md"), "## PDF page 1; pageIndex 0\nContents\n1 Foundations .... 3\n## PDF page 2; pageIndex 1\nPreface\n## PDF page 3; pageIndex 2\n1 Foundations\nArgument");
 	const contents = { kind: "contents", coverage: "PDF page 1", entries: [{ id: "ch-01", title: "1 Foundations", evidence: "1 Foundations .... 3", printedPageLabel: "3", pageIndex: null }] };
@@ -61,7 +61,7 @@ test("paper summary choices require a click; update and view reuse the same edit
 	let requests = []; p.startRequest = (...args) => requests.push(args);
 	p.openReadingWorkspace(view);
 	assert.equal(requests.length, 0);
-	view.root.querySelector(".zs-workspace-actions button").click();
+	view.root.querySelector(".abstractin-workspace-actions button").click();
 	assert.equal(requests[0][4].readingAction, "summary");
 	let text = '## Research question\nA tested hypothesis with $x$.\n<abstractin-workspace>{"kind":"summary","coverage":"All 3 PDF pages"}</abstractin-workspace>';
 	await p.saveReadingAction(ctx, "summary", text);
@@ -74,8 +74,8 @@ test("paper summary choices require a click; update and view reuse the same edit
 	p.openReadingWorkspace(view);
 	assert.match(view.root.textContent, /View summary/);
 	assert.match(view.root.textContent, /Update summary/);
-	view.root.querySelector(".zs-workspace-actions button").click();
-	assert.ok(view.root.querySelector(".zs-workspace-view math"));
+	view.root.querySelector(".abstractin-workspace-actions button").click();
+	assert.ok(view.root.querySelector(".abstractin-workspace-view math"));
 });
 
 test("reference navigation preserves genuine position and Return restores it", async () => {
@@ -324,10 +324,10 @@ test("saved summary view preserves display equations and tables", async () => {
 	const { plugin: p, ctx, view } = await setup("paper");
 	await p.saveReadingAction(ctx, "summary", '## Result\n\n$$x^2=1$$\n\n| Measure | Result |\n|---|---|\n| Test | $x$ |\n<abstractin-workspace>{"kind":"summary","coverage":"PDF pages 1–3"}</abstractin-workspace>');
 	p.openReadingWorkspace(view);
-	view.root.querySelector(".zs-workspace-actions button").click();
-	assert.equal(view.root.querySelectorAll(".zs-workspace-view math").length, 2);
-	assert.ok(view.root.querySelector(".zs-workspace-view table"));
-	assert.ok(!view.root.querySelector(".zs-workspace-view").textContent.includes("abstractin-workspace-v1"));
+	view.root.querySelector(".abstractin-workspace-actions button").click();
+	assert.equal(view.root.querySelectorAll(".abstractin-workspace-view math").length, 2);
+	assert.ok(view.root.querySelector(".abstractin-workspace-view table"));
+	assert.ok(!view.root.querySelector(".abstractin-workspace-view").textContent.includes("abstractin-workspace-v1"));
 });
 
 test("unmapped chapter opens by a unique PDF outline destination without guessing printed-page offsets", async () => {
@@ -409,19 +409,19 @@ test("knowledge discussion skips full PDF extraction, supplies corrected notes i
  let result = await p.ask(ctx, 'Why does this work?', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined); assert.ok(result.recordKey);
  let calls = 0; p.runBackend = async (_, request) => { calls++; assert.equal(request.session.id, 'knowledge-thread'); return { text: 'Follow-up\n<abstractin-record>{"title":"Follow-up","summary":"More intuition","openQuestions":[]}</abstractin-record>' }; };
  result = await p.ask(ctx, 'Give an example', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined); assert.equal(calls, 1);
- p.updateReadingControls(view); const button = view.root.querySelector('.zs-reading-evidence-mode');
+ p.updateReadingControls(view); const button = view.root.querySelector('.abstractin-reading-evidence-mode');
  assert.equal(button.dataset.mode, 'knowledge');
- assert.ok(button.closest('.zs-composer .zs-controls')); assert.equal(view.root.querySelector('.zs-header .zs-reading-evidence-mode'), null);
- assert.equal(button.querySelector('.zs-i').dataset.icon, 'readingKnowledge');
+ assert.ok(button.closest('.abstractin-composer .abstractin-controls')); assert.equal(view.root.querySelector('.abstractin-header .abstractin-reading-evidence-mode'), null);
+ assert.equal(button.querySelector('.abstractin-i').dataset.icon, 'readingKnowledge');
  button.click(); assert.equal(button.getAttribute('aria-expanded'), 'true');
- const choices = [...view.root.querySelectorAll('.zs-menu-item')];
- assert.ok(choices[0].closest('.zs-reading-mode-menu'));
- assert.equal(choices[0].querySelector('.zs-reading-menu-icon').closest('.zs-menu-item'), choices[0]);
- assert.equal(choices[0].querySelector('.zs-menu-text').children.length, 2);
+ const choices = [...view.root.querySelectorAll('.abstractin-menu-item')];
+ assert.ok(choices[0].closest('.abstractin-reading-mode-menu'));
+ assert.equal(choices[0].querySelector('.abstractin-reading-menu-icon').closest('.abstractin-menu-item'), choices[0]);
+ assert.equal(choices[0].querySelector('.abstractin-menu-text').children.length, 2);
  assert.equal(choices[0].getAttribute('aria-checked'), 'true'); choices[1].click();
  assert.equal(p.getReadingEvidenceMode(), 'source'); assert.equal(button.dataset.mode, 'source');
- assert.equal(button.querySelector('.zs-i').dataset.icon, 'readingSource');
- assert.equal(button.getAttribute('aria-expanded'), 'false'); assert.equal(view.root.querySelector('.zs-menu'), null);
+ assert.equal(button.querySelector('.abstractin-i').dataset.icon, 'readingSource');
+ assert.equal(button.getAttribute('aria-expanded'), 'false'); assert.equal(view.root.querySelector('.abstractin-menu'), null);
 });
 
 test("switching evidence modes starts a fresh thread while preserving chat history", async () => {
@@ -436,7 +436,7 @@ test("workspace recap renders discussion and open-question formulas with KaTeX",
  const { plugin: p, ctx, view } = await setup();
  await p.saveReadingRecord(ctx, 'Question', null, { title: 'Bayes $x$', summary: 'Conclusion $x^2=1$.\n\n$$\\pi(x)=1$$', openQuestions: ['Why $x$?'] });
  p.openReadingWorkspace(view);
- assert.ok(view.root.querySelectorAll('.zs-workspace-recap math').length >= 3);
+ assert.ok(view.root.querySelectorAll('.abstractin-workspace-recap math').length >= 3);
 });
 
 test("New chat and Previous chat preserve reading artifacts/mode while resetting agent sessions", async () => {
@@ -503,7 +503,7 @@ test("ordinary knowledge follow-ups neither prepare PDF pages nor show PDF prepa
  assert.ok(!statuses.includes('preparing PDF text'));
 });
 
-test("knowledge mode automatically verifies numbered document references with targeted source instructions", async () => {
+test("knowledge mode verifies only an explicit document lookup with targeted source instructions", async () => {
  const { plugin: p, prefs, ctx } = await setup(); prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
  p.prepareReadingSkills = async ctx => ctx.reading;
  let checks = 0; p.exportReadingSource = async () => { checks++; return ctx.reading.pdfSource; };
@@ -512,9 +512,10 @@ test("knowledge mode automatically verifies numbered document references with ta
   assert.match(request.question, /Search the exact requested theorem\/section\/claim/);
   return { text: 'The verified statement' };
  };
- const result = await p.ask(ctx, 'What does theorem 1.1 say?', { backend: 'codex', progress() {} });
+ const result = await p.ask(ctx, 'Look up theorem 1.1 in the book', { backend: 'codex', progress() {} });
  assert.equal(result.error, undefined); assert.equal(checks, 1); assert.equal(p.getReadingEvidenceMode(), 'knowledge');
- for (const q of ['Explain Lemma 2.3', '第1.1节讲什么', '定理 1.1 说明什么', 'Go read the section about consistency']) assert.equal(p.requestsReadingSource(q), true, q);
+ for (const q of ['Explain Lemma 2.3', '第1.1节讲什么', '定理 1.1 说明什么']) assert.equal(p.requestsReadingSource(q), false, q);
+ assert.equal(p.requestsReadingSource('Go read the section about consistency'), true);
  assert.equal(p.requestsReadingSource('Explain Bayes theorem generally'), false);
 });
 

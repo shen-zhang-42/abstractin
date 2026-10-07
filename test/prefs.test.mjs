@@ -11,8 +11,8 @@ function pane(prefs = {}) {
 	env.plugin.renderPrefsPane(env.document, container);
 	return { ...env, container };
 }
-const card = (container, title) => [...container.querySelectorAll(".zs-card")]
-	.find(c => c.querySelector(".zs-card-title").textContent === title);
+const card = (container, title) => [...container.querySelectorAll(".abstractin-card")]
+	.find(c => c.querySelector(".abstractin-card-title").textContent === title);
 const change = (window, el, value) => {
 	el.value = value;
 	el.dispatchEvent(new window.Event("change"));
@@ -20,24 +20,24 @@ const change = (window, el, value) => {
 
 test("settings pane renders its cards", () => {
 	const { container } = pane();
-	assert.deepEqual([...container.querySelectorAll(".zs-card-title")].map(h => h.textContent),
+	assert.deepEqual([...container.querySelectorAll(".abstractin-card-title")].map(h => h.textContent),
 		["Assistants", "Chat", "Appearance", "Behaviour"]);
-	assert.equal(container.querySelectorAll(".zs-agent").length, 3);
+	assert.equal(container.querySelectorAll(".abstractin-agent").length, 3);
 });
 
 test("reading agent selection requires checks; native models and efforts remain configurable", () => {
 	const { container, prefs, window, plugin } = pane();
 	let assistants = card(container, "Assistants");
-	change(window, assistants.querySelector(".zs-select"), "agy");
+	change(window, assistants.querySelector(".abstractin-select"), "agy");
 	assert.equal(plugin.readingAgent(), "codex");
-	assert.match(assistants.querySelector(".zs-notice").textContent, /Test this agent/);
+	assert.match(assistants.querySelector(".abstractin-notice").textContent, /Test this agent/);
 	prefs[PREFIX + "agentValidation"] = JSON.stringify({ agy: { configKey: plugin.agentConfigKey("agy"), discussion: true } });
 	plugin.renderPrefsPane(window.document, container);
 	assistants = card(container, "Assistants");
-	change(window, assistants.querySelector(".zs-select"), "agy");
+	change(window, assistants.querySelector(".abstractin-select"), "agy");
 	assert.equal(prefs[PREFIX + "readingAgent"], "agy");
 	const claude = assistants.querySelector('[data-backend="claude"]');
-	const [model, effort] = claude.querySelectorAll(".zs-select");
+	const [model, effort] = claude.querySelectorAll(".abstractin-select");
 	change(window, model, "opus");
 	change(window, effort, "max");
 	assert.equal(prefs[PREFIX + "claude.model"], "opus");
@@ -48,27 +48,27 @@ test("extra Codex models appear in its model list", () => {
 	const { container, window, plugin } = pane();
 	const codex = card(container, "Assistants").querySelector('[data-backend="codex"]');
 	change(window, codex.querySelector('input[type="text"]'), "gpt-5.5, gpt-5.5-mini");
-	assert.deepEqual([...card(container, "Assistants").querySelector('[data-backend="codex"] .zs-select').options].map(o => o.value), ["", "gpt-5.5", "gpt-5.5-mini"]);
+	assert.deepEqual([...card(container, "Assistants").querySelector('[data-backend="codex"] .abstractin-select').options].map(o => o.value), ["", "gpt-5.5", "gpt-5.5-mini"]);
 	assert.deepEqual([...plugin.getModels("codex").map(m => m.id)], ["", "gpt-5.5", "gpt-5.5-mini"]);
 });
 
 test("Claude user-settings switch toggles the pref", () => {
 	const { container, prefs } = pane();
-	const toggle = card(container, "Assistants").querySelector('[data-backend="claude"] .zs-switch');
+	const toggle = card(container, "Assistants").querySelector('[data-backend="claude"] .abstractin-switch');
 	toggle.click();
 	assert.equal(prefs[PREFIX + "useClaudeUserSettings"], true);
 	assert.equal(toggle.getAttribute("aria-checked"), "true");
 });
 
-const rowControl = (cardEl, label) => [...cardEl.querySelectorAll(".zs-row")]
-	.find(r => r.querySelector(".zs-row-label").textContent === label);
-const choose = (cardEl, label, option) => [...rowControl(cardEl, label).querySelectorAll(".zs-segmented button")]
+const rowControl = (cardEl, label) => [...cardEl.querySelectorAll(".abstractin-row")]
+	.find(r => r.querySelector(".abstractin-row-label").textContent === label);
+const choose = (cardEl, label, option) => [...rowControl(cardEl, label).querySelectorAll(".abstractin-segmented button")]
 	.find(b => b.textContent === option).click();
 
 test("accent, text size, spacing and font are saved", () => {
 	const { container, prefs } = pane();
 	const appearance = card(container, "Appearance");
-	appearance.querySelector('.zs-swatch[aria-label="Violet"]').click();
+	appearance.querySelector('.abstractin-swatch[aria-label="Violet"]').click();
 	choose(appearance, "Text size", "Large");
 	choose(appearance, "Spacing", "Compact");
 	choose(appearance, "Font", "Serif");
@@ -76,9 +76,9 @@ test("accent, text size, spacing and font are saved", () => {
 		accent: "#6d4fd6", size: "large", density: "compact", font: "serif",
 		mascot: "marmoset", labels: "icons",
 	});
-	assert.equal(container.querySelector(".zs-prefs").style.getPropertyValue("--zs-accent"), "#6d4fd6");
-	assert.equal(appearance.querySelector('.zs-swatch[aria-label="Violet"]').getAttribute("aria-checked"), "true");
-	appearance.querySelector('.zs-swatch[aria-label="Zotero"]').click();
+	assert.equal(container.querySelector(".abstractin-prefs").style.getPropertyValue("--abstractin-accent"), "#6d4fd6");
+	assert.equal(appearance.querySelector('.abstractin-swatch[aria-label="Violet"]').getAttribute("aria-checked"), "true");
+	appearance.querySelector('.abstractin-swatch[aria-label="Zotero"]').click();
 	assert.equal(JSON.parse(prefs[PREFIX + "appearance"]).accent, "");
 });
 
@@ -88,30 +88,34 @@ test("retired decorations and troubleshooting are absent and old preferences hav
 		glow: true, glassOpacity: 80, glassBlur: 30, accent: "#6d4fd6", font: "comic",
 	}) });
 	const appearance = card(container, "Appearance");
-	assert.deepEqual([...appearance.querySelectorAll(".zs-row-label")].map(el => el.textContent),
+	assert.deepEqual([...appearance.querySelectorAll(".abstractin-row-label")].map(el => el.textContent),
 		["Reading companion", "Button labels", "Accent colour", "Spacing", "Font", "Text size"]);
 	assert.ok(!card(container, "Troubleshooting"));
 	const root = document.createElement("div");
-	root.innerHTML = '<div class="zs-backdrop"><div class="zs-backdrop-image" style="background-image:url(old.png)"></div></div>';
-	root.style.setProperty("--zs-blur", "30px");
+	root.innerHTML = '<div class="abstractin-backdrop"><div class="abstractin-backdrop-image" style="background-image:url(old.png)"></div></div>';
+	root.style.setProperty("--abstractin-blur", "30px");
 	plugin.applyAppearance(root);
 	assert.equal(root.dataset.style, "flat");
 	assert.equal(root.dataset.corners, "rounded");
 	assert.equal(root.dataset.pattern, "none");
 	assert.equal(root.dataset.bg, undefined);
-	assert.equal(root.querySelector(".zs-backdrop-image").style.backgroundImage, "");
-	assert.equal(root.style.getPropertyValue("--zs-blur"), "");
-	assert.equal(root.style.getPropertyValue("--zs-accent"), "#6d4fd6");
+	assert.equal(root.querySelector(".abstractin-backdrop-image").style.backgroundImage, "");
+	assert.equal(root.style.getPropertyValue("--abstractin-blur"), "");
+	assert.equal(root.style.getPropertyValue("--abstractin-accent"), "#6d4fd6");
 	assert.equal(root.dataset.font, "zotero");
 	assert.ok(!("background" in JSON.parse(prefs[PREFIX + "appearance"])));
 });
 
-test("quick prompts can be added, edited, reordered and removed", () => {
-	const { container, prefs, window } = pane();
+test("book and paper prompts are edited, ordered, removed and reset independently", () => {
+	const { container, prefs, window, plugin } = pane();
 	const chat = card(container, "Chat");
-	const saved = () => JSON.parse(prefs[PREFIX + "prompts"]);
-	[...chat.querySelectorAll("button")].find(b => b.textContent === "Add prompt").click();
-	let rows = chat.querySelectorAll(".zs-prompt-row");
+	const paper = chat.querySelector('.abstractin-prompt-editor[data-material-type="paper"]');
+	const book = chat.querySelector('.abstractin-prompt-editor[data-material-type="book"]');
+	assert.ok(book.textContent.includes("Book quick prompts"));
+	assert.ok(paper.textContent.includes("Paper quick prompts"));
+	const saved = () => JSON.parse(prefs[PREFIX + "prompts.paper"]);
+	[...paper.querySelectorAll("button")].find(b => b.textContent === "Add prompt").click();
+	let rows = paper.querySelectorAll(".abstractin-prompt-row");
 	assert.equal(rows.length, 5);
 	const last = rows[4];
 	last.querySelector("input").value = "Datasets";
@@ -121,29 +125,31 @@ test("quick prompts can be added, edited, reordered and removed", () => {
 	assert.deepEqual(saved()[4], { label: "Datasets", prompt: "Which datasets are used?" });
 	last.querySelector('[title="Move up"]').click();
 	assert.equal(saved()[3].label, "Datasets");
-	chat.querySelectorAll(".zs-prompt-row")[0].querySelector('[title="Remove"]').click();
-	assert.deepEqual(saved().map(p => p.label), ["Key points", "Methodology", "Datasets", "Limitations"]);
+	paper.querySelectorAll(".abstractin-prompt-row")[0].querySelector('[title="Remove"]').click();
+	assert.deepEqual(saved().map(p => p.label), ["Core method", "Evidence for conclusions", "Datasets", "Assumptions and limitations"]);
+	assert.equal(prefs[PREFIX + "prompts.book"], undefined);
+	[...book.querySelectorAll("button")].find(b => b.textContent === "Restore defaults").click();
+	assert.equal(plugin.getPrompts("book")[0].label, "Explain this passage");
+	assert.equal(saved()[2].label, "Datasets", "resetting books leaves the paper list intact");
+	assert.ok(!chat.textContent.includes("Explain better"));
 });
 
-test("explain-better request is editable and restorable", () => {
-	const { container, prefs, plugin, window } = pane();
-	const chat = card(container, "Chat");
-	const text = [...chat.querySelectorAll("textarea")].pop();
-	text.value = "Explain like I'm new to this.";
-	text.dispatchEvent(new window.Event("input"));
-	assert.equal(plugin.getExplainPrompt(), "Explain like I'm new to this.");
-	[...chat.querySelectorAll("button")].find(b => b.textContent === "Restore default").click();
-	assert.equal(prefs[PREFIX + "explainPrompt"], "");
-	assert.equal(plugin.getExplainPrompt(), plugin.DEFAULT_EXPLAIN_PROMPT);
+test("legacy custom prompts are preserved without linking the two new lists", () => {
+	const legacy = [{ label: "My question", prompt: "A custom question" }];
+	const { plugin, prefs } = pane({ [PREFIX + "prompts"]: JSON.stringify(legacy) });
+	assert.equal(plugin.getPrompts("book")[0].prompt, "A custom question");
+	assert.equal(plugin.getPrompts("paper")[0].prompt, "A custom question");
+	plugin.savePrompts([{ label: "Book only", prompt: "A book question" }], "book");
+	assert.equal(plugin.getPrompts("book")[0].prompt, "A book question");
+	assert.equal(plugin.getPrompts("paper")[0].prompt, "A custom question");
+	assert.deepEqual(JSON.parse(prefs[PREFIX + "prompts"]), legacy);
 });
 
-test("chat settings choose which mode buttons the message box shows", () => {
-	const { container, prefs } = pane();
+test("chat settings omit retired drawing and LaTeX mode controls", () => {
+	const { container } = pane({ [PREFIX + "modeButtons"]: JSON.stringify({ drawing: true, latex: true }) });
 	const chat = card(container, "Chat");
-	const drawingRow = rowControl(chat, "“Drawing” button");
-	assert.equal(drawingRow.querySelector(".zs-switch").getAttribute("aria-checked"), "true");
-	drawingRow.querySelector(".zs-switch").click();
-	assert.deepEqual(JSON.parse(prefs[PREFIX + "modeButtons"]), { drawing: false, latex: true });
+	assert.ok(!chat.textContent.includes('“Drawing” button'));
+	assert.ok(!chat.textContent.includes('“LaTeX” button'));
 });
 
 test("answer language: saved from Chat settings and used in every prompt", () => {
@@ -169,10 +175,10 @@ test("tiles: a visual radio group of icon cards", () => {
 		{ value: "stars", icon: "sparkle", label: "Stars" },
 	], "math", v => (picked = v));
 	assert.equal(tiles.getAttribute("role"), "radiogroup");
-	const [cat, owl] = tiles.querySelectorAll(".zs-tile");
+	const [cat, owl] = tiles.querySelectorAll(".abstractin-tile");
 	assert.equal(cat.getAttribute("aria-checked"), "true");
 	assert.equal(owl.title, "Stars");
-	assert.ok(owl.querySelector(".zs-i[data-icon='sparkle']"));
+	assert.ok(owl.querySelector(".abstractin-i[data-icon='sparkle']"));
 	owl.click();
 	assert.equal(picked, "stars");
 	assert.equal(owl.getAttribute("aria-checked"), "true");
@@ -182,8 +188,8 @@ test("tiles: a visual radio group of icon cards", () => {
 test("appearance: reading companion selection persists alongside labels", () => {
 	const { container, prefs } = pane();
 	const appearance = card(container, "Appearance");
-	const tile = (label, title) => [...rowControl(appearance, label).querySelectorAll(".zs-tile")].find(t => t.title === title);
-	assert.ok(!appearance.querySelector('.zs-tile[title="Cat"], .zs-tile[title="Owl"], .zs-tile[title="Robot"]'));
+	const tile = (label, title) => [...rowControl(appearance, label).querySelectorAll(".abstractin-tile")].find(t => t.title === title);
+	assert.ok(!appearance.querySelector('.abstractin-tile[title="Cat"], .abstractin-tile[title="Owl"], .abstractin-tile[title="Robot"]'));
 	assert.equal(tile("Reading companion", "Marmoset").getAttribute("aria-checked"), "true");
 	tile("Reading companion", "White wagtail").click();
 	assert.equal(JSON.parse(prefs[PREFIX + "appearance"]).mascot, "wagtail");
@@ -196,46 +202,42 @@ test("appearance: reading companion selection persists alongside labels", () => 
 	assert.equal(rowControl(reopened, "Reading companion").querySelector('[data-value="puffin"]').getAttribute("aria-checked"), "true");
 });
 
-test("behaviour: defaults, validation and the instructions sent to the assistant", () => {
-	const { plugin, prefs } = pane();
-	assert.deepEqual({ ...plugin.getBehaviour() }, {
-		length: "balanced", level: "student", tone: "neutral", custom: "",
-		sendKey: "enter", autoScroll: true, showSteps: true, showQuick: true,
-	});
-	prefs[PREFIX + "behaviour"] = JSON.stringify({ length: "short", level: "expert", tone: "friendly", custom: "Use SI units.", sendKey: "mod-enter", autoScroll: false, level2: 1, tone2: "x" });
-	const b = plugin.getBehaviour();
-	assert.equal(b.length, "short");
-	assert.equal(b.sendKey, "mod-enter");
-	assert.equal(b.autoScroll, false);
-	const text = plugin.behaviourInstructions();
-	assert.match(text, /Keep answers short/);
-	assert.match(text, /expert/);
-	assert.match(text, /warm, encouraging/);
-	assert.match(text, /User's own instructions: Use SI units\./);
-	assert.match(plugin.systemPrompt(), /Keep answers short/);
-	assert.match(plugin.buildAntigravityPrompt({ files: { metadata: "# T\n", annotations: "" }, question: "Q", history: [], session: null }), /Use SI units/);
-	prefs[PREFIX + "behaviour"] = JSON.stringify({ length: "epic", custom: "x".repeat(5000) });
-	assert.equal(plugin.getBehaviour().length, "balanced");
-	assert.equal(plugin.getBehaviour().custom.length, 2000);
+test("retired answer preferences do not reach agents; old instructions become explicit editable prompts", () => {
+	const { plugin, prefs, container } = pane({ [PREFIX + "behaviour"]: JSON.stringify({
+		length: "short", level: "expert", tone: "friendly", custom: "Use SI units.", sendKey: "mod-enter", autoScroll: false,
+	}) });
+	assert.deepEqual({ ...plugin.getBehaviour() }, { sendKey: "mod-enter", autoScroll: false, showSteps: true, showQuick: true });
+	const reading = { reading: { type: "book" } };
+	for (const text of [plugin.systemPrompt(), plugin.systemPrompt(reading), plugin.buildAntigravityPrompt({ files: { metadata: "# T", annotations: "" }, question: "Q", history: [], session: null })]) {
+		assert.ok(!text.includes("Use SI units."));
+		assert.ok(!text.includes("Keep answers short"));
+		assert.ok(!text.includes("Write for an expert"));
+		assert.ok(!text.includes("warm, encouraging"));
+	}
+	for (const type of ["book", "paper"]) {
+		assert.equal(plugin.getPrompts(type).filter(entry => entry.prompt === "Use SI units.").length, 1);
+		const editor = container.querySelector('.abstractin-prompt-editor[data-material-type="' + type + '"]');
+		assert.ok([...editor.querySelectorAll("textarea")].some(node => node.value === "Use SI units."));
+	}
+	plugin.savePrompts([], "book");
+	assert.equal(plugin.getPrompts("book").length, 0, "deleting the migrated instruction does not recreate it");
+	assert.ok(plugin.getPrompts("paper").some(entry => entry.prompt === "Use SI units."));
+	plugin.saveBehaviour({ ...plugin.getBehaviour(), length: "short", custom: "Hidden text" });
+	assert.equal(JSON.parse(prefs[PREFIX + "behaviour"]).custom, undefined);
+	assert.match(plugin.formattingGuide(), /rather than assigning a fixed learner level/);
 });
 
-test("behaviour card: tiles, switches and custom instructions are saved", () => {
-	const { container, prefs, window } = pane();
+test("behaviour card retains only interaction controls", () => {
+	const { container, prefs } = pane();
 	const behaviour = card(container, "Behaviour");
-	assert.ok(behaviour, "Behaviour card exists");
-	const tile = (label, title) => [...rowControl(behaviour, label).querySelectorAll(".zs-tile")].find(t => t.title === title);
-	tile("Answer length", "Detailed").click();
-	tile("Level", "Beginner").click();
-	tile("Tone", "Formal").click();
+	assert.deepEqual([...behaviour.querySelectorAll(".abstractin-row-label")].map(node => node.textContent),
+		["Send with", "Follow the answer", "Thinking steps", "Quick prompts"]);
+	assert.equal(behaviour.querySelector("textarea"), null);
 	choose(behaviour, "Send with", "⌘/Ctrl + Enter");
-	rowControl(behaviour, "Follow the answer").querySelector(".zs-switch").click();
-	rowControl(behaviour, "Thinking steps").querySelector(".zs-switch").click();
-	rowControl(behaviour, "Quick prompts").querySelector(".zs-switch").click();
-	const custom = rowControl(behaviour, "Your instructions").querySelector("textarea");
-	custom.value = "Always cite the page.";
-	custom.dispatchEvent(new window.Event("input"));
+	rowControl(behaviour, "Follow the answer").querySelector(".abstractin-switch").click();
+	rowControl(behaviour, "Thinking steps").querySelector(".abstractin-switch").click();
+	rowControl(behaviour, "Quick prompts").querySelector(".abstractin-switch").click();
 	assert.deepEqual(JSON.parse(prefs[PREFIX + "behaviour"]), {
-		length: "detailed", level: "beginner", tone: "formal", custom: "Always cite the page.",
 		sendKey: "mod-enter", autoScroll: false, showSteps: false, showQuick: false,
 	});
 });

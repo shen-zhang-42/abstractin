@@ -159,9 +159,9 @@ test('settings add/edit/remove custom agents without running commands or changin
  prefs['extensions.abstractin.appearance'] = JSON.stringify({ size: 'large' });
  let launched = false; p.runBackend = async () => { launched = true; throw new Error('Unexpected execution'); };
  const container = document.createElement('div'); document.body.append(container); p.renderPrefsPane(document, container);
- const card = [...container.querySelectorAll('.zs-card')].find(el => el.querySelector('.zs-card-title').textContent === 'Assistants');
+ const card = [...container.querySelectorAll('.abstractin-card')].find(el => el.querySelector('.abstractin-card-title').textContent === 'Assistants');
  [...card.querySelectorAll('button')].find(button => button.textContent === 'Add agent').click();
- const editor = card.querySelector('.zs-agent-editor');
+ const editor = card.querySelector('.abstractin-agent-editor');
  const fields = editor.querySelectorAll('input'); fields[0].value = 'My agent'; fields[1].value = '/bin/my-agent'; fields[2].value = '["--stdio"]';
  [...editor.querySelectorAll('button')].find(button => button.textContent === 'Save agent').click();
  const saved = JSON.parse(prefs['extensions.abstractin.agents'])[0];

@@ -1,4 +1,4 @@
-var Zusia;
+var AbstractIn;
 var chromeHandle;
 
 function log(msg) {
@@ -21,51 +21,52 @@ async function startup({ id, version, rootURI }) {
 		["content", resourcePackage, "./"],
 	]);
 	let resourceURI = "chrome://" + resourcePackage + "/content/";
-	Services.scriptloader.loadSubScript(resourceURI + "content/zusia.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/abstractin.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/icon-assets.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading-workflow.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reader-panel.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/agents.js");
-	Zusia.init({ id, version, rootURI, resourceURI });
+	Services.scriptloader.loadSubScript(resourceURI + "content/chats.js");
+	AbstractIn.init({ id, version, rootURI, resourceURI });
 	// Load the bundled renderer immediately, before any answer needs it.
-	Zusia.getKatex();
+	AbstractIn.getKatex();
 	// The settings pane runs in the Settings window and reaches the plugin through Zotero.
-	Zotero.AbstractIn = Zusia;
-	Zusia.addToAllWindows();
-	Zusia.registerPaneSection();
+	Zotero.AbstractIn = AbstractIn;
+	AbstractIn.addToAllWindows();
+	AbstractIn.registerPaneSection();
 	// Zotero removes the reader listeners itself when the plugin shuts down.
-	Zusia.registerReaderHooks();
+	AbstractIn.registerReaderHooks();
 	// Installing/enabling while PDFs are open need not rerender their toolbar.
-	Zusia.restoreReaderToolbarEntries();
-	Zusia.watchPrefs();
-	await Zusia.registerPrefsPane();
+	AbstractIn.restoreReaderToolbarEntries();
+	AbstractIn.watchPrefs();
+	await AbstractIn.registerPrefsPane();
 
 	log("Startup complete");
 }
 
 function onMainWindowLoad({ window }) {
-	Zusia.addToWindow(window);
+	AbstractIn.addToWindow(window);
 }
 
 function onMainWindowUnload({ window }) {
-	Zusia.removeFromWindow(window);
+	AbstractIn.removeFromWindow(window);
 }
 
 function shutdown() {
 	log("Shutting down");
-	if (!Zusia) {
+	if (!AbstractIn) {
 		chromeHandle?.destruct();
 		chromeHandle = null;
 		return;
 	}
-	Zusia.unwatchPrefs();
-	Zusia.stopReadingPositionTracking();
-	Zusia.removeAllReaderPanels();
-	Zusia.unregisterPaneSection();
-	Zusia.removeFromAllWindows();
+	AbstractIn.unwatchPrefs();
+	AbstractIn.stopReadingPositionTracking();
+	AbstractIn.removeAllReaderPanels();
+	AbstractIn.unregisterPaneSection();
+	AbstractIn.removeFromAllWindows();
 	delete Zotero.AbstractIn;
-	Zusia = undefined;
+	AbstractIn = undefined;
 	chromeHandle?.destruct();
 	chromeHandle = null;
 }

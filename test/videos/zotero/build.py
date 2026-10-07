@@ -2,27 +2,27 @@
 
     python3 build.py [scene ...]
 
-Reads ~/.cache/zusia-demo/raw/<scene>.mp4 with its marks and writes
+Reads ~/.cache/abstractin-demo/raw/<scene>.mp4 with its marks and writes
 docs/videos/candidates/<scene>.mp4 through edit.py.
 """
 import json, subprocess, sys
 from pathlib import Path
 
 repo = Path(__file__).resolve().parents[3]
-raw = Path.home() / ".cache/zusia-demo/raw"
+raw = Path.home() / ".cache/abstractin-demo/raw"
 out = repo / "docs/videos/candidates"
 edit = repo / "test/videos/zotero/edit.py"
 
 # scene: list of (until-mark or seconds, focus, speed, caption)
 PLANS = {
 	"introChat": [("pane", "full", 1, "Open the side pane"),
-		("zusia", "full", 1, "Zusia sits with the paper"),
+		("abstractin", "full", 1, "AbstractIn sits with the paper"),
 		("modes", "sidebar", 1, "Turn on Drawing and LaTeX"),
 		("sent", "sidebar", 1.6, "Ask in your own words"),
 		("answered", "sidebar", 8, "Claude answers (sped up)"),
 		("drawing", "sidebar", 1, "A diagram, in your colours"),
 		("end", "sidebar", 1, "Maths in LaTeX, numbered and linked")],
-	"introStyle": [("style", "full", 1, "Settings → Zusia, live"),
+	"introStyle": [("style", "full", 1, "Settings → AbstractIn, live"),
 		("buddy", "full", 1, "Buddy and pattern"),
 		("accent", "full", 1, "Accent colour"),
 		("image", "full", 1, "A background image"),

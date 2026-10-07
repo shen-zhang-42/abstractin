@@ -1,6 +1,6 @@
 "use strict";
 
-Object.assign(Zusia, {
+Object.assign(AbstractIn, {
 	_chatContexts: new Map(),
 	_chatArchiveImports: new Set(),
 
@@ -92,6 +92,9 @@ Object.assign(Zusia, {
 					attachmentKey: ctx.reading ? ctx.attachmentItem?.key : null,
 					chatID: state.chatID, writerID, revision, updatedAt, part, total,
 					archived: !!override?.archived,
+					discussionID: ctx.discussion?.id || null,
+					discussion: ctx.discussion || null,
+					chapter: ctx.discussion ? (await this.discussionIndex(ctx)).chapters.find(c => c.id === ctx.discussion.chapterID) || null : null,
 					text: text.slice(part * 20000, (part + 1) * 20000),
 				})));
 			note.setNote(wrapper.outerHTML); note.addTag("AbstractIn"); note.addTag("AbstractIn:Chat");
@@ -607,29 +610,29 @@ Object.assign(Zusia, {
 	openReadingWorkspace(view) {
 		let { doc, root, ctx } = view;
 		if (!ctx.reading) return;
-		root.querySelector(".zs-panel")?.remove();
-		let panel = this.el(doc, "div", "zs-panel zs-workspace-panel");
+		root.querySelector(".abstractin-panel")?.remove();
+		let panel = this.el(doc, "div", "abstractin-panel abstractin-workspace-panel");
 		panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", "Reading workspace");
-		let head = this.el(doc, "div", "zs-panel-head");
-		head.append(this.el(doc, "div", "zs-panel-title", ctx.reading.type === "book" ? "Book workspace" : "Paper workspace"), this.iconButton(doc, "zs-small", "Close", "close", () => panel.remove()));
-		let body = this.el(doc, "div", "zs-panel-body");
+		let head = this.el(doc, "div", "abstractin-panel-head");
+		head.append(this.el(doc, "div", "abstractin-panel-title", ctx.reading.type === "book" ? "Book workspace" : "Paper workspace"), this.iconButton(doc, "abstractin-small", "Close", "close", () => panel.remove()));
+		let body = this.el(doc, "div", "abstractin-panel-body");
 		let action = ctx.reading.type === "book" ? "contents" : "summary";
 		let kind = action === "contents" ? "Contents" : "Summary";
 		let note = this.readingArtifactNotes(ctx, kind)[0];
-		let controls = this.el(doc, "div", "zs-workspace-actions");
+		let controls = this.el(doc, "div", "abstractin-workspace-actions");
 		let button = (label, click) => {
-			let node = this.el(doc, "button", "zs-reading-tool", label); node.type = "button";
+			let node = this.el(doc, "button", "abstractin-reading-tool", label); node.type = "button";
 			node.addEventListener("click", click); controls.append(node); return node;
 		};
 		if (note) button("View " + kind.toLowerCase(), () => {
-			body.querySelector(".zs-workspace-view")?.remove();
-			let content = this.el(doc, "div", "zs-workspace-view");
+			body.querySelector(".abstractin-workspace-view")?.remove();
+			let content = this.el(doc, "div", "abstractin-workspace-view");
 			let text = this.readingNoteMarkdown(note);
 			this.renderMarkdown(doc, content, text); body.append(content);
 			if (kind === "Contents") {
 				for (let entry of this.readingArtifactData(note)?.entries || []) {
 					{
-						let link = this.el(doc, "button", "zs-reading-tool", "Open " + entry.title);
+						let link = this.el(doc, "button", "abstractin-reading-tool", "Open " + entry.title);
 						link.addEventListener("click", async () => {
 							link.disabled = true;
 							try { await this.openReadingContentsEntry(view, entry); }
@@ -649,9 +652,9 @@ Object.assign(Zusia, {
 		if (!this.agentCanReadSources()) generate.title = "Choose an agent that passed original-source checks to initialize or summarize.";
 		button("Go to questions", () => panel.remove());
 		body.append(this.el(doc, "p", null, action === "contents" ? "Initialize structure from the actual contents. Chapter summaries are generated only when you ask." : "Choose whether to summarize first or ask immediately. Existing summaries are saved as editable Zotero notes."), controls);
-		if (action === "contents" && !note && ctx.reading.contentsAttempted) body.append(this.el(doc, "p", "zs-notice", "Contents are not saved yet. Initialize contents to retry explicitly, or go straight to questions. Start Reading will not repeat the scan automatically."));
+		if (action === "contents" && !note && ctx.reading.contentsAttempted) body.append(this.el(doc, "p", "abstractin-notice", "Contents are not saved yet. Initialize contents to retry explicitly, or go straight to questions. Start Reading will not repeat the scan automatically."));
 		let records = (ctx.paperItem.getNotes?.() || []).map(id => Zotero.Items.get(id)).filter(n => n && n.getTags().some(t => t.tag === "AbstractIn") && !n.getTags().some(t => t.tag.startsWith("AbstractIn:")));
-		let recap = this.el(doc, "div", "zs-workspace-recap");
+		let recap = this.el(doc, "div", "abstractin-workspace-recap");
 		recap.append(this.el(doc, "h3", null, "Previous discussions and open questions"));
 		let count = 0;
 		for (let record of records.slice().reverse()) {
@@ -663,7 +666,7 @@ Object.assign(Zusia, {
 			let content = discussion?.parentElement.cloneNode(true);
 			content?.querySelector("h2")?.remove();
 			let conclusion = content ? this.readingNoteMarkdown({ getNote: () => content.outerHTML }) : "";
-			let entry = this.el(doc, "div", "zs-workspace-recap-entry");
+			let entry = this.el(doc, "div", "abstractin-workspace-recap-entry");
 			this.renderMarkdown(doc, entry, title + "\n\n" + conclusion + (questions.length ? "\n\nOpen questions:\n" + questions.map(text => "- " + text).join("\n") : ""));
 			recap.append(entry);
 			if (++count >= 5) break;

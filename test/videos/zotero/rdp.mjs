@@ -75,7 +75,7 @@ export async function attach(port = 6200) {
 	// Evaluates an async body and waits for its result through a global slot.
 	async function evaluate(source) {
 		let id = "r" + Math.random().toString(36).slice(2);
-		let text = `(() => { let slot = (globalThis.__zusia = globalThis.__zusia || {});
+		let text = `(() => { let slot = (globalThis.__abstractin = globalThis.__abstractin || {});
 			let win = Services.wm.getMostRecentWindow("navigator:browser"); let doc = win.document;
 			let Zotero = win.Zotero;
 			slot[${JSON.stringify(id)}] = { pending: true };
@@ -90,7 +90,7 @@ export async function attach(port = 6200) {
 		}
 		for (;;) {
 			let { resultID } = await send({ to: consoleActor, type: "evaluateJSAsync",
-				text: `(() => { let s = globalThis.__zusia[${JSON.stringify(id)}]; if (!s.pending) delete globalThis.__zusia[${JSON.stringify(id)}]; return JSON.stringify(s); })()` });
+				text: `(() => { let s = globalThis.__abstractin[${JSON.stringify(id)}]; if (!s.pending) delete globalThis.__abstractin[${JSON.stringify(id)}]; return JSON.stringify(s); })()` });
 			let poll = await next(p => p.type === "evaluationResult" && p.resultID === resultID);
 			let state = JSON.parse(await grip(poll.result));
 			if (state.error) {

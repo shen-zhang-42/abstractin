@@ -2,7 +2,7 @@
 
 // The toolbar entry uses Zotero's public Reader API. Keep the native-window
 // layout adapter here, separate from reading, storage and model transport.
-Object.assign(Zusia, {
+Object.assign(AbstractIn, {
 	_readerPanelWindows: new Map(),
 	_readerToolbarButtons: new Map(),
 	_readerToolbarObservers: new Map(),
@@ -43,11 +43,11 @@ Object.assign(Zusia, {
 		let reader = this.readerFor(ctx, doc.defaultView);
 		if (!reader || !this.readerPanelMount(doc)) return false;
 		body.textContent = "";
-		let button = this.el(doc, "button", "zs-reading-tool", "Open AbstractIn panel");
+		let button = this.el(doc, "button", "abstractin-reading-tool", "Open AbstractIn panel");
 		button.type = "button";
 		button.addEventListener("click", () => this.openReaderPanel(reader).catch(e => {
 			this.logError("reader panel launcher", e);
-			body.append(this.el(doc, "p", "zs-notice", e.message || String(e)));
+			body.append(this.el(doc, "p", "abstractin-notice", e.message || String(e)));
 		}));
 		body.append(button);
 		return true;
@@ -78,7 +78,7 @@ Object.assign(Zusia, {
 		if (!buttons) { buttons = new Map(); this._readerToolbarButtons.set(win, buttons); }
 		let old = buttons.get(reader);
 		if (old) old.remove();
-		let button = this.el(doc, "button", "toolbar-button zs-reader-toggle");
+		let button = this.el(doc, "button", "toolbar-button abstractin-reader-toggle");
 		button.type = "button";
 		button.title = "Toggle AbstractIn panel";
 		button.setAttribute("aria-label", button.title);
@@ -94,7 +94,7 @@ Object.assign(Zusia, {
 			if (!svg) icon.style.display = "none";
 			if (svg) {
 				svg.style.cssText = "display:block;width:20px;height:20px;";
-				for (let layer of svg.querySelectorAll(".zs-duo")) layer.style.opacity = "0.2";
+				for (let layer of svg.querySelectorAll(".abstractin-duo")) layer.style.opacity = "0.2";
 			}
 		}).catch(e => this.logError("reader toolbar icon", e));
 		button.append(icon, this.el(doc, "span", null, "AbstractIn"));
@@ -125,9 +125,9 @@ Object.assign(Zusia, {
 		if (!mount) throw new Error("This Zotero reader layout does not expose a supported side-panel mount. Use the AbstractIn item section or open the PDF in a main-window tab.");
 		this.addToWindow(win);
 		let splitter = doc.createXULElement("splitter");
-		splitter.classList.add("zs-reader-splitter");
+		splitter.classList.add("abstractin-reader-splitter");
 		for (let [name, value] of Object.entries({ orient: "horizontal", resizebefore: "flex", resizeafter: "closest", collapse: "after", state: "open" })) splitter.setAttribute(name, value);
-		let panel = this.el(doc, "section", "zs-reader-panel");
+		let panel = this.el(doc, "section", "abstractin-reader-panel");
 		panel.id = "abstractin-reader-panel";
 		panel.setAttribute("role", "complementary");
 		panel.setAttribute("aria-label", "AbstractIn reading assistant");
@@ -180,7 +180,7 @@ Object.assign(Zusia, {
 				// attachment immediately and resume on the subsequent load event.
 				state.reader = null;
 				for (let entry of state.views.values()) entry.body.hidden = true;
-				if (!state.panel.querySelector(".zs-reader-loading")) state.panel.append(this.el(doc, "div", "zs-notice zs-reader-loading", "Loading selected PDF…"));
+				if (!state.panel.querySelector(".abstractin-reader-loading")) state.panel.append(this.el(doc, "div", "abstractin-notice abstractin-reader-loading", "Loading selected PDF…"));
 				this.updateReaderPanelButtons(win);
 			}
 			else this.closeReaderPanel(win, { restoreContext: false });
@@ -201,16 +201,16 @@ Object.assign(Zusia, {
 		if (!state.active) state.contextWasOpen = win.ZoteroContextPane?.collapsed === false;
 		if (win.ZoteroContextPane && this.readerPanelMount(win.document)?.context) win.ZoteroContextPane.collapsed = true;
 		state.reader = reader; state.active = true;
-		state.panel.querySelector(".zs-reader-loading")?.remove();
+		state.panel.querySelector(".abstractin-reader-loading")?.remove();
 		state.panel.hidden = false; state.splitter.hidden = false; state.splitter.setAttribute("state", "open");
 		let entry = state.views.get(reader);
 		for (let existing of state.views.values()) existing.body.hidden = true;
 		if (!entry) {
-			let body = this.el(win.document, "div", "zs-reader-view");
+			let body = this.el(win.document, "div", "abstractin-reader-view");
 			state.panel.append(body);
 			this.renderSkeleton(win.document, body);
-			let root = body.querySelector(".zs-root");
-			root.querySelector(".zs-header").append(this.iconButton(win.document, "zs-reader-close", "Close AbstractIn panel", "close", () => this.closeReaderPanel(win)));
+			let root = body.querySelector(".abstractin-root");
+			root.querySelector(".abstractin-header").append(this.iconButton(win.document, "abstractin-reader-close", "Close AbstractIn panel", "close", () => this.closeReaderPanel(win)));
 			entry = { body, root, itemID: item.id };
 			state.views.set(reader, entry);
 			// renderContent attaches to an existing pending request; never await that
@@ -219,7 +219,7 @@ Object.assign(Zusia, {
 				this.logError("reader panel render", e);
 				let view = this._views.get(root);
 				if (view) this.appendError(view, e.message || String(e));
-				else root.querySelector(".zs-log").textContent = "AbstractIn could not load this PDF: " + (e.message || e);
+				else root.querySelector(".abstractin-log").textContent = "AbstractIn could not load this PDF: " + (e.message || e);
 			});
 		}
 		entry.body.hidden = false;

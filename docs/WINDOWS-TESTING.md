@@ -2,7 +2,7 @@
 
 ## Install this build
 
-1. Download `abstractin.xpi` from this checkout. It is the AbstractIn build; the existing `zusia.xpi` is the preserved upstream artifact.
+1. Download `abstractin.xpi` from this checkout. It is the AbstractIn build.
 2. Install and sign in to local Codex. Confirm `codex --version` and a normal Codex session work from your Windows terminal.
 3. In Zotero, open **Tools → Plugins → gear → Install Plugin From File…**, select `abstractin.xpi`, and restart Zotero if requested.
 4. Open a PDF attached to a regular Zotero book or paper item. Click the book icon in the reader's top toolbar (**Toggle AbstractIn panel**), alongside **Toggle Context Pane**, to open its dedicated right-side panel. The library view retains the AbstractIn item section.
@@ -91,7 +91,7 @@ npm run source:path
 npm run build
 ```
 
-On Windows, clone/download this project locally and run `npm run source:path` there to obtain the actual Windows source path. For Zotero's development extension loading, the extension pointer file is named `abstractin@shen-zhang-42.github.io` and contains that local checkout's absolute `src` path. Do not point a Windows Zotero profile at `/workspaces/abstractin/src`, an upstream Zusia checkout or the Codespace URL. Use a separate test profile when loading source directly.
+On Windows, clone/download this project locally and run `npm run source:path` there to obtain the actual Windows source path. For Zotero's development extension loading, the extension pointer file is named `abstractin@shen-zhang-42.github.io` and contains that local checkout's absolute `src` path. Do not point a Windows Zotero profile at `/workspaces/abstractin/src`, an upstream AbstractIn checkout or the Codespace URL. Use a separate test profile when loading source directly.
 
 Normal installation from the XPI requires no extension pointer, Node, source checkout or running Codespace. Bundled skills are derived into a versioned local cache; the original editable sources remain under this repository's `skills/` directory.
 

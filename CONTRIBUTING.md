@@ -19,8 +19,8 @@ npm test
 | Path | What |
 |---|---|
 | `src/bootstrap.js` | Zotero plugin lifecycle |
-| `src/content/zusia.js` | Sidebar, settings, wizard, rendering, assistant backends |
-| `src/content/zusia.css` | Styles; every colour comes from Zotero's theme tokens or `--zs-*` variables |
+| `src/content/abstractin.js` | Sidebar, settings, wizard, rendering, assistant backends |
+| `src/content/abstractin.css` | Styles; every colour comes from Zotero's theme tokens or `--abstractin-*` variables |
 | `src/content/icons/` | Phosphor Duotone icons and the original study buddies |
 | `test/` | jsdom unit tests, the visual harness and the Zotero integration run |
 | `test/videos/zotero/` | Scenes that drive a real Zotero and record the README videos |

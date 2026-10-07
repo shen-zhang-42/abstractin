@@ -185,7 +185,7 @@ test("a spawned process is killed at once if Stop came first", async () => {
 });
 
 test("tool calls become readable activity steps", () => {
-	assert.deepEqual({ ...plugin.describeTool("Read", { file_path: "/home/u/Zotero/zusia/1-AB/paper.txt" }) },
+	assert.deepEqual({ ...plugin.describeTool("Read", { file_path: "/home/u/Zotero/abstractin/1-AB/paper.txt" }) },
 		{ kind: "read", target: "paper.txt", label: "Read paper.txt" });
 	assert.equal(plugin.describeTool("Grep", { pattern: "Fourier", path: "/x/paper.txt" }).label, "Searched for “Fourier” in paper.txt");
 	assert.equal(plugin.describeTool("Glob", { pattern: "*.md" }).label, "Looked for files matching *.md");
@@ -283,17 +283,21 @@ test("images: Antigravity refuses them without running, and transcripts mention 
 	assert.match(p.transcriptFor([{ role: "user", text: "Look", images: ["a.png", "b.png"] }], null), /User: Look \[attached 2 images\]/);
 });
 
-test("modes: instructions go to the assistant, not into the stored question", async () => {
+test("retired mode flags are ignored and explicit formatting stays in the question", async () => {
 	const p = loadPlugin().plugin;
 	const store = fakeStore(p);
 	let seen;
 	p.runBackend = async (b, request) => { seen = request; return { text: "ok" }; };
 	const pending = pendingFor(p);
-	pending.modes = ["latex"];
-	await p.ask(base.ctx, "Prove it", pending);
-	assert.match(seen.question, /^Prove it\n\n\[Write the answer as rigorous mathematics in LaTeX/);
-	assert.equal(store.history[0].text, "Prove it");
-	assert.deepEqual([...store.history[0].modes], ["latex"]);
+	pending.modes = ["latex", "drawing"];
+	await p.ask(base.ctx, "Explain it in words, without a diagram", pending);
+	assert.match(seen.question, /^Explain it in words, without a diagram/);
+	assert.ok(!seen.question.includes("Write the answer as rigorous mathematics"));
+	assert.ok(!seen.question.includes("Include at least one drawing"));
+	assert.equal(store.history[0].text, "Explain it in words, without a diagram");
+	assert.equal(store.history[0].modes, undefined);
+	assert.match(p.formattingGuide(), /according to the material type and the question/);
+	assert.match(p.drawingGuide(), /only when the user requests one in the current question/);
 });
 
 test("clarifications: a request about a PDF selection saves passage, exact prompt, instructions and answer", async () => {
