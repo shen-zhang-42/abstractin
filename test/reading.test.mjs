@@ -236,34 +236,69 @@ test("Windows npm shims resolve to the native executable without a shell", async
 	await assert.rejects(() => p.windowsCodexExecutable(join(folder, "missing", "codex.cmd")), /native codex.exe/);
 });
 
-test("Start Reading uses the shared language setting without a separate language selector", async () => {
+test("the companion collects reading information inline, validates it and starts without a dialog", async () => {
 	const { plugin: p, window, document } = loadPlugin({ prefs: { "extensions.abstractin.onboarded": true, "extensions.abstractin.language": "中文" } });
-	p.findBinary = async () => "/bin/codex";
+	p.checkInstalledBackends = async () => {};
+	let checks = 0, fail = true;
+	p.findBinary = async () => { checks++; if (fail) throw new Error("Agent unavailable"); return "/bin/codex"; };
 	p.findReadingSkill = async () => ({ path: "/skills/book-reading/SKILL.md" });
-	const parent = { id: 9, key: "BOOK1234", libraryID: 1, itemType: "document", getAttachments: () => [7, 8] };
+	const parent = { id: 9, key: "BOOK1234", libraryID: 1, itemType: "document", getField: () => "Reading fixture", getAttachments: () => [7, 8] };
 	const attachments = [7, 8].map(id => ({ id, key: "PDF0000" + id, isPDFAttachment: () => true, getField: () => "PDF " + id }));
 	window.Zotero.Items = { get: id => attachments.find(item => item.id === id) };
 	const body = document.createElement("div"); document.body.appendChild(body); p.renderSkeleton(document, body);
 	const root = body.querySelector(".zs-root");
-	const view = { doc: document, root, ctx: { paperItem: parent, attachmentItem: attachments[0], dir: "/tmp/a" } };
+	const view = { doc: document, root, input: root.querySelector(".zs-input"), logEl: root.querySelector(".zs-log"), ctx: { paperItem: parent, attachmentItem: attachments[0], dir: "/tmp/a" } };
 	p._views.set(root, view);
-	let chosen;
-	p.activateReading = async (view, item, options) => { chosen = { item, options }; };
+	let chosen, workflow;
+	p.activateReading = async (view, item, options) => { chosen = { item, options }; view.ctx.reading = options; p.renderMessages(view, []); };
+	p.beginReadingWorkflow = async (view, options) => { workflow = options; };
+	p.renderMessages(view, []);
 	await p.openReadingSetup(root);
-	const selects = root.querySelectorAll(".zs-reading-panel select");
-	assert.equal(selects.length, 2);
-	assert.ok(!root.querySelector(".zs-reading-panel").textContent.includes("Conversation language"));
-	assert.equal(selects[1].value, "", "unknown document types are never silently classified");
-	root.querySelector(".zs-reading-confirm").click();
-	await new Promise(resolve => setTimeout(resolve, 10));
-	assert.ok(root.textContent.includes("Choose Book or Scientific paper"));
+	assert.equal(root.querySelector("[role=dialog]"), null);
+	assert.ok(root.querySelector(".zs-reading-welcome .zs-mascot"));
+	assert.match(view.logEl.textContent, /Reading fixture/);
+	assert.equal(root.querySelector("select"), null);
+	await p.sendText(view, "A different title");
+	assert.equal(view.readingSetup.step, "type");
+	await p.answerReadingSetup(view, "unknown");
+	assert.equal(view.readingSetup.step, "type");
 	assert.equal(chosen, undefined);
-	selects[0].value = "8"; selects[1].value = "book";
-	root.querySelector(".zs-reading-confirm").click();
-	await new Promise(resolve => setTimeout(resolve, 10));
+	await p.answerReadingSetup(view, "book");
+	assert.equal(view.readingSetup.step, "attachment");
+	await p.answerReadingSetup(view, "missing.pdf");
+	assert.equal(view.readingSetup.step, "attachment");
+	await p.answerReadingSetup(view, "8");
+	assert.equal(view.readingSetup.step, "goal");
+	assert.equal(checks, 0, "no agent is contacted while collecting answers");
+	await p.sendText(view, "Understand the proof in chapter 2");
+	assert.match(view.logEl.textContent, /Agent unavailable/);
+	assert.equal(chosen, undefined);
+	fail = false;
+	await p.answerReadingSetup(view, "retry");
 	assert.equal(chosen.item.id, 8);
+	assert.equal(chosen.options.title, "A different title");
+	assert.equal(chosen.options.goal, "Understand the proof in chapter 2");
 	assert.equal(chosen.options.language, undefined);
-	assert.equal(root.querySelector(".zs-reading-panel"), null);
+	assert.equal(view.readingSetup, undefined);
+	assert.equal(root.dataset.readingIntro, "false");
+	assert.equal(workflow.showWorkspace, false);
+	assert.equal(root.querySelector("[role=dialog]"), null);
+	assert.match(p.readingPrompt(view.ctx), /Understand the proof in chapter 2/);
+});
+
+test("a confirmed reading document is restored after restarting without repeating the introduction", async () => {
+	const { plugin: p, window } = loadPlugin();
+	p.getDataDir = () => "/tmp/reading-restore";
+	const parent = { id: 9, key: "BOOK1234", libraryID: 1, isRegularItem: () => true };
+	const attachment = { id: 7, key: "PDF00007", parentItem: parent, isRegularItem: () => false, isAttachment: () => true };
+	window.Zotero.File = { createDirectoryIfMissingAsync: async () => {}, getContentsAsync: async path => {
+		assert.ok(path.endsWith("reading-PDF00007/reading.json"));
+		return JSON.stringify({ type: "book", title: "Confirmed title", goal: "A proof", itemKey: parent.key, attachmentKey: attachment.key });
+	} };
+	const ctx = await p.getContext(attachment);
+	assert.equal(ctx.reading.title, "Confirmed title");
+	assert.equal(ctx.reading.goal, "A proof");
+	assert.ok(ctx.dir.endsWith("reading-PDF00007"));
 });
 
 test("reading language follows shared preferences even with an older saved reading language", () => {

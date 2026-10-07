@@ -411,8 +411,7 @@ test("knowledge discussion skips full PDF extraction, supplies corrected notes i
  result = await p.ask(ctx, 'Give an example', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined); assert.equal(calls, 1);
  p.updateReadingControls(view); const button = view.root.querySelector('.zs-reading-evidence-mode');
  assert.equal(button.dataset.mode, 'knowledge');
- assert.equal(button.previousElementSibling.textContent, 'AbstractIn');
- assert.ok(button.closest('.zs-header')); assert.equal(view.root.querySelector('.zs-reading-bar .zs-reading-evidence-mode'), null);
+ assert.ok(button.closest('.zs-composer .zs-controls')); assert.equal(view.root.querySelector('.zs-header .zs-reading-evidence-mode'), null);
  assert.equal(button.querySelector('.zs-i').dataset.icon, 'readingKnowledge');
  button.click(); assert.equal(button.getAttribute('aria-expanded'), 'true');
  const choices = [...view.root.querySelectorAll('.zs-menu-item')];

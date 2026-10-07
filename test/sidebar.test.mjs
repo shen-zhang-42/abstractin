@@ -50,23 +50,35 @@ test("reading model menu uses the Codex catalog and saves a custom model ID", ()
 	assert.equal(root.querySelector(".zs-panel"), null);
 });
 
-test("empty chat no longer repeats the Start Reading prompt", () => {
+test("first entry welcomes the reader with a companion and one Start Reading button", () => {
 	const { plugin, view } = sidebar();
 	plugin.renderEmptyState(view);
-	assert.ok(!view.logEl.textContent.includes("Start Reading"));
+	assert.equal(view.logEl.querySelectorAll(".zs-start-reading").length, 1);
+	assert.equal(view.logEl.querySelector(".zs-empty-title").textContent, "let's start reading");
+	assert.ok(view.logEl.querySelector(".zs-mascot"));
 });
 
-test("Start Reading remains a primary text button during an active reading session", () => {
+test("Start Reading appears only before entering a reading chat", () => {
 	const { root, view, plugin } = sidebar({ [PREFIX + "language"]: "English" });
 	root.dataset.labels = "icons";
+	plugin.renderMessages(view, []);
+	assert.equal(root.querySelector(".zs-start-reading").hidden, false);
+	plugin.appendUser(view, "A question");
+	assert.equal(root.querySelector(".zs-start-reading").hidden, true);
+	plugin.renderMessages(view, []);
+	assert.equal(root.querySelector(".zs-start-reading").hidden, false);
 	view.ctx.reading = { type: "paper", language: "English" };
 	plugin.updateReadingControls(view);
 	const button = root.querySelector(".zs-start-reading");
+	assert.equal(button.hidden, true);
 	assert.equal(button.textContent, "Start Reading");
 	assert.ok(button.classList.contains("zs-reading-primary"));
 	assert.ok(!button.classList.contains("zs-ghost"));
 	assert.equal(button.getAttribute("aria-label"), "Start Reading");
 	assert.equal(root.querySelector(".zs-reading-status").textContent, "Paper · English · Codex");
+	assert.equal(root.querySelector(".zs-reading-statusbar").previousElementSibling, root.querySelector(".zs-composer"));
+	assert.equal(root.querySelector(".zs-reading-workspace"), null);
+	assert.equal(root.querySelector(".zs-reading-return"), null);
 });
 
 test("composer shows the assistant, model and effort from prefs", () => {
@@ -584,10 +596,20 @@ test("theorem links: clicking jumps to the box, Back (button or Alt+←) returns
 	assert.equal(back.hidden, true);
 });
 
-test("the empty chat shows the mascot", () => {
+test("the reading assistant and available prompts sit immediately above the composer", () => {
 	const { root, view, plugin } = sidebar();
+	view.ctx.reading = { type: "book" };
 	plugin.renderMessages(view, []);
-	assert.ok(root.querySelector(".zs-empty .zs-mascot[data-icon='mascot-marmoset']"));
+	const bar = root.querySelector(".zs-reading-bar");
+	assert.equal(bar.previousElementSibling, root.querySelector(".zs-log-wrap"));
+	assert.equal(bar.nextElementSibling, root.querySelector(".zs-composer"));
+	const row = bar.querySelector(".zs-reading-assistant");
+	assert.ok(row.firstElementChild.matches(".zs-discussion-companion"));
+	assert.ok(row.querySelector(".zs-mascot[data-icon='mascot-marmoset']"));
+	assert.equal(row.querySelector(".zs-reading-invitation").textContent, "ask me a question!");
+	assert.equal(row.querySelector(".zs-quick").hidden, false);
+	assert.equal(root.querySelector(".zs-empty .zs-mascot"), null);
+	assert.equal(row.querySelectorAll(".zs-pill").length, plugin.getPrompts().length);
 	assert.ok(root.querySelector(".zs-header .zs-header-icon[data-icon='app']"));
 });
 
@@ -626,21 +648,38 @@ test("icon-first: labels are hidden by default and every labelled button keeps a
 	assert.equal(root.dataset.labels, "text");
 });
 
-test("the single marmoset companion replaces all legacy choices and the app icon differs from Start Reading", () => {
-	for (const mascot of ["cat", "owl", "robot", "none", "dragon", "marmoset"]) {
+test("reading companions load from preferences while legacy choices fall back to marmoset", () => {
+	for (const mascot of ["cat", "owl", "robot", "none", "dragon", "marmoset", "wagtail", "puffin"]) {
 		const { root, view, plugin } = sidebar({ [PREFIX + "appearance"]: JSON.stringify({ mascot }) });
 		plugin.renderMessages(view, []);
-		assert.equal(plugin.getAppearance().mascot, "marmoset");
-		assert.equal(root.querySelector(".zs-empty .zs-mascot").dataset.icon, "mascot-marmoset");
+		const expected = ["wagtail", "puffin"].includes(mascot) ? mascot : "marmoset";
+		assert.equal(plugin.getAppearance().mascot, expected);
+		assert.equal(root.querySelector(".zs-empty .zs-mascot").dataset.icon, "mascot-" + expected);
+		assert.equal(root.querySelector(".zs-discussion-companion .zs-mascot").dataset.icon, "mascot-" + expected);
 		assert.equal(root.querySelector(".zs-header-icon").dataset.icon, "app");
 		assert.equal(root.querySelector(".zs-start-reading .zs-i").dataset.icon, "book");
-		assert.deepEqual(Object.keys(plugin.MASCOTS), ["marmoset"]);
+		assert.deepEqual(Object.keys(plugin.MASCOTS), ["marmoset", "wagtail", "puffin"]);
 	}
 });
 
-test("pattern: the nerdy background pattern is applied to the root", () => {
+test("changing reading companions refreshes the composer companion", () => {
+	const { root, view, plugin, prefs } = sidebar();
+	plugin.renderMessages(view, []);
+	for (const mascot of ["wagtail", "puffin", "marmoset"]) {
+		prefs[PREFIX + "appearance"] = JSON.stringify({ mascot });
+		plugin.refreshRoot(root);
+		for (const location of [".zs-discussion-companion"]) {
+			const icon = root.querySelector(location + " .zs-mascot");
+			assert.equal(icon.dataset.icon, "mascot-" + mascot);
+			const animatedPart = mascot === "puffin" ? ".zs-mascot-puffin-wing" : ".zs-mascot-tail";
+			assert.ok(icon.querySelector("svg " + animatedPart), "animated artwork loads immediately");
+		}
+	}
+});
+
+test("retired patterns cannot decorate the chat", () => {
 	const { root, plugin } = sidebar({ [PREFIX + "appearance"]: JSON.stringify({ pattern: "math" }) });
-	assert.equal(root.dataset.pattern, "math");
+	assert.equal(root.dataset.pattern, "none");
 	plugin.applyAppearance(root, { ...plugin.getAppearance(), pattern: "none" });
 	assert.equal(root.dataset.pattern, "none");
 });
@@ -692,16 +731,14 @@ test("wizard: every step's choices are saved, finishing closes it for good", () 
 	assert.equal(prefs[PREFIX + "backend"], "codex");
 	next();
 	assert.equal(wizard.dataset.step, "look");
-	tile("Flat").click();
 	wizard.querySelector('.zs-swatch[aria-label="Violet"]').click();
 	assert.equal(plugin.getAppearance().style, "flat");
 	assert.equal(plugin.getAppearance().accent, "#6d4fd6");
 	assert.equal(root.dataset.style, "flat", "the sidebar previews the choice at once");
 	next();
-	assert.equal(wizard.dataset.step, "pattern");
-	tile("Stars").click();
-	assert.equal(plugin.getAppearance().mascot, "marmoset");
-	assert.equal(plugin.getAppearance().pattern, "stars");
+	assert.equal(wizard.dataset.step, "companion");
+	tile("Puffin").click();
+	assert.equal(plugin.getAppearance().mascot, "puffin");
 	next();
 	assert.equal(wizard.dataset.step, "answers");
 	tile("Expert").click();
@@ -715,7 +752,7 @@ test("wizard: every step's choices are saved, finishing closes it for good", () 
 	assert.equal(tile("Drawing").getAttribute("aria-pressed"), "true");
 	next();
 	assert.equal(wizard.dataset.step, "done");
-	assert.ok(wizard.querySelector(".zs-mascot[data-icon='mascot-marmoset']"));
+	assert.ok(wizard.querySelector(".zs-mascot[data-icon='mascot-puffin']"));
 	wizard.querySelector(".zs-wizard-next").click();
 	assert.equal(root.querySelector(".zs-wizard"), null);
 	assert.equal(prefs[PREFIX + "onboarded"], true);
@@ -840,6 +877,8 @@ test("reading mode menu wraps check, symbol and text in an inner layout and swit
  const { root, view, plugin, prefs } = sidebar();
  view.ctx.reading = { type: "book", language: "English" };
  plugin.updateReadingControls(view);
+ assert.ok(root.querySelector(".zs-composer .zs-controls .zs-reading-evidence-mode"));
+ assert.equal(root.querySelector(".zs-header .zs-reading-evidence-mode"), null);
  root.querySelector(".zs-reading-evidence-mode").click();
  const rows = [...root.querySelectorAll(".zs-reading-mode-menu .zs-menu-item")];
  assert.equal(rows.length, 2);

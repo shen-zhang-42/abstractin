@@ -26,6 +26,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading-workflow.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reader-panel.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/agents.js");
 	Zusia.init({ id, version, rootURI, resourceURI });
 	// Load the bundled renderer immediately, before any answer needs it.
 	Zusia.getKatex();

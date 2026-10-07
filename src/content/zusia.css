@@ -261,7 +261,7 @@
 	margin-inline-end: 5px;
 	color: var(--zs-accent-ink);
 }
-/* The single reading companion: a red marmoset with its book. */
+/* Reading companions keep their bodies still; only tails or wings animate. */
 .zs-mascot {
 	width: 72px;
 	height: 72px;
@@ -269,25 +269,34 @@
 	color: var(--zs-muted);
 }
 .zs-mascot > svg {
-	stroke-width: 1.6;
-	animation: zs-mascot-float 4s ease-in-out infinite;
+	animation: none;
 }
-.zs-mascot .zs-mascot-spark {
-	fill: var(--zs-accent);
-	animation: zs-mascot-twinkle 2.4s ease-in-out infinite;
-	transform-origin: 55px 9.5px;
+.zs-mascot .zs-mascot-tail {
+	transform-box: view-box;
+	transform-origin: 50px 35px;
+	animation: zs-mascot-tail-sway 4s ease-in-out infinite;
 }
-.zs-mascot .zs-mascot-blush {
-	stroke: color-mix(in srgb, var(--accent-red, #db2c3a) 55%, transparent);
-	stroke-width: 2.2;
+@keyframes zs-mascot-tail-sway {
+	0%, 100% { transform: rotate(-3deg); }
+	50% { transform: rotate(4deg); }
 }
-@keyframes zs-mascot-float {
-	0%, 100% { transform: translateY(0); }
-	50% { transform: translateY(-6px); }
+.zs-mascot .zs-mascot-wagtail-tail {
+	transform-origin: 34px 34px;
+	animation-name: zs-mascot-tail-bob;
+	animation-duration: 1.6s;
 }
-@keyframes zs-mascot-twinkle {
-	0%, 100% { transform: scale(0.7); opacity: 0.6; }
-	50% { transform: scale(1.15); opacity: 1; }
+@keyframes zs-mascot-tail-bob {
+	0%, 100% { transform: rotate(-8deg); }
+	50% { transform: rotate(8deg); }
+}
+.zs-mascot .zs-mascot-puffin-wing {
+	transform-box: view-box;
+	transform-origin: 31px 24px;
+	animation: zs-mascot-wing-bob 2.8s ease-in-out infinite;
+}
+@keyframes zs-mascot-wing-bob {
+	0%, 100% { transform: rotate(-4deg); }
+	50% { transform: rotate(4deg); }
 }
 
 /* ---- header ---- */
@@ -774,10 +783,8 @@
 	letter-spacing: 0;
 	font-size: 0.95em;
 }
-/* A muted crimson highlights every formal heading independently of the
-   panel accent, including definitions, propositions, remarks and proofs.
-   Mixing with theme text also keeps the heading visible in dark mode. */
-.zs-env { --zs-env-heading: color-mix(in srgb, #b84459 78%, var(--zs-text)); }
+/* Formal headings and rules follow the selected accent colour. */
+.zs-env { --zs-env-heading: var(--zs-accent-ink); }
 .zs-env .zs-env-head,
 .zs-env .zs-env-title { color: var(--zs-env-heading); }
 .zs-env .zs-env-head .zs-ref { color: var(--zs-env-heading) !important; }
@@ -1679,7 +1686,8 @@
 	.zs-shimmer,
 	.zs-mascot,
 	.zs-mascot > svg,
-	.zs-mascot .zs-mascot-spark,
+	.zs-mascot .zs-mascot-tail,
+	.zs-mascot .zs-mascot-puffin-wing,
 	.zs-live-content > .zs-enter,
 	.zs-menu,
 	.zs-typing,
@@ -2516,7 +2524,7 @@
 }
 .zs-reading-tool:hover:not(:disabled) { background: var(--zs-hover); }
 .zs-reading-tool:disabled { opacity: 0.5; cursor: default; }
-.zs-header .zs-reading-evidence-mode {
+.zs-controls .zs-reading-evidence-mode {
 	flex: 0 0 auto;
 	gap: 3px;
 	padding: 3px 5px;
@@ -2803,34 +2811,83 @@
 	height: 24px;
 }
 
-/* Keep every formal environment's left rule crimson across flat/glass themes. */
-.zs-env { border-inline-start-color: var(--zs-env-heading) !important; }
-
-.zs-mascot[data-icon="mascot-marmoset"] { color: color-mix(in srgb, #b84459 80%, var(--zs-text)); }
-.zs-mascot[data-icon="mascot-marmoset"] .zs-duo,
-.zs-mascot[data-icon="mascot-marmoset"] .zs-mascot-spark { fill: currentColor; }
+/* Keep every formal environment's left rule in the selected accent. */
+.zs-env { border-inline-start-color: var(--zs-accent) !important; }
 
 
-/* The companion uses the spare space beside the reading controls, without
-   changing their width or adding height to the conversation. */
+
+/* Reading shortcuts sit immediately above the composer. */
 .zs-reading-bar {
-	position: relative;
-	container-type: inline-size;
+	flex: 0 0 auto;
+	gap: 6px;
+}
+.zs-reading-assistant {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+.zs-reading-invitation {
+	flex: 0 0 auto;
+	font-size: 11px;
+	color: var(--zs-muted);
+}
+.zs-reading-assistant .zs-quick {
+	flex: 1 1 0;
+	min-width: 0;
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	scrollbar-width: thin;
+}
+.zs-reading-assistant .zs-quick[hidden] { display: none; }
+.zs-reading-assistant .zs-pill {
+	flex: 0 0 auto;
+	min-height: 24px;
+	padding: 2px 10px;
+}
+.zs-reading-bar .zs-start-reading[hidden] { display: none; }
+.zs-reading-bar .zs-reading-status { text-align: start; }
+.zs-reading-source-status { max-height: 2.8em; overflow-y: auto; }
+@media (max-width: 360px) {
+	.zs-reading-assistant { flex-wrap: wrap; }
+	.zs-reading-assistant .zs-quick { flex-basis: 100%; }
 }
 .zs-discussion-companion {
-	position: absolute;
-	top: 4px;
-	inset-inline-end: 8px;
-	width: clamp(32px, 10cqw, 80px);
+	flex: 0 0 48px;
+	width: 48px;
 	aspect-ratio: 1;
 	pointer-events: none;
 }
-.zs-root:not([data-chatting="true"]) .zs-discussion-companion { display: none; }
 .zs-root .zs-discussion-companion .zs-mascot {
 	width: 100%;
 	height: 100%;
 	margin: 0;
 	animation: none;
 }
-.zs-root .zs-discussion-companion .zs-mascot > svg,
-.zs-root .zs-discussion-companion .zs-mascot .zs-mascot-spark { animation: none; }
+.zs-root .zs-discussion-companion .zs-mascot > svg { animation: none; }
+
+.zs-root[data-reading-intro="true"] .zs-reading-bar { display: none; }
+.zs-reading-welcome .zs-start-reading { width: auto; align-self: center; }
+.zs-reading-welcome .zs-mascot { flex: none; width: 96px; height: 96px; }
+.zs-reading-setup-question p { margin: 0 0 8px; }
+.zs-reading-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.zs-reading-choice {
+	font: inherit;
+	color: var(--zs-text);
+	background: var(--zs-ground);
+	border: 1px solid var(--zs-border);
+	border-radius: var(--zs-radius-control);
+	padding: 5px 9px;
+	cursor: pointer;
+}
+.zs-reading-choice:hover:not(:disabled) { background: var(--zs-hover); }
+.zs-reading-choice:disabled { opacity: .5; cursor: default; }
+.zs-reading-statusbar {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	gap: 2px 10px;
+	color: var(--zs-muted);
+}
+.zs-reading-statusbar:has(.zs-reading-status:empty):has(.zs-reading-source-status:empty) { display: none; }
+.zs-reading-statusbar .zs-reading-status { text-align: start; }

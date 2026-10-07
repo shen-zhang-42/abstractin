@@ -220,75 +220,129 @@ Object.assign(Zusia, {
 
 	async openReadingSetup(root) {
 		let view = this._views.get(root);
-		if (!view || this._pending.has(view.ctx.dir)) return;
-		root.querySelector(".zs-panel")?.remove();
-		let doc = view.doc;
-		let panel = this.el(doc, "div", "zs-panel zs-reading-panel");
-		panel.setAttribute("role", "dialog");
-		panel.setAttribute("aria-label", "Start Reading");
-		let head = this.el(doc, "div", "zs-panel-head");
-		head.append(this.el(doc, "div", "zs-panel-title", "Start Reading"),
-			this.iconButton(doc, "zs-small", "Close", "close", () => panel.remove()));
-		let body = this.el(doc, "div", "zs-panel-body zs-reading-form");
-		let field = (title, control) => {
-			let label = this.el(doc, "label", "zs-reading-field");
-			label.append(this.el(doc, "span", null, title), control);
-			body.appendChild(label);
-			return control;
-		};
+		if (!view || this._pending.has(view.ctx.dir) || view.readingSetup) return;
 		let attachments = this.readingAttachments(view.ctx);
-		let reader = this.readerFor(view.ctx, doc.defaultView);
+		let reader = this.readerFor(view.ctx, view.doc.defaultView);
 		let active = attachments.find(item => item.id === reader?.itemID) || view.ctx.attachmentItem;
-		let attachment = field("PDF attachment", this.select(doc,
-			attachments.map(item => [String(item.id), this.safeField(item, "title") || item.key]), String(active?.id || ""), () => {}));
-		let previous = view.ctx.reading || {};
-		if (!view.ctx.reading && active) {
-			try {
-				let dir = OS.Path.join(this.getDataDir(), view.ctx.paperItem.libraryID + "-" + view.ctx.paperItem.key, "reading-" + active.key);
-				previous = JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(dir, "reading.json")));
-			}
-			catch (e) { /* First use has no previous document preferences. */ }
+		view.readingSetup = { step: "title", attachments, attachment: attachments.find(item => item.id === active?.id) || attachments[0],
+			type: this.readingType(view.ctx.paperItem), title: this.safeField(view.ctx.paperItem, "title") || "", goal: "" };
+		view.root.dataset.readingIntro = "true";
+		let welcome = view.logEl.querySelector(".zs-empty");
+		if (welcome) welcome.querySelector(".zs-start-reading")?.remove();
+		else {
+			welcome = this.el(view.doc, "div", "zs-empty zs-reading-welcome");
+			welcome.append(this.svgIcon(view.doc, this.MASCOTS[this.getAppearance().mascot].icon, "zs-mascot"),
+				this.el(view.doc, "div", "zs-empty-title", "let's start reading"));
+			view.logEl.appendChild(welcome);
 		}
-		let type = field("Material type", this.select(doc,
-			[["", "Choose material type…"], ["book", "Book"], ["paper", "Scientific paper"]],
-			previous.type || this.readingType(view.ctx.paperItem), () => {}));
-		let folder = field("Reading skills folder (optional)", this.el(doc, "input"));
-		let modelControl = field("Codex model (empty uses local Default)", this.codexModelInput(doc));
-		folder.type = "text";
-		folder.value = this.getPref("readingSkillsDir") || "";
-		folder.placeholder = "Default: your local .codex/skills folder";
-		let status = this.el(doc, "div", "zs-notice");
-		status.setAttribute("role", "status");
-		body.append(this.el(doc, "p", null,
-			"Uses your local Codex and original reading skill. Leave the folder empty to use local skills or the bundled originals. Start with a selected passage; no summary is generated automatically."));
-		let start = this.readingButton(doc, "zs-reading-confirm", async () => {
-			start.disabled = true;
-			status.textContent = "Checking local Codex and reading skill…";
-			try {
-				this.saveCodexModel(modelControl.querySelector("input").value);
-				let selected = attachments.find(item => String(item.id) === attachment.value);
-				if (!selected) throw new Error("This item needs a PDF attachment before reading can start.");
-				this.readingSkillName(type.value);
-				this.setPref("readingSkillsDir", folder.value.trim());
-				await this.findBinary("codex");
-				let skill = await this.findReadingSkill(type.value);
-				if (type.value === "paper") await this.findReadingSkill("extraction");
-				if (this._views.get(root) !== view) return;
-				await this.activateReading(view, selected, { type: type.value, skillPath: skill.path });
-				panel.remove();
-				await this.beginReadingWorkflow(view);
+		this.updateControls(root);
+		this.appendReadingSetupQuestion(view);
+		this.setBusy(view, false);
+		view.input.focus();
+	},
+
+	appendReadingSetupQuestion(view, error = "") {
+		let state = view.readingSetup;
+		if (!state) return;
+		view.logEl.querySelectorAll(".zs-reading-choices button").forEach(button => { button.disabled = true; });
+		let card = this.el(view.doc, "div", "zs-msg zs-assistant zs-reading-setup-question");
+		let choices = [];
+		let question;
+		if (error) { question = error; choices = [["Try again", "retry"]]; }
+		else if (!state.attachments.length) {
+			question = "Please attach a PDF to this Zotero item, then let me check again.";
+			choices = [["Check for PDF", "refresh-pdf"]];
+		}
+		else if (state.step === "title") {
+			question = state.title ? "Are we reading “" + state.title + "”? Confirm it, or tell me the title you want to use." : "What book or paper are we reading? Tell me its title.";
+			if (state.title) choices = [["Yes, this one", state.title]];
+		}
+		else if (state.step === "type") {
+			question = "Is this a book or a scientific paper?";
+			choices = state.type === "paper" ? [["Scientific paper", "paper"], ["Book", "book"]] : [["Book", "book"], ["Scientific paper", "paper"]];
+		}
+		else if (state.step === "attachment") {
+			question = "Which PDF should we read?";
+			choices = state.attachments.map(item => [this.safeField(item, "title") || item.key, String(item.id)]);
+		}
+		else {
+			question = "Where would you like to begin, or what would you like to understand? You can also start at the current page.";
+			choices = [["Start at the current page", "skip"]];
+		}
+		card.appendChild(this.el(view.doc, "p", null, question));
+		let buttons = this.el(view.doc, "div", "zs-reading-choices");
+		for (let [label, answer] of choices) {
+			let button = this.el(view.doc, "button", "zs-reading-choice", label);
+			button.type = "button";
+			button.addEventListener("click", () => this.answerReadingSetup(view, answer, label));
+			buttons.appendChild(button);
+		}
+		card.appendChild(buttons);
+		card.setAttribute("aria-live", "polite");
+		view.logEl.appendChild(card);
+		view.input.placeholder = state.step === "title" ? "Tell me the book or paper title…" : state.step === "type" ? "Book or scientific paper…" : state.step === "attachment" ? "Choose a PDF above, or enter its name…" : "Where shall we begin?";
+		this.scrollToEnd(view.logEl);
+	},
+
+	async answerReadingSetup(view, answer, label = answer) {
+		let state = view.readingSetup;
+		answer = String(answer || "").trim();
+		if (!state || state.busy || !answer) return;
+		if (!state.attachments.length) {
+			if (answer === "refresh-pdf") { delete view.readingSetup; await this.openReadingSetup(view.root); }
+			return;
+		}
+		if (state.step !== "ready") {
+			if (state.step === "type") {
+				let type = /^(book|书|书籍|图书|教材)$/i.test(answer) ? "book" : /^(paper|scientific paper|论文|科学论文|科研论文)$/i.test(answer) ? "paper" : "";
+				if (!type) { this.appendReadingSetupQuestion(view); return; }
+				state.type = type;
 			}
-			catch (e) { status.textContent = e.message || String(e); }
-			finally { start.disabled = false; }
-		});
-		start.disabled = !attachments.length;
-		if (!attachments.length) status.textContent = "Attach a PDF to the Zotero item first.";
-		body.append(start, status);
-		panel.append(head, body);
-		if (this._views.get(root) !== view) return;
-		root.querySelector(".zs-panel")?.remove();
-		root.appendChild(panel);
-		type.focus();
+			if (state.step === "attachment") {
+				let matches = state.attachments.filter(item => String(item.id) === answer || item.key === answer || this.safeField(item, "title") === answer);
+				if (matches.length !== 1) { this.appendReadingSetupQuestion(view); return; }
+				state.attachment = matches[0];
+			}
+			view.logEl.querySelectorAll(".zs-reading-choices button").forEach(button => { button.disabled = true; });
+			view.logEl.appendChild(this.el(view.doc, "div", "zs-msg zs-user zs-reading-setup-answer", label));
+			view.input.value = "";
+			this.autoGrow(view.input);
+			if (state.step === "title") { state.title = answer; state.step = "type"; }
+			else if (state.step === "type") state.step = state.attachments.length > 1 ? "attachment" : "goal";
+			else if (state.step === "attachment") state.step = "goal";
+			else { state.goal = answer === "skip" ? "" : answer; state.step = "ready"; }
+			if (state.step !== "ready") { this.appendReadingSetupQuestion(view); this.setBusy(view, false); return; }
+		}
+		state.busy = true;
+		view.input.disabled = true;
+		view.root.querySelector(".zs-send").disabled = true;
+		let status = this.el(view.doc, "div", "zs-notice zs-reading-setup-progress", "Getting ready to read…");
+		status.setAttribute("role", "status");
+		view.logEl.appendChild(status);
+		try {
+			let agent = this.readingAgent();
+			await this.findBinary(agent);
+			await this.assertAgentReadingReady(agent, this.getReadingEvidenceMode());
+			let skill = await this.findReadingSkill(state.type);
+			if (state.type === "paper") await this.findReadingSkill("extraction");
+			if (this._views.get(view.root) !== view || view.readingSetup !== state) return;
+			await this.activateReading(view, state.attachment, { type: state.type, title: state.title, goal: state.goal, skillPath: skill.path });
+			delete view.readingSetup;
+			view.root.dataset.readingIntro = "false";
+			this.updateControls(view.root);
+			await this.beginReadingWorkflow(view, { showWorkspace: false });
+		}
+		catch (e) {
+			status.remove();
+			if (this._views.get(view.root) === view) {
+				if (view.readingSetup) this.appendReadingSetupQuestion(view, e.message || String(e));
+				else this.appendError(view, e.message || String(e));
+			}
+		}
+		finally {
+			state.busy = false;
+			if (this._views.get(view.root) === view) { this.setBusy(view, this._pending.has(view.ctx.dir)); view.input.focus(); }
+		}
 	},
 
 	async activateReading(view, attachment, options) {
@@ -309,7 +363,7 @@ Object.assign(Zusia, {
 		// Language comes from the shared plugin preference, never document preferences.
 		delete options.language;
 		await Zotero.File.putContentsAsync(OS.Path.join(dir, "reading.json"), JSON.stringify({
-			type: options.type, itemKey: parent.key, attachmentKey: attachment.key,
+			type: options.type, title: options.title || "", goal: options.goal || "", itemKey: parent.key, attachmentKey: attachment.key,
 		}));
 		this._readingStates.set(attachment.id, options);
 		view.ctx = { paperItem: parent, attachmentItem: attachment, dir, reading: options,
@@ -366,11 +420,12 @@ Object.assign(Zusia, {
 		}
 		let label = view.root.querySelector(".zs-reading-status");
 		if (label) label.textContent = reading ?
-			(reading.type === "book" ? "Book" : "Paper") + " · " + (this.getLanguage() || "Same as my question") + " · Codex" : "";
+			(reading.type === "book" ? "Book" : "Paper") + " · " + (this.getLanguage() || "Same as my question") + " · " + this.BACKENDS[this.readingAgent()].label : "";
 		let button = view.root.querySelector(".zs-start-reading");
 		if (button) {
 			button.setLabel("Start Reading");
-			button.title = reading ? "Start Reading · change document or reading settings" : "Start Reading";
+			button.title = "Start Reading";
+			button.hidden = !!reading || !!view.readingSetup || view.root.dataset.chatting === "true";
 		}
 		let tools = view.root.querySelector(".zs-reading-tools");
 		if (tools) tools.hidden = !reading;
@@ -384,14 +439,13 @@ Object.assign(Zusia, {
 			"PDF text ready · " + reading.pdfSource.extractedPages + "/" + reading.pdfSource.totalPages + " pages" +
 			(reading.pdfSource.pageMapping ? "" : " · page links unverified") : reading.pdfSource.status === "context-only" ?
 			"Discussion context ready · full PDF text not loaded" : "PDF text unavailable — use a selected passage or page image") : "";
-		let quick = view.root.querySelector(".zs-quick");
-		if (quick) quick.hidden = true;
 	},
 
 	readingPrompt(ctx, selection) {
 		let reading = ctx.reading;
+		let introduction = "Reader-confirmed title and reading goal (context, not source evidence): " + JSON.stringify({ title: reading.title || "", goal: reading.goal || "" }) + ". ";
 		if (reading.evidenceMode === "knowledge" && (!reading.action || reading.action === "discuss")) {
-			return "AbstractIn Knowledge discussion. " + this.languageInstruction() +
+			return "AbstractIn Knowledge discussion. " + introduction + this.languageInstruction() +
 				" Answer from the supplied current page/selection, saved notes and previous conversation, supplemented by your existing knowledge. " +
 				"Do not open or search the PDF, source-text.md, skills or workspace files for this discussion. No file tools are needed. " +
 				(reading.forbidSource ?
@@ -421,7 +475,7 @@ Object.assign(Zusia, {
 			selectedText: selection.text, printedPageLabel: selection.pageLabel || null,
 			pdfPageIndex: selection.position?.pageIndex ?? null,
 		} : null;
-		return "AbstractIn reading session. Read and follow the original skill at " + JSON.stringify(reading.skillPath) +
+		return introduction + "AbstractIn reading session. Read and follow the original skill at " + JSON.stringify(reading.skillPath) +
 			". Resolve its supporting resources relative to that skill directory; preserve the skill and its files. " +
 			"Material type: " + reading.type + ". " + this.languageInstruction() + " " +
 			(reading.type === "paper" ? (reading.action === "summary" ? "Use initial read mode; the user approved this paper summary. " : "Use discuss mode; use the saved summary when available. ") +

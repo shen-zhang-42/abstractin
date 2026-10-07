@@ -120,11 +120,13 @@ Zusia = {
 			formal: { label: "Formal", icon: "toneFormal", prompt: "Use a formal, academic tone." },
 		},
 	},
-	WIZARD_STEPS: ["welcome", "assistant", "look", "pattern", "answers", "done"],
+	WIZARD_STEPS: ["welcome", "assistant", "look", "companion", "answers", "done"],
 	BACKEND_ICONS: { claude: "sparkle", codex: "terminal", agy: "rocket" },
-	// Study buddies: original drawings shown in the empty chat, with a matching header icon.
+	// Study buddies share the app header and appear in the empty chat and reading bar.
 	MASCOTS: {
 		marmoset: { label: "Marmoset", icon: "mascot-marmoset", header: "app" },
+		wagtail: { label: "White wagtail", icon: "mascot-wagtail", header: "app" },
+		puffin: { label: "Puffin", icon: "mascot-puffin", header: "app" },
 	},
 	// Faint background patterns behind the chat.
 	PATTERNS: {
@@ -162,6 +164,8 @@ Zusia = {
 		book: "book-open-text.svg",
 		app: "app-document-chat.svg",
 		"mascot-marmoset": "mascot-marmoset.svg",
+		"mascot-wagtail": "mascot-wagtail.svg",
+		"mascot-puffin": "mascot-puffin.svg",
 		close: "x.svg",
 		search: "magnifying-glass.svg",
 		terminal: "terminal-window.svg",
@@ -482,69 +486,22 @@ Zusia = {
 
 	getAppearance() {
 		let saved = this.getJSONPref("appearance", {}) || {};
-		let number = (value, min, max, fallback) => (typeof value === "number" && isFinite(value)
-			? Math.min(max, Math.max(min, Math.round(value))) : fallback);
 		let oneOf = (value, options, fallback) => (options.includes(value) ? value : fallback);
 		return {
-			style: saved.style === "flat" ? "flat" : "glass",
+			style: "flat", bubble: "neutral", corners: "rounded", pattern: "none",
 			accent: /^#[0-9a-f]{6}$/i.test(saved.accent || "") ? saved.accent : "",
-			bubble: saved.bubble === "accent" ? "accent" : "neutral",
 			size: this.FONT_SIZES[saved.size] ? saved.size : "default",
-			// A file in the data folder, named by pickBackground().
-			background: /^background-\d+\.(png|jpe?g|gif|webp|avif)$/i.test(saved.background || "") ? saved.background : "",
-			imageVisibility: number(saved.imageVisibility, 0, 100, 55),
-			imageBlur: number(saved.imageBlur, 0, 20, 0),
-			glassOpacity: number(saved.glassOpacity, 10, 95, 55),
-			glassBlur: number(saved.glassBlur, 0, 40, 18),
-			glow: saved.glow !== false,
-			glowStrength: number(saved.glowStrength, 0, 100, 60),
-			// Empty follows the style: round for glass, rounded for flat.
-			corners: oneOf(saved.corners, ["square", "rounded", "round"], ""),
 			density: oneOf(saved.density, ["compact", "comfortable", "roomy"], "comfortable"),
 			font: oneOf(saved.font, Object.keys(this.FONTS), "zotero"),
-			mascot: "marmoset",
-			pattern: oneOf(saved.pattern, Object.keys(this.PATTERNS), "none"),
+			mascot: oneOf(saved.mascot, Object.keys(this.MASCOTS), "marmoset"),
 			labels: oneOf(saved.labels, ["icons", "text"], "icons"),
 		};
 	},
 
-	backgroundURL(name) {
-		try {
-			return Zotero.File.pathToFileURI(OS.Path.join(this.getDataDir(), name));
-		}
-		catch (e) {
-			return name;
-		}
-	},
-
-	// Asks for an image and copies it into the data folder, so the sidebar keeps it
-	// even if the original moves. Returns the copy's file name, or null if cancelled.
-	async pickBackground(win) {
-		let { FilePicker } = ChromeUtils.importESModule("chrome://zotero/content/modules/filePicker.mjs");
-		let picker = new FilePicker();
-		picker.init(win, "Choose a background image", picker.modeOpen);
-		picker.appendFilter("Images", "*.png; *.jpg; *.jpeg; *.gif; *.webp; *.avif");
-		if (await picker.show() !== picker.returnOK) {
-			return null;
-		}
-		let ext = (picker.file.match(/\.(png|jpe?g|gif|webp|avif)$/i) || [])[1];
-		if (!ext) {
-			throw new Error("Choose a PNG, JPEG, GIF, WebP or AVIF image.");
-		}
-		let name = "background-" + Date.now() + "." + ext.toLowerCase();
-		await Zotero.File.createDirectoryIfMissingAsync(this.getDataDir());
-		await OS.File.copy(picker.file, OS.Path.join(this.getDataDir(), name));
-		return name;
-	},
-
-	async removeBackgroundFile(name) {
-		if (name) {
-			await OS.File.remove(OS.Path.join(this.getDataDir(), name), { ignoreAbsent: true });
-		}
-	},
-
 	saveAppearance(appearance) {
-		this.setPref("appearance", JSON.stringify(appearance));
+		let saved = Object.fromEntries(["accent", "size", "density", "font", "mascot", "labels"]
+			.map(key => [key, appearance[key]]));
+		this.setPref("appearance", JSON.stringify(saved));
 	},
 
 	// WCAG relative luminance and contrast ratio, used to pick readable text on the accent.
@@ -566,8 +523,8 @@ Zusia = {
 	},
 
 	applyAppearance(root, appearance = this.getAppearance()) {
-		if (root.dataset.readingTheme === "neutral") appearance = { ...appearance,
-			style: "flat", accent: "#666666", bubble: "neutral", background: "", pattern: "none", glow: false, corners: "rounded" };
+		// Retired decorations cannot be re-enabled by older saved preferences or callers.
+		appearance = { ...appearance, style: "flat", bubble: "neutral", corners: "rounded", pattern: "none" };
 		if (appearance.accent) {
 			root.style.setProperty("--zs-accent", appearance.accent);
 		}
@@ -578,7 +535,7 @@ Zusia = {
 		root.style.setProperty("--zs-font-size", this.FONT_SIZES[appearance.size]);
 		root.dataset.style = appearance.style;
 		root.dataset.bubble = appearance.bubble;
-		root.dataset.corners = appearance.corners || (appearance.style === "glass" ? "round" : "rounded");
+		root.dataset.corners = "rounded";
 		root.dataset.density = appearance.density;
 		root.dataset.font = appearance.font;
 		root.dataset.mascot = appearance.mascot;
@@ -586,39 +543,22 @@ Zusia = {
 		root.dataset.labels = appearance.labels;
 		this.applyBehaviour(root);
 		let headerIcon = root.querySelector(":scope > .zs-header > .zs-header-icon");
-		let wanted = this.MASCOTS[appearance.mascot].header;
+		let mascot = this.MASCOTS[appearance.mascot];
+		let wanted = mascot.header;
 		if (headerIcon && headerIcon.dataset.icon !== wanted) {
 			headerIcon.replaceWith(this.svgIcon(root.ownerDocument, wanted, "zs-header-icon"));
 		}
-		root.style.setProperty("--zs-glass-pct", appearance.glassOpacity + "%");
-		root.style.setProperty("--zs-glass-strong-pct", Math.min(97, appearance.glassOpacity + 30) + "%");
-		root.style.setProperty("--zs-blur", appearance.glassBlur + "px");
-		// The glow sits on top of the background image, so fade it as the image is
-		// turned up; at full visibility only the image shows.
-		let glow = appearance.glow ? appearance.glowStrength / 2 : 0;
-		if (appearance.background) {
-			glow *= 1 - appearance.imageVisibility / 100;
+		for (let companion of root.querySelectorAll(".zs-mascot")) {
+			if (companion.dataset.icon !== mascot.icon) {
+				companion.replaceWith(this.svgIcon(root.ownerDocument, mascot.icon, companion.getAttribute("class")));
+			}
 		}
-		root.style.setProperty("--zs-glow-strength", Math.round(glow * 10) / 10 + "%");
-		// The image is set on the element itself: Zotero will not load a file:// URL
-		// referenced from the plugin's stylesheet (jar:), even through a custom property.
+		delete root.dataset.bg;
+		for (let property of ["--zs-glass-pct", "--zs-glass-strong-pct", "--zs-blur", "--zs-glow-strength", "--zs-bg-veil", "--zs-bg-blur"]) {
+			root.style.removeProperty(property);
+		}
 		let image = root.querySelector(":scope > .zs-backdrop > .zs-backdrop-image");
-		if (appearance.background) {
-			root.dataset.bg = "image";
-			root.style.setProperty("--zs-bg-veil", (100 - appearance.imageVisibility) + "%");
-			root.style.setProperty("--zs-bg-blur", appearance.imageBlur + "px");
-			if (image) {
-				image.style.backgroundImage = "url(\"" + this.backgroundURL(appearance.background) + "\")";
-			}
-		}
-		else {
-			delete root.dataset.bg;
-			root.style.removeProperty("--zs-bg-veil");
-			root.style.removeProperty("--zs-bg-blur");
-			if (image) {
-				image.style.backgroundImage = "";
-			}
-		}
+		if (image) image.style.backgroundImage = "";
 	},
 
 	getPrompts() {
@@ -761,7 +701,7 @@ Zusia = {
 
 	// Settings changed in the Settings window update every open sidebar at once.
 	watchPrefs() {
-		let names = ["appearance", "prompts", "backend", "codex.models", "modeButtons", "language", "behaviour", "onboarded", "readingEvidenceMode"];
+		let names = ["agents", "agentValidation", "readingAgent", "appearance", "prompts", "backend", "codex.models", "modeButtons", "language", "behaviour", "onboarded", "readingEvidenceMode"];
 		for (let id of Object.keys(this.MODES)) {
 			names.push("mode." + id);
 		}
@@ -1202,7 +1142,7 @@ Zusia = {
 		let evidence = this.ghostButton(doc, "zs-reading-evidence-mode", "readingSource", "", () =>
 			this.openReadingEvidenceMenu(root, evidence), { chevron: true });
 		evidence.hidden = true;
-		identity.append(this.el(doc, "span", "zs-header-title", "AbstractIn"), evidence);
+		identity.append(this.el(doc, "span", "zs-header-title", "AbstractIn"));
 		header.append(
 			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "zs-header-icon"),
 			identity,
@@ -1287,7 +1227,7 @@ Zusia = {
 			button.title = mode.title + " (" + this.shortcutLabel(mode.key) + ")";
 			return button;
 		});
-		controls.append(attachButton, ...modeButtons, modelButton, effortButton, this.el(doc, "span", "zs-spacer"), send);
+		controls.append(evidence, attachButton, ...modeButtons, modelButton, effortButton, this.el(doc, "span", "zs-spacer"), send);
 
 		let context = this.el(doc, "div", "zs-context");
 		context.hidden = true;
@@ -1295,34 +1235,15 @@ Zusia = {
 		attachments.hidden = true;
 		composer.append(context, attachments, input, controls);
 		let readingBar = this.el(doc, "div", "zs-reading-bar");
-		readingBar.append(this.readingButton(doc, "zs-start-reading", () =>
-			this.openReadingSetup(root).catch(e => this.logError("Start Reading", e))),
-			this.el(doc, "span", "zs-reading-status", ""));
-		let readingTools = this.el(doc, "div", "zs-reading-tools");
-		for (let [className, label, action] of [
-			["zs-reading-workspace", "Reading workspace", view => this.openReadingWorkspace(view)],
-			["zs-reading-return", "Return to reading", view => this.returnToReading(view)],
-			["zs-reading-resume-here", "Resume here", async view => {
-				view.ctx.reading.referenceNavigation = false;
-				await this.rememberReadingPosition(view.ctx);
-				this.updateReadingControls(view);
-			}],
-		]) {
-			let button = this.el(doc, "button", "zs-reading-tool " + className, label);
-			button.type = "button";
-			button.addEventListener("click", () => {
-				let view = this._views.get(root);
-				if (view?.ctx.reading) Promise.resolve(action(view)).catch(e => this.appendError(view, e.message || String(e)));
-			});
-			readingTools.append(button);
-		}
-		readingTools.hidden = true;
-		readingBar.append(readingTools);
-		readingBar.append(this.el(doc, "span", "zs-reading-source-status", ""));
+
 		let companion = this.el(doc, "div", "zs-discussion-companion");
-		companion.appendChild(this.svgIcon(doc, "mascot-marmoset", "zs-mascot"));
-		readingBar.appendChild(companion);
-		root.append(header, readingBar, logWrap, quick, composer);
+		companion.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "zs-mascot"));
+		let assistantRow = this.el(doc, "div", "zs-reading-assistant");
+		assistantRow.append(companion, this.el(doc, "span", "zs-reading-invitation", "ask me a question!"), quick);
+		readingBar.prepend(assistantRow);
+		let statusBar = this.el(doc, "div", "zs-reading-statusbar");
+		statusBar.append(this.el(doc, "span", "zs-reading-status", ""), this.el(doc, "span", "zs-reading-source-status", ""));
+		root.append(header, logWrap, readingBar, composer, statusBar);
 		root.addEventListener("keydown", event => {
 			if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
 				this.copyAnswerSelection(root, event);
@@ -1336,7 +1257,6 @@ Zusia = {
 
 		this.updateControls(root);
 		this.renderQuickPrompts(root, quick);
-		quick.hidden = true;
 		this.checkInstalledBackends(root);
 		if (!this.getPref("onboarded")) {
 			this.showWizard(root);
@@ -1344,7 +1264,7 @@ Zusia = {
 	},
 
 	updateControls(root) {
-		let backend = this._views.get(root)?.ctx.reading ? "codex" : this.getBackend();
+		let backend = this._views.get(root)?.ctx.reading ? this.readingAgent() : this.getBackend();
 		let info = this.BACKENDS[backend];
 		let model = this.getModel(backend);
 		let effort = this.getEffort(backend);
@@ -1357,8 +1277,11 @@ Zusia = {
 		}
 		let effortButton = root.querySelector(".zs-effort-btn");
 		if (effortButton) {
+			effortButton.hidden = this.getEfforts(backend).length < 2;
 			effortButton.setLabel(this.EFFORTS[effort].label);
 		}
+		let attachment = root.querySelector(".zs-attach");
+		if (attachment) attachment.hidden = !info.images;
 		let shown = this.getModeButtons();
 		for (let button of root.querySelectorAll(".zs-mode")) {
 			let id = button.dataset.mode;
@@ -1371,8 +1294,9 @@ Zusia = {
 		}
 		let view = this._views.get(root);
 		if (view?.ctx.reading) {
-			input.placeholder = "Ask Codex about this " + (view.ctx.reading.type === "book" ? "book" : "paper") + "…";
+			input.placeholder = "Ask " + info.label + " about this " + (view.ctx.reading.type === "book" ? "book" : "paper") + "…";
 		}
+		if (view?.readingSetup) input.placeholder = "Reply to your reading companion…";
 		root.querySelector(".zs-menu")?.refresh?.();
 		if (view) this.updateReadingControls(view);
 	},
@@ -1398,9 +1322,9 @@ Zusia = {
 		let doc = root.ownerDocument;
 		let menu = this.openMenu(root, anchor, (menu) => {
 			let reading = this._views.get(root)?.ctx.reading;
-			let current = reading ? "codex" : this.getBackend();
+			let current = reading ? this.readingAgent() : this.getBackend();
 			for (let [key, backend] of Object.entries(this.BACKENDS)) {
-				if (reading && key !== "codex") continue;
+				if (reading && key !== "codex" && !this.getAgentValidation(key)?.discussion) continue;
 				let installed = root._installed ? root._installed[key] : undefined;
 				this.menuSection(doc, menu, backend.fullName);
 				if (installed === null) {
@@ -1415,7 +1339,8 @@ Zusia = {
 						checked: key === current && model.id === this.getModel(key),
 						onSelect: () => {
 							this.setPref(key + ".model", model.id);
-							this.setPref("backend", key);
+							if (reading) this.selectReadingAgent(key);
+							else this.setPref("backend", key);
 							this.closeMenu(root);
 							this.updateControls(root);
 						},
@@ -1520,6 +1445,7 @@ Zusia = {
 				this.menuItem(doc, menu, {
 					icon: value === "knowledge" ? "readingKnowledge" : "readingSource",
 					label, desc, checked: this.getReadingEvidenceMode() === value,
+					disabled: value === "source" && !this.agentCanReadSources(),
 					onSelect: () => {
 						this.setPref("readingEvidenceMode", value);
 						this.closeMenu(root);
@@ -1540,7 +1466,7 @@ Zusia = {
 	openEffortMenu(root, anchor) {
 		let doc = root.ownerDocument;
 		this.openMenu(root, anchor, (menu) => {
-			let backend = this._views.get(root)?.ctx.reading ? "codex" : this.getBackend();
+			let backend = this._views.get(root)?.ctx.reading ? this.readingAgent() : this.getBackend();
 			let current = this.getEffort(backend);
 			this.menuSection(doc, menu, "Reasoning effort · " + this.BACKENDS[backend].label);
 			for (let effort of this.getEfforts(backend)) {
@@ -1621,6 +1547,7 @@ Zusia = {
 
 	appendUser(view, text, images = [], modes = []) {
 		view.root.dataset.chatting = "true";
+		this.updateReadingControls(view);
 		let card = this.el(view.doc, "div", "zs-msg zs-user");
 		card.dataset.text = text;
 		card.images = images;
@@ -2132,9 +2059,12 @@ Zusia = {
 	renderEmptyState(view) {
 		let { doc } = view;
 		let empty = this.el(doc, "div", "zs-empty");
-		let mascot = this.MASCOTS[this.getAppearance().mascot];
-		if (mascot.icon) {
-			empty.appendChild(this.svgIcon(doc, mascot.icon, "zs-mascot"));
+		view.root.dataset.readingIntro = String(!view.ctx?.reading);
+		if (!view.ctx?.reading) {
+			empty.classList.add("zs-reading-welcome");
+			empty.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "zs-mascot"));
+			empty.appendChild(this.el(doc, "div", "zs-empty-title", "let's start reading"));
+			empty.appendChild(this.readingButton(doc, "zs-start-reading", () => this.openReadingSetup(view.root).catch(e => this.appendError(view, e.message || String(e)))));
 		}
 		if (view.ctx?.reading) empty.appendChild(this.el(doc, "div", "zs-empty-title", "Ask about this passage"));
 		let title = view.ctx && view.ctx.paperItem ? this.safeField(view.ctx.paperItem, "title") : "";
@@ -2162,7 +2092,10 @@ Zusia = {
 		view.logEl.textContent = "";
 		view.backStack = [];
 		this.updateBack(view);
+		delete view.readingSetup;
+		view.root.dataset.readingIntro = "false";
 		view.root.dataset.chatting = String(history.length > 0);
+		this.updateReadingControls(view);
 		let quick = view.root.querySelector(".zs-quick");
 		if (quick) {
 			this.markOverflow(quick);
@@ -2395,7 +2328,7 @@ Zusia = {
 			this.renderAttachments(view);
 		}
 
-		let backend = "codex";
+		let backend = this.readingAgent();
 		let pending = {
 			question,
 			images,
@@ -3122,10 +3055,6 @@ Zusia = {
 		}
 		else if (name === "look") {
 			hero("palette", "Your look");
-			section("palette", "Style", this.tiles(doc, [
-				{ value: "glass", label: "Glass", icon: "styleGlass" },
-				{ value: "flat", label: "Flat", icon: "styleFlat" },
-			], appearance().style, v => setAppearance({ style: v })));
 			let swatches = this.el(doc, "div", "zs-swatches");
 			swatches.setAttribute("role", "radiogroup");
 			let current = appearance().accent;
@@ -3145,11 +3074,11 @@ Zusia = {
 			}
 			section("sparkle", "Colour", swatches);
 		}
-		else if (name === "pattern") {
-			hero(mascotIcon(), "Reading backdrop");
-			section("patternMath", "Pattern", this.tiles(doc,
-				Object.entries(this.PATTERNS).map(([value, p]) => ({ value, label: p.label, icon: p.icon })),
-				appearance().pattern, v => setAppearance({ pattern: v })));
+		else if (name === "companion") {
+			hero(mascotIcon(), "Reading companion");
+			section(mascotIcon(), "Companion", this.tiles(doc,
+				Object.entries(this.MASCOTS).map(([value, p]) => ({ value, label: p.label, icon: p.icon })),
+				appearance().mascot, v => setAppearance({ mascot: v })));
 		}
 		else if (name === "answers") {
 			hero("levelStudent", "Your answers");
@@ -3602,11 +3531,11 @@ Zusia = {
 				return { error: "The selected passage belongs to a different attachment. Start Reading for that PDF first." };
 			}
 			if (ctx.reading) {
-				if (backend !== "codex") return { error: "Reading sessions require local Codex." };
 				let forbidSource = this.requestsKnowledgeDiscussion(question);
 				let preferred = pending.evidenceMode || this.getReadingEvidenceMode();
-				let sourceLookup = !forbidSource && (pending.sourceLookup || (preferred === "knowledge" && this.requestsReadingSource(question)));
+				let sourceLookup = !forbidSource && (pending.sourceLookup || (preferred === "knowledge" && this.agentCanReadSources(backend) && this.requestsReadingSource(question)));
 				let evidenceMode = pending.readingAction ? "source" : forbidSource ? "knowledge" : sourceLookup ? "source" : preferred;
+				await this.assertAgentReadingReady(backend, evidenceMode);
 				ctx = { ...ctx, reading: evidenceMode === "knowledge" ? { ...ctx.reading } : await this.prepareReadingSkills(ctx) };
 				ctx.reading.evidenceMode = evidenceMode;
 				ctx.reading.forbidSource = forbidSource;
@@ -3645,14 +3574,14 @@ Zusia = {
 			let sessions = await this.loadSessions(ctx.dir);
 			let session = sessions[backend] || null;
 			// A model change starts a fresh thread, preserving history in the prompt.
-			if (backend === "codex" && session && session.model !== (pending.model || "")) session = null;
+			if (session && session.model !== (pending.model || "")) session = null;
 			if (ctx.reading && session && session.sourceSignature !== pdfSource.signature) session = null;
 			if (ctx.reading && session && (session.evidenceMode || "source") !== ctx.reading.evidenceMode) session = null;
 			if (pending.readingAction === "contents") session = null;
 
 			let images = pending.images || [];
 			if (images.length && !this.BACKENDS[backend].images) {
-				return { error: label + " cannot see images from the sidebar. Switch to Claude or Codex, or remove the image and ask again." };
+				return { error: label + " cannot see images from the sidebar. Choose an image-capable agent or remove the image and ask again." };
 			}
 			let request = {
 				ctx, files, history: pending.readingAction === "contents" ? [] : history, session, images,
@@ -3671,6 +3600,7 @@ Zusia = {
 					}
 				},
 			};
+			if (ctx.reading) request.question += await this.agentReadingContext(backend, ctx);
 			let result = await this.runBackend(backend, request);
 			let modelFallback = false;
 			// Account model availability can differ from the sidebar's model list.
@@ -3700,7 +3630,7 @@ Zusia = {
 				result = await this.runBackend(backend, Object.assign({}, request, { session: null }));
 			}
 
-			if (ctx.reading?.evidenceMode === "knowledge" && !ctx.reading.forbidSource && !pending.sourceLookup &&
+			if (ctx.reading?.evidenceMode === "knowledge" && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && !pending.sourceLookup &&
 				!pending.cancelled && /<abstractin-source-needed>[\s\S]*?<\/abstractin-source-needed>/.test(result.text || "")) {
 				pending.progress({ text: "", status: "missing document evidence; verifying the requested passage" });
 				pending.evidenceMode = "source";
@@ -3787,7 +3717,7 @@ Zusia = {
 			}
 			if (result.sessionId) {
 				sessions[backend] = { id: result.sessionId, seen: history.length + 2,
-					...(backend === "codex" ? { model: pending.model || "" } : {}) };
+					model: pending.model || "" };
 				if (ctx.reading) sessions[backend].sourceSignature = pdfSource.signature;
 				if (ctx.reading) sessions[backend].evidenceMode = ctx.reading.evidenceMode;
 				await this.saveSessions(ctx.dir, sessions);
@@ -3816,7 +3746,6 @@ Zusia = {
 			this.buildChatCard(doc),
 			this.buildAppearanceCard(doc, prefs),
 			this.buildBehaviourCard(doc),
-			this.buildTroubleshootingCard(doc),
 		);
 		container.appendChild(prefs);
 	},
@@ -3938,91 +3867,6 @@ Zusia = {
 		return group;
 	},
 
-	buildAssistantsCard(doc) {
-		let card = this.card(doc, "Assistants",
-			"Command-line agents that answer in the sidebar. Each one uses your own subscription login, so no API key is needed. Model and effort can also be changed from the chat box.");
-
-		let backendSelect = this.select(doc,
-			Object.entries(this.BACKENDS).map(([key, b]) => [key, b.fullName]),
-			this.getBackend(),
-			(value) => {
-				this.setPref("backend", value);
-				card.querySelectorAll(".zs-agent").forEach(a => a.querySelector(".zs-badge").hidden = a.dataset.backend !== value);
-			});
-		card.body.appendChild(this.row(doc, "Answer with", backendSelect));
-
-		for (let [key, backend] of Object.entries(this.BACKENDS)) {
-			let details = this.el(doc, "details", "zs-agent");
-			details.dataset.backend = key;
-			let summary = this.el(doc, "summary");
-			let name = this.el(doc, "span", "zs-agent-name");
-			let status = this.el(doc, "span", "zs-agent-status", "Checking…");
-			name.append(this.el(doc, "strong", null, backend.fullName), status);
-			let badge = this.el(doc, "span", "zs-badge", "In use");
-			badge.hidden = key !== this.getBackend();
-			summary.append(this.el(doc, "span", "zs-agent-dot"), name, badge, this.svgIcon(doc, "chevron", "zs-agent-chevron"));
-			details.appendChild(summary);
-
-			let body = this.el(doc, "div", "zs-agent-body");
-			let modelSelect = this.select(doc,
-				this.getModels(key).map(m => [m.id, m.label + (m.id && m.id !== m.label.toLowerCase() ? "  (" + m.id + ")" : "")]),
-				this.getModel(key),
-				value => this.setPref(key + ".model", value));
-			body.appendChild(this.row(doc, "Model", modelSelect));
-			if (key === "agy") {
-				this.loadAgyModels().then(() => modelSelect.refill(this.getModels(key).map(m => [m.id, m.label]), this.getModel(key)));
-			}
-			body.appendChild(this.row(doc, "Reasoning effort", this.select(doc,
-				backend.efforts.map(e => [e, this.EFFORTS[e].label + " — " + this.EFFORTS[e].desc]),
-				this.getEffort(key),
-				value => this.setPref(key + ".effort", value))));
-			if (key === "codex") {
-				let models = doc.createElementNS("http://www.w3.org/1999/xhtml", "input");
-				models.type = "text";
-				models.className = "zs-field";
-				models.placeholder = "e.g. gpt-5.5, gpt-5.5-mini";
-				models.value = this.getPref("codex.models") || "";
-				models.addEventListener("change", () => {
-					this.setPref("codex.models", models.value);
-					modelSelect.refill(this.getModels(key).map(m => [m.id, m.label]), this.getModel(key));
-				});
-				body.appendChild(this.row(doc, "Extra models", models, "Comma-separated model names to offer in the model menu."));
-			}
-			let path = doc.createElementNS("http://www.w3.org/1999/xhtml", "input");
-			path.type = "text";
-			path.className = "zs-field";
-			path.placeholder = "Detect “" + backend.command + "” automatically";
-			path.value = this.getPref(backend.pathPref) || "";
-			path.addEventListener("change", () => {
-				this.setPref(backend.pathPref, path.value.trim());
-				refreshStatus();
-			});
-			body.appendChild(this.row(doc, "Command path", path));
-			if (key === "claude") {
-				body.appendChild(this.row(doc, "Use my Claude Code settings",
-					this.switchControl(doc, !!this.getPref("useClaudeUserSettings"), v => this.setPref("useClaudeUserSettings", v)),
-					"Loads ~/.claude settings, CLAUDE.md and MCP servers. Off by default: instructions written for the terminal do not fit a sidebar."));
-			}
-			details.appendChild(body);
-			card.body.appendChild(details);
-
-			let refreshStatus = () => this.probeBinary(key).then(async (found) => {
-				details.dataset.found = String(!!found);
-				status.textContent = found || "Not found — install the " + backend.command + " CLI or set its path";
-				if (found && key === "agy") {
-					await this.loadAgyModels();
-					if (this._agyModelsError) {
-						details.dataset.found = "false";
-						status.textContent = "Signed-in check failed — open for details";
-						body.insertBefore(this.row(doc, "Sign-in", this.el(doc, "div", "zs-row-hint", this._agyModelsError), null, { stack: true }), body.firstChild);
-					}
-				}
-			});
-			refreshStatus();
-		}
-		return card;
-	},
-
 	buildChatCard(doc) {
 		let card = this.card(doc, "Chat", "Quick prompts appear as buttons above the message box.");
 
@@ -4132,9 +3976,6 @@ Zusia = {
 	buildAppearanceCard(doc, prefsRoot) {
 		let card = this.card(doc, "Appearance", "Colours follow Zotero's light and dark themes.");
 		let appearance = this.getAppearance();
-		let glassRows = [];
-		let imageRows = [];
-		let glowRows = [];
 		let update = (changes) => {
 			appearance = Object.assign({}, appearance, changes);
 			this.saveAppearance(appearance);
@@ -4146,16 +3987,6 @@ Zusia = {
 					: !isPreset;
 				swatch.setAttribute("aria-checked", String(checked));
 			});
-			glassRows.forEach(row => (row.hidden = appearance.style !== "glass"));
-			glowRows.forEach(row => (row.hidden = appearance.style !== "glass" || !appearance.glow));
-			imageRows.forEach(row => (row.hidden = !appearance.background));
-			preview.style.backgroundImage = appearance.background
-				? "url(\"" + this.backgroundURL(appearance.background) + "\")" : "";
-			preview.hidden = !appearance.background;
-			removeImage.disabled = !appearance.background;
-			// Corners follow the style until one is picked, so show the effective choice.
-			corners.querySelectorAll("button").forEach((button, i) => button.setAttribute("aria-checked",
-				String(["square", "rounded", "round"][i] === prefsRoot.dataset.corners)));
 		};
 
 		let swatches = this.el(doc, "div", "zs-swatches");
@@ -4181,64 +4012,15 @@ Zusia = {
 		custom.appendChild(picker);
 		swatches.appendChild(custom);
 
-		// Background image: a thumbnail with Choose and Remove.
-		let preview = this.el(doc, "span", "zs-bg-preview");
-		let chooseImage = this.el(doc, "button", "zs-button", "Choose image…");
-		chooseImage.type = "button";
-		chooseImage.addEventListener("click", async () => {
-			try {
-				let name = await this.pickBackground(doc.defaultView);
-				if (name) {
-					let old = appearance.background;
-					update({ background: name });
-					await this.removeBackgroundFile(old);
-				}
-			}
-			catch (e) {
-				this.logError("pickBackground", e);
-				doc.defaultView.alert(String((e && e.message) || e));
-			}
-		});
-		let removeImage = this.el(doc, "button", "zs-button", "Remove");
-		removeImage.type = "button";
-		removeImage.addEventListener("click", async () => {
-			let old = appearance.background;
-			update({ background: "" });
-			await this.removeBackgroundFile(old);
-		});
-		let imageControls = this.el(doc, "div", "zs-button-row");
-		imageControls.append(preview, chooseImage, removeImage);
-
-		let corners = this.segmented(doc, [["square", "Square"], ["rounded", "Rounded"], ["round", "Round"]],
-			"", v => update({ corners: v }));
-
 		let row = (...args) => this.row(doc, ...args);
-		let slider = (key, min, max, unit) => this.range(doc, { min, max, value: appearance[key], unit }, v => update({ [key]: v }));
-		imageRows.push(
-			row("Image visibility", slider("imageVisibility", 0, 100, "%"), "Lower values fade the image into the pane so text stays readable."),
-			row("Image blur", slider("imageBlur", 0, 20, "px")),
-		);
-		glassRows.push(
-			row("Glass opacity", slider("glassOpacity", 10, 95, "%"), "How solid messages and the message box are."),
-			row("Glass blur", slider("glassBlur", 0, 40, "px"), "How much the message box and menus blur what is behind them."),
-			row("Background glow", this.switchControl(doc, appearance.glow, v => update({ glow: v }))),
-		);
-		glowRows.push(row("Glow intensity", slider("glowStrength", 0, 100, "%")));
 
 		card.body.append(
-			row("Style", this.segmented(doc, [["glass", "Glass"], ["flat", "Flat"]], appearance.style, v => update({ style: v }))),
-			row("Pattern", this.tiles(doc, Object.entries(this.PATTERNS).map(([value, p]) => ({ value, label: p.label, icon: p.icon })),
-				appearance.pattern, v => update({ pattern: v })), null, { stack: true }),
+			row("Reading companion", this.tiles(doc, Object.entries(this.MASCOTS).map(([value, p]) => ({ value, label: p.label, icon: p.icon })),
+				appearance.mascot, v => update({ mascot: v })), null, { stack: true }),
 			row("Button labels", this.segmented(doc, [["icons", "Icons only"], ["text", "Icons + text"]], appearance.labels, v => update({ labels: v }))),
 			row("Accent colour", swatches, "Used for the send button, links, theorem boxes and drawings."),
-			row("Background image", imageControls, "Shown behind the chat."),
-			...imageRows,
-			...glassRows,
-			...glowRows,
-			row("Corners", corners),
 			row("Spacing", this.segmented(doc, [["compact", "Compact"], ["comfortable", "Comfortable"], ["roomy", "Roomy"]], appearance.density, v => update({ density: v }))),
 			row("Font", this.segmented(doc, Object.entries(this.FONTS), appearance.font, v => update({ font: v }))),
-			row("Your messages", this.segmented(doc, [["neutral", "Neutral"], ["accent", "Tinted"]], appearance.bubble, v => update({ bubble: v }))),
 			row("Text size", this.segmented(doc, [["small", "Small"], ["default", "Default"], ["large", "Large"]], appearance.size, v => update({ size: v }))),
 		);
 		update({});
@@ -4273,27 +4055,6 @@ Zusia = {
 			row("Thinking steps", toggle("showSteps"), "Show what the assistant read and searched."),
 			row("Quick prompts", toggle("showQuick")),
 		);
-		return card;
-	},
-
-	buildTroubleshootingCard(doc) {
-		let card = this.card(doc, "Troubleshooting",
-			"Conversations are stored per paper in the data folder. The debug log records what the sidebar ran and any errors.");
-		let folder = this.el(doc, "button", "zs-button", "Show data folder");
-		folder.type = "button";
-		folder.addEventListener("click", async () => {
-			await Zotero.File.createDirectoryIfMissingAsync(this.getDataDir());
-			Zotero.File.reveal(this.getDataDir());
-		});
-		let logButton = this.el(doc, "button", "zs-button", "Open debug log");
-		logButton.type = "button";
-		logButton.addEventListener("click", () => Zotero.launchFile(this.getLogPath()));
-		let setup = this.el(doc, "button", "zs-button", "Run setup again");
-		setup.type = "button";
-		setup.addEventListener("click", () => this.setPref("onboarded", false));
-		let buttons = this.el(doc, "div", "zs-button-row");
-		buttons.append(folder, logButton, setup);
-		card.body.appendChild(this.row(doc, "Files", buttons));
 		return card;
 	},
 
@@ -4716,6 +4477,7 @@ Zusia = {
 	},
 
 	sendText(view, text, images = []) {
+		if (view.readingSetup) return this.answerReadingSetup(view, text);
 		let draft = view.draftSelection;
 		view.draftSelection = null;
 		let quoteLine = draft && draft.quote.split("\n").find(line => line.startsWith("> "));
@@ -5597,6 +5359,16 @@ Zusia = {
 		await Zotero.File.createDirectoryIfMissingAsync(this.getDataDir());
 		await Zotero.File.createDirectoryIfMissingAsync(dir);
 		let reading = attachmentItem && this._readingStates.get(attachmentItem.id);
+		if (!reading && attachmentItem) {
+			try {
+				let saved = JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(dir, "reading-" + attachmentItem.key, "reading.json")));
+				if (saved.itemKey === paperItem.key && saved.attachmentKey === attachmentItem.key && ["book", "paper"].includes(saved.type)) {
+					reading = { type: saved.type, title: saved.title || "", goal: saved.goal || "" };
+					this._readingStates.set(attachmentItem.id, reading);
+				}
+			}
+			catch (e) { /* A new document starts with the companion introduction. */ }
+		}
 		if (reading) {
 			dir = OS.Path.join(dir, "reading-" + attachmentItem.key);
 			await Zotero.File.createDirectoryIfMissingAsync(dir);
@@ -5796,12 +5568,14 @@ Zusia = {
 		}
 	},
 
-	buildChildEnvironment() {
+	buildChildEnvironment({ preserveAPIKeys = false } = {}) {
 		let env = Subprocess.getEnvironment();
 		// Force subscription logins instead of pay-per-token API keys.
-		delete env.ANTHROPIC_API_KEY;
-		delete env.ANTHROPIC_AUTH_TOKEN;
-		delete env.OPENAI_API_KEY;
+		if (!preserveAPIKeys) {
+			delete env.ANTHROPIC_API_KEY;
+			delete env.ANTHROPIC_AUTH_TOKEN;
+			delete env.OPENAI_API_KEY;
+		}
 
 		let home = env.HOME || env.USERPROFILE || "";
 		let sep = Zotero.isWin ? ";" : ":";
@@ -5898,12 +5672,12 @@ Zusia = {
 		);
 	},
 
-	async runProcess(command, args, workdir, onEvent, onSpawn, stdinText = null) {
+	async runProcess(command, args, workdir, onEvent, onSpawn, stdinText = null, environment = null) {
 		this.log("Spawning: " + command + " " + args.map(a => "'" + a.slice(0, 60) + "'").join(" "));
 		let proc = await Subprocess.call({
 			command,
 			arguments: args,
-			environment: this.buildChildEnvironment(),
+			environment: environment || this.buildChildEnvironment(),
 			workdir,
 			stderr: "pipe",
 		});

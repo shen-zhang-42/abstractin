@@ -19,7 +19,7 @@ test("README explains install, build, test and opens with the illustration", () 
 
 test("the README videos are recorded in Zotero and shown with their full-quality copies", () => {
 	const readme = read("README.md");
-	for (const video of ["zusia-chat", "zusia-style", "zusia-proof", "zusia-explain-better", "zusia-figure"]) {
+	for (const video of ["zusia-chat", "zusia-proof", "zusia-explain-better", "zusia-figure"]) {
 		assert.ok(readme.includes(`docs/videos/${video}.gif`), video + ".gif shown");
 		assert.ok(readme.includes(`docs/videos/${video}.mp4`), video + ".mp4 linked");
 	}
@@ -39,7 +39,7 @@ test("every bundled third-party file is credited with its licence", () => {
 	}
 	const icons = readdirSync(new URL("../src/content/icons/", import.meta.url)).filter(f => f.endsWith(".svg"));
 	const own = icons.filter(f => f.startsWith("mascot-"));
-	assert.deepEqual(own.sort(), ["mascot-marmoset.svg"], "the marmoset is the only bundled reading companion");
+	assert.deepEqual(own.sort(), ["mascot-marmoset.svg", "mascot-puffin.svg", "mascot-wagtail.svg"], "all original reading companions are bundled");
 });
 
 test("the extension uses the AbstractIn name and its own plugin identity", () => {

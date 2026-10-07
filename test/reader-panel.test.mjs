@@ -259,13 +259,15 @@ test("reader UI uses HTML controls inside Zotero's XUL document and retains head
  assert.equal(answer.querySelector('table').namespaceURI, 'http://www.w3.org/1999/xhtml');
 });
 
-test("dedicated reading panel uses a plain neutral appearance even with old colorful preferences", async () => {
+test("dedicated reading panel ignores old decorations and follows the chosen accent", async () => {
  const { plugin: p, prefs, document: doc, a } = setup();
  prefs['extensions.abstractin.appearance'] = JSON.stringify({ style: 'glass', accent: '#4072e5', pattern: 'math', glow: true });
  await p.openReaderPanel(a);
  const root = doc.querySelector('.zs-reader-panel .zs-root');
  assert.equal(root.dataset.style, 'flat'); assert.equal(root.dataset.pattern, 'none');
- assert.equal(root.style.getPropertyValue('--zs-glow-strength'), '0%');
- assert.equal(root.style.getPropertyValue('--zs-accent'), '#666666');
+ assert.equal(root.style.getPropertyValue('--zs-glow-strength'), '');
+ assert.equal(root.style.getPropertyValue('--zs-accent'), '#4072e5');
+ prefs['extensions.abstractin.appearance'] = JSON.stringify({ accent: '#6d4fd6' });
  p.refreshRoot(root); assert.equal(root.dataset.style, 'flat'); assert.equal(root.dataset.pattern, 'none');
+ assert.equal(root.style.getPropertyValue('--zs-accent'), '#6d4fd6');
 });

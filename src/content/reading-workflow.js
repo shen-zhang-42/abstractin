@@ -574,7 +574,7 @@ Object.assign(Zusia, {
 		await this.navigateReading(view, location, false);
 	},
 
-	async beginReadingWorkflow(view) {
+	async beginReadingWorkflow(view, { showWorkspace = true } = {}) {
 		let ctx = view.ctx;
 		let position = this.readingArtifactData(this.readingArtifactNotes(ctx, "Position")[0]);
 		try {
@@ -587,6 +587,7 @@ Object.assign(Zusia, {
 		catch (e) { this.appendError(view, "Reading position could not be restored or saved: " + (e.message || e)); }
 		this.trackReadingPosition(view);
 		await this.exportReadingRecords(ctx);
+		if (!this.agentCanReadSources()) { if (showWorkspace) this.openReadingWorkspace(view); return; }
 		if (ctx.reading.type === "book" && !ctx.reading.contentsAttempted) {
 			try {
 				let attempt = JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "contents-auto-attempt.json")));
@@ -600,7 +601,7 @@ Object.assign(Zusia, {
 			catch (e) { this.logError("contents initialization attempt", e); }
 			this.startRequest(view, "Initialize the actual book contents without chapter summaries.", [], [], { readingAction: "contents" });
 		}
-		else this.openReadingWorkspace(view);
+		else if (showWorkspace) this.openReadingWorkspace(view);
 	},
 
 	openReadingWorkspace(view) {
@@ -644,7 +645,8 @@ Object.assign(Zusia, {
 			panel.remove();
 			this.startRequest(view, action === "contents" ? "Initialize the actual book contents without chapter summaries." : "Generate or update the paper summary using scientific-paper-reading.", [], [], { readingAction: action });
 		});
-		generate.disabled = this._pending.has(ctx.dir);
+		generate.disabled = this._pending.has(ctx.dir) || !this.agentCanReadSources();
+		if (!this.agentCanReadSources()) generate.title = "Choose an agent that passed original-source checks to initialize or summarize.";
 		button("Go to questions", () => panel.remove());
 		body.append(this.el(doc, "p", null, action === "contents" ? "Initialize structure from the actual contents. Chapter summaries are generated only when you ask." : "Choose whether to summarize first or ask immediately. Existing summaries are saved as editable Zotero notes."), controls);
 		if (action === "contents" && !note && ctx.reading.contentsAttempted) body.append(this.el(doc, "p", "zs-notice", "Contents are not saved yet. Initialize contents to retry explicitly, or go straight to questions. Start Reading will not repeat the scan automatically."));

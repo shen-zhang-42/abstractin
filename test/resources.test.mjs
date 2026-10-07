@@ -63,7 +63,7 @@ test("all bundled artwork and control icons render even when resource reads fail
  const root = body.querySelector(".zs-root");
  p.renderEmptyState({ doc, root, logEl: root.querySelector(".zs-log"), ctx: { dir: "/tmp/reading" } });
  const avatar = root.querySelector(".zs-header-icon svg");
- const companion = root.querySelector(".zs-empty .zs-mascot svg");
+ const companion = root.querySelector(".zs-discussion-companion .zs-mascot svg");
  assert.equal(avatar?.namespaceURI, "http://www.w3.org/2000/svg");
  assert.equal(companion?.namespaceURI, "http://www.w3.org/2000/svg");
  assert.equal(avatar.getAttribute("stroke"), "#808088");

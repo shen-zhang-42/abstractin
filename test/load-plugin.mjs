@@ -29,6 +29,7 @@ export function loadPlugin({ prefs = {} } = {}) {
 	window.eval(read("src/content/reading.js"));
 	window.eval(read("src/content/reading-workflow.js"));
 	window.eval(read("src/content/reader-panel.js"));
+	window.eval(read("src/content/agents.js"));
 	const plugin = window.Zusia;
 	plugin.rootURI = "./";
 	return { window, document: window.document, plugin, prefs };
