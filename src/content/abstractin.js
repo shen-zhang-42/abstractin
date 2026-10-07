@@ -1168,13 +1168,15 @@ AbstractIn = {
 		context.hidden = true;
 		let attachments = this.el(doc, "div", "abstractin-attachments");
 		attachments.hidden = true;
-		composer.append(context, attachments, input, controls);
+		let shortcuts = this.el(doc, "div", "abstractin-composer-shortcuts"); shortcuts.append(quick);
+		let composerHead = this.el(doc, "div", "abstractin-composer-head"); composerHead.append(context, shortcuts);
+		composer.append(composerHead, attachments, input, controls);
 		let readingBar = this.el(doc, "div", "abstractin-reading-bar");
 
 		let companion = this.el(doc, "div", "abstractin-discussion-companion");
 		companion.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"));
 		let assistantRow = this.el(doc, "div", "abstractin-reading-assistant");
-		assistantRow.append(companion, this.el(doc, "span", "abstractin-reading-invitation", "Ask me a question?"), quick);
+		assistantRow.append(companion, this.el(doc, "span", "abstractin-reading-invitation", "Ask me a question?"));
 		readingBar.prepend(assistantRow);
 		let statusBar = this.el(doc, "div", "abstractin-reading-statusbar");
 		statusBar.append(this.el(doc, "span", "abstractin-reading-status", ""), this.el(doc, "span", "abstractin-reading-source-status", ""));
@@ -1198,6 +1200,17 @@ AbstractIn = {
 		}
 	},
 
+	updateComposerPlaceholder(root) {
+		const input = root.querySelector(".abstractin-input"); if (!input) return;
+		const view = this._views.get(root);
+		if (view?.readingSetup) { input.placeholder = "Reply to your reading companion…"; return; }
+		const item = view?.ctx.paperItem;
+		const type = view?.ctx.reading?.type || item?.itemType || (item?.itemTypeID ? Zotero.ItemTypes?.getName(item.itemTypeID) : null);
+		const material = type === "book" || type === "bookSection" ? "book" : "paper";
+		const backend = view?.ctx.reading ? this.readingAgent() : this.getBackend();
+		input.placeholder = "Ask " + this.BACKENDS[backend].label + " about this " + material + "…";
+	},
+
 	updateControls(root) {
 		let backend = this._views.get(root)?.ctx.reading ? this.readingAgent() : this.getBackend();
 		let info = this.BACKENDS[backend];
@@ -1217,15 +1230,8 @@ AbstractIn = {
 		}
 		let attachment = root.querySelector(".abstractin-attach");
 		if (attachment) attachment.hidden = !info.images;
-		let input = root.querySelector(".abstractin-input");
-		if (input) {
-			input.placeholder = "Ask " + info.label + " about this paper…";
-		}
+		this.updateComposerPlaceholder(root);
 		let view = this._views.get(root);
-		if (view?.ctx.reading) {
-			input.placeholder = "Ask " + info.label + " about this " + (view.ctx.reading.type === "book" ? "book" : "paper") + "…";
-		}
-		if (view?.readingSetup) input.placeholder = "Reply to your reading companion…";
 		root.querySelector(".abstractin-menu")?.refresh?.();
 		if (view) this.updateReadingControls(view);
 	},
@@ -1424,20 +1430,22 @@ AbstractIn = {
 			let button = this.ghostButton(doc, "abstractin-prompt-menu", null, "Quick questions", () => {
 				this.openMenu(root, button, menu => {
 					let currentView = this._views.get(root);
+					menu.classList.add("abstractin-quick-question-menu");
 					this.menuSection(doc, menu, type === "book" ? "Book questions" : "Paper questions");
 					for (let { label, prompt } of this.getPrompts(type).filter(p => p.prompt.trim())) {
-						this.menuItem(doc, menu, {
+						const item = this.menuItem(doc, menu, {
 							label: label.trim() || prompt,
-							desc: prompt,
 							disabled: !currentView || this._pending.has(currentView.ctx.dir),
 							onSelect: () => { this.closeMenu(root); let current = this._views.get(root); if (current) this.editPrompt(current, prompt); },
 						});
+						item.title = prompt;
 					}
 				});
 			}, { chevron: true });
 			button.title = type === "book" ? "Choose a book question" : "Choose a paper question";
 			button.setAttribute("aria-label", button.title);
-			quick.appendChild(button);
+			const divider = this.el(doc, "span", "abstractin-quick-divider"); divider.setAttribute("aria-hidden", "true");
+			quick.append(divider, button);
 		}
 		quick.hidden = !prompts.length;
 		if (view) this.setBusy(view, this._pending.has(view.ctx.dir));
@@ -2086,6 +2094,7 @@ AbstractIn = {
 
 	setBusy(view, busy) {
 		let { root } = view;
+		root.dataset.answering = String(!!busy);
 		let send = root.querySelector(".abstractin-send");
 		if (send) {
 			send.classList.toggle("abstractin-stop", busy);
@@ -5487,11 +5496,11 @@ AbstractIn = {
 			"When mathematics is useful, write it in LaTeX: $...$ inline and $$...$$ on their own lines for displayed " +
 			"equations (align, cases and matrix environments work). Never write maths with Unicode " +
 			"symbols such as ‖, Σ, ≤, subscript digits or superscript letters; use \\|, \\sum, \\le, x_1 " +
-			"instead. For formal statements you may use \\begin{definition}, theorem, lemma, " +
+			"instead. When stating a mathematical definition or theorem-like result, use \\begin{definition}, theorem, lemma, " +
 			"proposition, corollary, remark, example and proof environments, optionally with a " +
 			"[title]; they render as styled boxes, numbered across the whole chat. Give every " +
 			"definition, theorem, lemma, proposition and corollary a unique \\label{kind:short-name} " +
-			"right after its \\begin{...}[title] (for example \\label{def:metric-space}). When a later " +
+			"right after its \\begin{...}[title] (for example \\label{def:metric-space}). Give key displayed equations \\tag{1}, \\tag{2}, etc. when later steps refer to them; do not number trivial inline formulas. When a later " +
 			"step uses a statement already given in this conversation, write \\ref{its-label} in running " +
 			"text (never inside $...$) instead of restating it: the sidebar turns it into a link. Only " +
 			"reference labels that exist. Markdown tables and > quotes also render. Do not " +
@@ -5525,7 +5534,7 @@ AbstractIn = {
 		return "\n\n(Sidebar formatting: choose prose, maths and formal environments to suit the material and question; explicit user requests take precedence. " +
 			"When using maths, use LaTeX with $...$ / $$...$$, no Unicode maths symbols. " +
 			"Draw only when requested in this question, as ```svg blocks using only the sidebar's colour names. " +
-			"When using formal statements, use \\label and \\ref earlier ones." +
+			"For mathematical definitions and theorem-like statements, use formal environments with \\label; use \\ref for earlier ones and \\tag for key equations when later referring to them." +
 			(language ? " Always reply in " + language + ", whatever language the user writes in." : " Reply in the language the user writes in.") + ")";
 	},
 

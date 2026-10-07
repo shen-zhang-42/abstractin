@@ -16,6 +16,11 @@
    try { await iterator.forEach(entry => entries.push({ name: entry.name, path: entry.path, isDir: !!entry.isDir, isSymLink: !!entry.isSymLink })); } finally { iterator.close(); }
    return entries;
   },
+  visibleDiscussions(index) { return index.chats.filter(c => !c.deletedAt && !c.supersededBy); },
+  nextDiscussionNumber(index, chapterID) {
+   const numbers = (index.chats.some(c => c.numberingRevision) ? this.visibleDiscussions(index) : index.chats).flatMap(c => [...(c.chapterID === chapterID ? [c.number] : []), ...(c.numberHistory || []).filter(n => n.chapterID === chapterID).map(n => n.number)]);
+   return Math.max(0, ...numbers) + 1;
+  },
   discussionRoot(ctx) { return ctx.documentDir || ctx.dir; },
   async readDiscussionJSON(path, fallback = null) {
    try { return JSON.parse(await Zotero.File.getContentsAsync(path)); }
@@ -96,8 +101,8 @@
      !next && totalPages ? totalPages - 1 : null;
    }
   },
-  async createDiscussion(ctx, index, chapterID = null, topic = "discussion", seed = [], metadata = {}) {
-   const number = Math.max(0, ...index.chats.filter(c => c.chapterID === chapterID).map(c => c.number)) + 1;
+  async createDiscussion(ctx, index, chapterID = null, topic = "discussion", seed = [], metadata = {}, { persist = true } = {}) {
+   const number = this.nextDiscussionNumber(index, chapterID);
    const chat = { id: this.chatSyncID(), chapterID, number, topic, createdAt: Date.now(), updatedAt: Date.now(), ...metadata };
    const root = this.discussionRoot(ctx), container = OS.Path.join(root, "discussions");
    await Zotero.File.createDirectoryIfMissingAsync(container);
@@ -105,7 +110,7 @@
    await Zotero.File.putContentsAsync(OS.Path.join(dir, "chat.json"), JSON.stringify(seed));
    index.chats.push(chat); if (!metadata.migrated) index.active = chat.id;
    if (chapterID) index.chapters.find(c => c.id === chapterID).activeChat = chat.id;
-   await this.writeDiscussionIndex(ctx, index);
+   if (persist) await this.writeDiscussionIndex(ctx, index);
    return chat;
   },
   discussionContext(ctx, chat) {
@@ -130,15 +135,20 @@
    for (const { data } of parts) if (data.discussionID && /^[a-z0-9-]+$/.test(data.discussionID) && data.discussion?.id === data.discussionID &&
     (!remote.has(data.discussionID) || data.updatedAt > remote.get(data.discussionID).updatedAt)) remote.set(data.discussionID, data);
    for (const data of remote.values()) {
-    if (index.chats.some(c => c.id === data.discussionID)) continue;
     const record = data.discussion;
+    const existing = index.chats.find(c => c.id === data.discussionID);
+    if (existing) {
+     if (record.deletedAt) existing.deletedAt = record.deletedAt;
+     if (record.supersededBy) existing.supersededBy = record.supersededBy;
+     continue;
+    }
     if (!Number.isInteger(record.number) || record.number < 1) continue;
     if (data.chapter && !index.chapters.some(c => c.id === data.chapter.id)) index.chapters.push(data.chapter);
-    index.chats.push({ id: record.id, chapterID: record.chapterID || null, number: record.number, topic: String(record.topic || "discussion"), createdAt: record.createdAt || data.updatedAt, updatedAt: data.updatedAt });
+    index.chats.push({ id: record.id, chapterID: record.chapterID || null, number: record.number, topic: String(record.topic || "discussion"), createdAt: record.createdAt || data.updatedAt, updatedAt: data.updatedAt, ...(record.numberingRevision ? { numberingRevision: record.numberingRevision } : {}), ...(record.numberHistory ? { numberHistory: record.numberHistory } : {}), ...(record.mergedFrom ? { mergedFrom: record.mergedFrom } : {}), ...(record.deletedAt ? { deletedAt: record.deletedAt } : {}), ...(record.supersededBy ? { supersededBy: record.supersededBy } : {}) });
     const container = OS.Path.join(this.discussionRoot(ctx), "discussions"); await Zotero.File.createDirectoryIfMissingAsync(container);
     await Zotero.File.createDirectoryIfMissingAsync(OS.Path.join(container, record.id));
    }
-   let chat = index.chats.find(c => c.id === index.active) || index.chats.slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
+   let chat = this.visibleDiscussions(index).find(c => c.id === index.active) || this.visibleDiscussions(index).slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
    if (!chat) chat = await this.createDiscussion(ctx, index);
    else { index.active = chat.id; await this.writeDiscussionIndex(ctx, index); }
    return this.discussionContext(ctx, chat);
@@ -211,7 +221,7 @@
    try {
    index = await this.discussionIndex(view.ctx);
    chat = index.chats.find(c => c.id === chat?.id);
-   if (!chat) throw new Error("This discussion is unavailable.");
+   if (!chat || chat.deletedAt || chat.supersededBy) throw new Error("This discussion is unavailable.");
    if (this._pending.has(view.ctx.dir)) throw new Error("Stop the current answer before changing discussions.");
    index.active = chat.id;
    const chapter = index.chapters.find(c => c.id === chat.chapterID); if (chapter) chapter.activeChat = chat.id;
@@ -255,7 +265,7 @@
     let chat = index.chats.find(c => c.id === view.ctx.discussion.id);
     if (chat.chapterID !== route.chapterID) {
      const chapter = index.chapters.find(c => c.id === route.chapterID);
-     chat = index.chats.find(c => c.id === chapter?.activeChat) || index.chats.filter(c => c.chapterID === route.chapterID).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+     chat = this.visibleDiscussions(index).find(c => c.id === chapter?.activeChat && c.chapterID === route.chapterID) || this.visibleDiscussions(index).filter(c => c.chapterID === route.chapterID).sort((a, b) => b.updatedAt - a.updatedAt)[0];
      if (!chat) chat = await this.createDiscussion(view.ctx, index, route.chapterID, question);
      // Image staging belongs to the submitted turn, and must survive routing.
      const staged = this._staged.get(view.ctx.dir);
@@ -292,10 +302,73 @@
    const index = await this.discussionIndex(view.ctx);
    if (chapterID !== null && !index.chapters.some(c => c.id === chapterID)) throw new Error("Unknown chapter");
    const chat = index.chats.find(c => c.id === view.ctx.discussion.id);
-   chat.chapterID = chapterID; chat.number = Math.max(0, ...index.chats.filter(c => c.id !== chat.id && c.chapterID === chapterID).map(c => c.number)) + 1;
+   if (chat.chapterID === chapterID) return;
+   chat.numberHistory ||= []; chat.numberHistory.push({ chapterID: chat.chapterID, number: chat.number });
+   const oldChapter = index.chapters.find(c => c.id === chat.chapterID);
+   if (oldChapter?.activeChat === chat.id) oldChapter.activeChat = this.visibleDiscussions(index).filter(c => c.id !== chat.id && c.chapterID === chat.chapterID).sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id || null;
+   const number = this.nextDiscussionNumber(index, chapterID);
+   chat.chapterID = chapterID; chat.number = number;
    await this.writeDiscussionIndex(view.ctx, index);
    await this.switchDiscussion(view, chat, index);
   },
+  async changeDiscussions(view, ids, operation) {
+   const root = this.discussionRoot(view.ctx);
+   if (this._discussionLocks.has(root)) throw new Error("A discussion change is already in progress.");
+   this._discussionLocks.add(root);
+   try {
+    const index = await this.discussionIndex(view.ctx), unique = [...new Set(ids)];
+    const chats = unique.map(id => this.visibleDiscussions(index).find(c => c.id === id));
+    if (!chats.length || chats.some(c => !c)) throw new Error("Select available discussions first.");
+    if ([view.ctx.dir, ...this.visibleDiscussions(index).map(c => this.discussionContext(view.ctx, c).dir)].some(dir => this._pending.has(dir))) throw new Error("Stop the current answer before changing discussions.");
+    if (operation !== "delete" && operation !== "merge") throw new Error("Unknown discussion action.");
+    let next;
+    if (operation === "merge") {
+     if (chats.length < 2) throw new Error("Select at least two discussions to merge.");
+     // Keep each complete transcript together, ordered by chapter and number.
+     chats.sort((a, b) => (index.chapters.find(c => c.id === a.chapterID)?.order ?? 20000) - (index.chapters.find(c => c.id === b.chapterID)?.order ?? 20000) || a.number - b.number || a.id.localeCompare(b.id));
+     const seed = [], topics = [];
+     for (const chat of chats) {
+      const history = await this.loadHistory(this.discussionContext(view.ctx, chat).dir);
+      for (let at = 0; at < history.length; at++) {
+       const message = history[at];
+       seed.push({ ...message, referenceID: message.referenceID || chat.id + "-" + at, mergedFrom: message.mergedFrom || chat.id });
+      }
+      const topic = this.shortDiscussionTopic(chat.topic === "discussion" ? history.find(m => m.role === "user")?.text : chat.topic);
+      if (topic !== "discussion" && !topics.includes(topic)) topics.push(topic);
+     }
+     const chapterID = chats.every(c => c.chapterID === chats[0].chapterID) ? chats[0].chapterID : null;
+     const topic = topics.length ? topics.slice(0, 3).join(" + ") : "Merged discussion";
+     next = await this.createDiscussion(view.ctx, index, chapterID, topic, seed, { mergedFrom: chats.map(c => c.id) }, { persist: false });
+     for (const chat of chats) chat.supersededBy = [next.id];
+    } else {
+     for (const chat of chats) chat.deletedAt = Date.now();
+     next = this.visibleDiscussions(index).find(c => c.id === index.active) || this.visibleDiscussions(index).slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
+     if (!next) next = await this.createDiscussion(view.ctx, index, view.ctx.discussion.chapterID, "discussion", [], {}, { persist: false });
+    }
+    index.active = next.id;
+    for (const chapter of index.chapters) {
+     const active = this.visibleDiscussions(index).filter(c => c.chapterID === chapter.id).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+     chapter.activeChat = active?.id || null;
+    }
+    const revision = this.chatSyncID();
+    for (const chapterID of new Set(this.visibleDiscussions(index).map(c => c.chapterID))) {
+     const group = this.visibleDiscussions(index).filter(c => c.chapterID === chapterID).sort((a, b) => a.number - b.number || a.id.localeCompare(b.id));
+     group.forEach((chat, at) => { chat.number = at + 1; chat.numberHistory = []; chat.numberingRevision = revision; });
+    }
+    await this.writeDiscussionIndex(view.ctx, index);
+    await this.refreshRenumberedDiscussions(view, index);
+    await this.switchDiscussion(view, next, index, { locked: true });
+    // Sync terminal metadata too, so a recovered index cannot resurrect sources.
+    for (const chat of [...chats, ...(operation === "merge" ? [next] : [])]) {
+     const ctx = this.discussionContext(view.ctx, chat);
+     try { await this.saveChatNotes(ctx.dir, await this.loadHistory(ctx.dir)); }
+     catch (e) { this.logError("discussion change sync", e); }
+    }
+    return next;
+   } finally { this._discussionLocks.delete(root); }
+  },
+  deleteDiscussions(view, ids) { return this.changeDiscussions(view, ids, "delete"); },
+  mergeDiscussions(view, ids) { return this.changeDiscussions(view, ids, "merge"); },
   async legacyDiscussions(ctx, index) {
    const base = this.discussionRoot(ctx), parent = OS.Path.join(this.getDataDir(), ctx.paperItem.libraryID + "-" + ctx.paperItem.key);
    const candidates = [];
@@ -347,7 +420,7 @@
     this.menuSection(view.doc, menu, "Chapters & discussions");
     if (!index) { menu.append(this.el(view.doc, "div", "abstractin-menu-note", "Loading…")); return; }
     for (const chapter of [...index.chapters.slice().sort((a, b) => a.order - b.order), { id: null, title: view.ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned" }]) {
-     const chats = index.chats.filter(c => c.chapterID === chapter.id).sort((a, b) => a.number - b.number);
+     const chats = index.chats.filter(c => c.chapterID === chapter.id && !c.supersededBy && !c.deletedAt).sort((a, b) => a.number - b.number);
      if (!chats.length) continue;
      this.menuSection(view.doc, menu, chapter.title);
      for (const chat of chats) this.menuItem(view.doc, menu, { label: this.discussionName(view.ctx, chat, index), checked: chat.id === view.ctx.discussion.id,
@@ -390,7 +463,7 @@
      }
      if (!index?.chats) continue;
      const reading = await this.readDiscussionJSON(OS.Path.join(document.path, "reading.json"), { type: "book" });
-     for (const chat of index.chats) {
+     for (const chat of this.visibleDiscussions(index)) {
       if (!/^[a-z0-9-]+$/.test(chat.id)) continue;
       const dir = OS.Path.join(document.path, "discussions", chat.id), history = await this.readDiscussionJSON(OS.Path.join(dir, "chat.json"), []);
       if (history.length) results.push({ dir, documentDir: document.path, discussionID: chat.id, attachmentKey: document.name.slice(8),

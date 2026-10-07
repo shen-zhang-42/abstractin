@@ -25,6 +25,10 @@ if [ ${#SCENARIOS[@]} -eq 0 ]; then
 		"menu-effort&fixture=markdown.md&zoom=2&model=opus&effort=high"
 		"menu-more&fixture=markdown.md&zoom=2"
 		"menu-history&fixture=markdown.md&zoom=2"
+		"discussions&zoom=2"
+		"discussions&width=280"
+		"citations&zoom=2"
+		"menu-quote&zoom=2"
 		"prefs&width=660&zoom=1.4"
 	)
 fi

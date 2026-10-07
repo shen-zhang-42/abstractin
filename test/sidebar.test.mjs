@@ -78,7 +78,8 @@ test("Start Reading appears only before entering a reading chat", () => {
 	assert.ok(button.classList.contains("abstractin-reading-primary"));
 	assert.ok(!button.classList.contains("abstractin-ghost"));
 	assert.equal(button.getAttribute("aria-label"), "Start Reading");
-	assert.equal(root.querySelector(".abstractin-reading-status").textContent, "Paper · English · Codex");
+	assert.equal(root.querySelector(".abstractin-reading-status").textContent, "");
+	assert.ok(root.querySelector(".abstractin-reading-statusbar").hidden);
 	assert.equal(root.querySelector(".abstractin-reading-statusbar").previousElementSibling, root.querySelector(".abstractin-composer"));
 	assert.equal(root.querySelector(".abstractin-reading-workspace"), null);
 	assert.equal(root.querySelector(".abstractin-reading-return"), null);
@@ -89,6 +90,18 @@ test("composer shows the assistant, model and effort from prefs", () => {
 	assert.equal(root.querySelector(".abstractin-model-btn .abstractin-label").textContent, "Claude · Opus");
 	assert.equal(root.querySelector(".abstractin-effort-btn .abstractin-label").textContent, "High");
 	assert.equal(root.querySelector(".abstractin-input").placeholder, "Ask Claude about this paper…");
+});
+
+test("composer hint follows material type when reading context is restored", () => {
+ const { view, plugin } = sidebar();
+ view.ctx.reading = { type: "book" }; plugin.updateReadingControls(view);
+ assert.equal(view.input.placeholder, "Ask Codex about this book…");
+ view.ctx.reading.type = "paper"; plugin.updateReadingControls(view);
+ assert.equal(view.input.placeholder, "Ask Codex about this paper…");
+ delete view.ctx.reading; view.ctx.paperItem = { itemType: "book" }; plugin.updateReadingControls(view);
+ assert.equal(view.input.placeholder, "Ask Claude about this book…");
+ view.readingSetup = { step: "title" }; plugin.updateReadingControls(view);
+ assert.equal(view.input.placeholder, "Reply to your reading companion…");
 });
 
 test("model menu lists every assistant and switches backend and model together", () => {
@@ -152,12 +165,14 @@ test("answers from different assistants or models are labelled", () => {
 test("busy state turns Send into Stop and disables prompts", () => {
 	const { root, view, plugin } = sidebar();
 	plugin.setBusy(view, true);
+	assert.equal(root.dataset.answering, "true");
 	const send = root.querySelector(".abstractin-send");
 	assert.ok(send.classList.contains("abstractin-stop"));
 	assert.equal(send.disabled, false);
 	assert.equal(send.title, "Stop");
 	assert.equal(root.querySelector(".abstractin-prompt-menu").disabled, true);
 	plugin.setBusy(view, false);
+	assert.equal(root.dataset.answering, "false");
 	assert.equal(send.title, "Send (Enter)");
 	assert.equal(send.disabled, true, "empty input cannot be sent");
 });
@@ -214,7 +229,7 @@ test("error card: short errors open, long ones collapse, retry runs the callback
 	assert.equal(long.querySelector(".abstractin-error-head").getAttribute("aria-expanded"), "true");
 });
 
-test("history menu lists earlier chats and restores the chosen one", async () => {
+test("history screen lists earlier chats and restores the chosen one", async () => {
 	const { root, plugin } = sidebar();
 	let restored = null;
 	plugin.listArchives = async () => [
@@ -223,22 +238,22 @@ test("history menu lists earlier chats and restores the chosen one", async () =>
 	];
 	plugin.restoreChat = async (r, archive) => { restored = archive.path; };
 	root.querySelector(".abstractin-history").click();
-	assert.ok(root.querySelector(".abstractin-menu").textContent.includes("Loading"));
+	assert.ok(root.querySelector(".abstractin-history-browser").textContent.includes("Loading"));
 	await new Promise(r => setTimeout(r, 0));
-	assert.deepEqual(menuLabels(root), ["What is the DFT?", "Summarize this paper"]);
-	assert.match(root.querySelector(".abstractin-menu .abstractin-menu-desc").textContent, /^4 messages · /);
-	root.querySelectorAll(".abstractin-menu-item")[1].click();
+	assert.deepEqual([...root.querySelectorAll(".abstractin-history-card")].map(n => n.textContent), ["What is the DFT?", "Summarize this paper"]);
+	assert.equal(root.querySelector(".abstractin-menu"), null);
+	root.querySelectorAll(".abstractin-history-card")[1].click();
 	assert.equal(root.querySelector(".abstractin-menu"), null);
 	await new Promise(r => setTimeout(r, 0));
 	assert.equal(restored, "/tmp/x/chat-1.json");
 });
 
-test("history menu explains when there is nothing to reopen", async () => {
+test("history screen explains when there is nothing to reopen", async () => {
 	const { root, plugin } = sidebar();
 	plugin.listArchives = async () => [];
 	root.querySelector(".abstractin-history").click();
 	await new Promise(r => setTimeout(r, 0));
-	assert.match(root.querySelector(".abstractin-menu").textContent, /No earlier chats/);
+	assert.match(root.querySelector(".abstractin-history-browser").textContent, /No earlier discussions/);
 });
 
 test("edit icon puts a question back in the composer", () => {
@@ -567,7 +582,7 @@ test("theorem links: clicking jumps to the box, Back (button or Alt+←) returns
 	assert.equal(back.hidden, true);
 });
 
-test("the reading assistant and available prompts sit immediately above the composer", () => {
+test("reading companion stays above the composer and shortcuts move inside its header", () => {
 	const { root, view, plugin } = sidebar();
 	view.ctx.reading = { type: "book" };
 	plugin.renderMessages(view, []);
@@ -578,10 +593,11 @@ test("the reading assistant and available prompts sit immediately above the comp
 	assert.ok(row.firstElementChild.matches(".abstractin-discussion-companion"));
 	assert.ok(row.querySelector(".abstractin-mascot[data-icon='mascot-marmoset']"));
 	assert.equal(row.querySelector(".abstractin-reading-invitation").textContent, "Ask me a question?");
-	assert.equal(row.querySelector(".abstractin-quick").hidden, false);
+	assert.equal(root.querySelector(".abstractin-composer-head .abstractin-quick").hidden, false);
 	assert.equal(root.querySelector(".abstractin-empty .abstractin-mascot"), null);
 	assert.equal(row.querySelectorAll(".abstractin-pill").length, 0);
-	assert.equal(row.querySelectorAll(".abstractin-prompt-menu").length, 1);
+	assert.equal(row.querySelectorAll(".abstractin-prompt-menu").length, 0);
+	assert.equal(root.querySelectorAll(".abstractin-composer-head .abstractin-prompt-menu").length, 1);
 	assert.ok(root.querySelector(".abstractin-header .abstractin-header-icon[data-icon='app']"));
 });
 

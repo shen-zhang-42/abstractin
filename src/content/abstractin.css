@@ -1441,14 +1441,14 @@
 /* ---- icon-first: labels, buddies, patterns, tiles ---- */
 
 /* Icons only: button names move to tooltips, and descriptive text steps aside. */
-.abstractin-root[data-labels="icons"] .abstractin-ghost:not(.abstractin-model-btn):not(.abstractin-prompt-menu) .abstractin-label,
+.abstractin-root[data-labels="icons"] .abstractin-ghost:not(.abstractin-model-btn):not(.abstractin-prompt-menu):not(.abstractin-result-picker) .abstractin-label,
 .abstractin-root[data-labels="icons"] .abstractin-header-title,
 .abstractin-root[data-labels="icons"] .abstractin-empty-sub,
 .abstractin-root[data-labels="icons"] .abstractin-empty-paper,
 .abstractin-root[data-labels="icons"] .abstractin-by {
 	display: none;
 }
-.abstractin-root[data-labels="icons"] .abstractin-ghost:not(.abstractin-model-btn):not(.abstractin-prompt-menu) {
+.abstractin-root[data-labels="icons"] .abstractin-ghost:not(.abstractin-model-btn):not(.abstractin-prompt-menu):not(.abstractin-result-picker) {
 	gap: 0;
 	min-width: 24px;
 	justify-content: center;
@@ -2895,3 +2895,86 @@
 .abstractin-discussion-budget { padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .abstractin-chapter-choice, .abstractin-discussion-transfer { padding: 14px; max-height: 80%; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
 .abstractin-discussion-transfer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+
+.abstractin-discussion-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.abstractin-migration-review, .abstractin-reference-review { padding: 14px; overflow: auto; gap: 10px; }
+.abstractin-migration-turn { padding: 8px; border-bottom: 1px solid var(--abstractin-border); }
+.abstractin-migration-review pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+.abstractin-reference-review textarea { min-height: 180px; flex: 1; max-height: none; }
+
+.abstractin-result-link { color: var(--abstractin-accent); background: transparent; border: 0; padding: 0 2px; text-decoration: underline; cursor: pointer; font: inherit; }
+
+/* History occupies the conversation area, with ordinary window navigation. */
+.abstractin-root[data-history-browser="true"] .abstractin-composer,
+.abstractin-root[data-history-browser="true"] .abstractin-discussion-name,
+.abstractin-root[data-history-browser="true"] .abstractin-discussion-budget,
+.abstractin-root[data-history-browser="true"] .abstractin-jump { display: none; }
+.abstractin-history-browser { padding: 14px 12px 20px; }
+.abstractin-history-browser-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.abstractin-history-browser .abstractin-btn { height: auto; min-height: 28px; padding: 6px 10px; border-radius: 6px; line-height: 1.4; }
+.abstractin-history-browser-actions .abstractin-btn { max-width: 100%; white-space: normal; }
+.abstractin-history-browser button:disabled { opacity: 0.45; cursor: default; }
+.abstractin-history-browser h2 { font-size: 16px; margin: 0; }
+.abstractin-history-chapter { margin-bottom: 22px; }
+.abstractin-history-chapter-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.abstractin-history-chapter h3 { flex: 1; min-width: 0; font-size: 13px; margin: 0; color: var(--abstractin-muted); overflow-wrap: anywhere; }
+.abstractin-history-count { font-size: 11px; color: var(--abstractin-muted); padding: 2px 7px; border: 1px solid var(--abstractin-border); border-radius: 12px; }
+.abstractin-history-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0 16px; }
+.abstractin-history-selection > span { flex: 1 0 100%; }
+.abstractin-history-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--abstractin-border); border-radius: 8px; background: var(--abstractin-raised); min-width: 0; }
+.abstractin-history-row.abstractin-current-discussion, .abstractin-history-row.abstractin-selected { border-color: var(--abstractin-accent); }
+.abstractin-history-check { flex: 0 0 auto; margin: 0; accent-color: var(--abstractin-accent); }
+.abstractin-history-browser .abstractin-history-card { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; height: auto; min-height: 44px; max-height: none; text-align: left; padding: 4px; margin: 0; white-space: normal; overflow-wrap: anywhere; background: transparent; border: 0; line-height: 1.45; }
+.abstractin-history-topic { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; font-weight: 500; }
+.abstractin-history-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11px; color: var(--abstractin-muted); }
+.abstractin-history-current { color: var(--abstractin-accent); }
+.abstractin-history-browser .abstractin-history-row-delete { flex: 0 0 auto; font-size: 11px; padding: 4px 8px; }
+.abstractin-history-confirm { border: 1px solid var(--abstractin-border); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 12px; }
+.abstractin-history-confirm p { margin: 0 0 10px; }
+.abstractin-history-confirm ul { max-height: 160px; overflow: auto; padding-left: 20px; overflow-wrap: anywhere; }
+.abstractin-history-confirm button { margin-right: 8px; }
+.abstractin-history-browser-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 14px; border-top: 1px solid var(--abstractin-border); margin-top: 20px; }
+.abstractin-history-browser button:focus-visible, .abstractin-history-check:focus-visible { outline: 2px solid var(--abstractin-accent); outline-offset: 2px; }
+.abstractin-quick-question-menu .abstractin-menu-item { padding-top: 12px; padding-bottom: 12px; margin: 5px 0; }
+.abstractin-quick-question-menu .abstractin-menu-text { gap: 6px; }
+.abstractin-quick { column-gap: 12px; row-gap: 10px; }
+
+/* Quote uses the same dropdown control as Quick questions, in its own group. */
+.abstractin-quote-controls { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 8px; min-width: 0; }
+.abstractin-quote-divider { display: block; flex: 0 0 1px; align-self: center; height: 20px; background: var(--abstractin-border-strong); margin-inline: 2px; }
+.abstractin-reading-assistant .abstractin-result-picker { min-width: 0; padding: 4px 6px; }
+.abstractin-root[data-labels="icons"] .abstractin-result-picker .abstractin-label { display: inline; }
+.abstractin-result-menu .abstractin-menu-text { min-width: 0; }
+.abstractin-result-menu .abstractin-menu-label { white-space: normal; overflow-wrap: anywhere; }
+.abstractin-answer-results { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 12px; }
+.abstractin-answer-result { font-size: 10px; color: var(--abstractin-accent-ink); background: var(--abstractin-accent-soft); padding: 3px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+.abstractin-chat-result-tag { display: inline-block; margin-inline-end: 6px; padding: 1px 5px; border-radius: 4px; background: var(--abstractin-accent-soft); color: var(--abstractin-accent-ink); font: 600 10px system-ui, sans-serif; letter-spacing: .03em; }
+.abstractin-chat-result .abstractin-env-num { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--abstractin-accent-ink); }
+.abstractin-reference-review > p { overflow-wrap: anywhere; }
+
+.abstractin-quick-divider { display: block; flex: 0 0 1px; height: 20px; align-self: center; background: var(--abstractin-border-strong); margin-inline: 2px; }
+.abstractin-reading-assistant .abstractin-quick { flex: 0 0 auto; overflow: visible; }
+.abstractin-reading-assistant .abstractin-result-picker { flex: 0 0 auto; width: max-content; min-width: max-content; max-width: none; }
+.abstractin-reading-assistant .abstractin-result-picker .abstractin-label { flex: 0 0 auto; overflow: visible; text-overflow: clip; white-space: nowrap; }
+.abstractin-quick-question-menu .abstractin-menu-item { height: auto; min-height: 32px; max-height: none; padding-block: 9px; margin-block: 2px; }
+
+/* Native Zotero button sizing must not compress multi-line result entries. */
+.abstractin-root .abstractin-result-menu { overflow-x: hidden; }
+.abstractin-root .abstractin-result-menu .abstractin-menu-section { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.4; padding-block: 8px; }
+.abstractin-root .abstractin-result-menu .abstractin-menu-item { display: block; height: auto !important; max-height: none !important; min-height: 32px; margin: 0; padding: 9px 10px; line-height: 1.4; white-space: normal; overflow: hidden; }
+.abstractin-root .abstractin-result-menu .abstractin-result-option { margin-block: 4px; padding-block: 10px; border-top: 1px solid var(--abstractin-line); }
+.abstractin-result-entry { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; width: 100%; min-width: 0; text-align: start; }
+.abstractin-result-number { display: block; font: 500 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--abstractin-accent-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.abstractin-result-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
+.abstractin-result-summary { display: block; min-width: 0; color: var(--abstractin-muted); font-size: .85em; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Composer shortcuts occupy the upper right and retain their full labels. */
+.abstractin-composer-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 12px; margin-bottom: 8px; min-width: 0; }
+.abstractin-composer-head .abstractin-context { flex: 1 1 120px; margin: 0; min-width: 0; }
+.abstractin-composer-shortcuts { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; max-width: 100%; min-width: 0; margin-inline-start: auto; }
+.abstractin-root .abstractin-composer-shortcuts .abstractin-quick { flex: 0 0 auto; overflow: visible; flex-wrap: nowrap; padding: 0; }
+.abstractin-composer-shortcuts .abstractin-quick-divider { display: none; }
+.abstractin-root .abstractin-composer-shortcuts .abstractin-ghost { flex: 0 0 auto; width: max-content; min-width: max-content; max-width: none; padding-inline: 6px; }
+.abstractin-root .abstractin-composer-shortcuts .abstractin-label { flex: 0 0 auto; display: inline; overflow: visible; text-overflow: clip; white-space: nowrap; }
+.abstractin-root .abstractin-mascot, .abstractin-root .abstractin-mascot * { animation-play-state: paused; }
+.abstractin-root[data-answering="true"] .abstractin-mascot, .abstractin-root[data-answering="true"] .abstractin-mascot * { animation-play-state: running; }

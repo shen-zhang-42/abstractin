@@ -50,6 +50,8 @@
 <script src="../src/content/reader-panel.js"></script>
 <script src="../src/content/agents.js"></script>
 <script src="../src/content/chats.js"></script>
+<script src="../src/content/chat-tools.js"></script>
+<script src="../src/content/history-browser.js"></script>
 </head>
 <body class="no-anim">
 <script>
@@ -120,7 +122,37 @@
 	}
 	else {
 		const view = sidebar(pane("Claude"));
-		if (scenario === "menu-reading" || scenario === "reading-empty") {
+		if (scenario === "discussions") {
+			const index = { version: 2, active: "app-6", migrated: {}, chapters: [
+				{ id: "ch-1", prefix: "chap-01", title: "Chapter 1: Probability Models", order: 0 },
+				{ id: "app-a", prefix: "chap-app-A", title: "Appendix A: Measure and Integration Theory", order: 10000 },
+			], chats: [
+				{ id: "chapter-1", chapterID: "ch-1", number: 1, topic: "解释一下 equation 1.6 之前的那个 equation" },
+				{ id: "app-1", chapterID: "app-a", number: 1, topic: "Dominated convergence theorem" },
+				{ id: "app-2", chapterID: "app-a", number: 2, topic: "discussion" },
+				{ id: "app-3", chapterID: "app-a", number: 3, topic: "discussion" },
+				{ id: "app-4", chapterID: "app-a", number: 4, topic: "Borel spaces 是一个可测空间对吧？Sigma 代数" },
+				{ id: "app-5", chapterID: "app-a", number: 5, topic: "discussion" },
+				{ id: "app-6", chapterID: "app-a", number: 6, topic: "discussion" },
+				{ id: "unassigned-1", chapterID: null, number: 1, topic: "discussion" },
+				{ id: "unassigned-4", chapterID: null, number: 4, topic: "简要总结下这本书的内容" },
+			] };
+			view.ctx.documentDir = view.ctx.dir;
+			view.ctx.discussion = { ...index.chats.find(c => c.id === index.active) };
+			view.ctx.reading = { type: "book" };
+			CS.discussionIndex = async () => index; CS.refreshDiscussionChapters = async () => {};
+			CS.legacyDiscussions = async () => []; CS.loadHistory = async () => conversation;
+			CS.openHistoryMenu(view.root);
+		}
+		else if (scenario === "citations" || scenario === "menu-quote") {
+			const index = { chats: [{ id: "chat-1", chapterID: "ch-01", number: 1, topic: "Limits and convergence" }], chapters: [{ id: "ch-01", prefix: "chap-01", title: "Chapter 1: Probability Models", order: 0 }] };
+			view.ctx.documentDir = view.ctx.dir; view.ctx.discussion = index.chats[0]; view.ctx.reading = { type: "book" };
+			const history = [{ role: "user", text: "Explain the result in book Theorem 1.1." }, { role: "assistant", text: "The book calls this Theorem 1.1.\n\n\\begin{theorem}[Convergence]\nIf $X_n \\to X$, the stated limit holds.\n\\end{theorem}\n\n\\begin{definition}[Limit]\nFor every $\\varepsilon > 0$, choose $N$.\n\\end{definition}", backend: "claude", model: "opus" }];
+			CS.numberDiscussionResults(view.ctx, history, index); CS.discussionIndex = async () => index; CS.loadHistory = async () => history;
+			CS.renderMessages(view, history); CS.setBusy(view, false);
+			if (scenario === "menu-quote") CS.openDiscussionReferences(view);
+		}
+		else if (scenario === "menu-reading" || scenario === "reading-empty") {
 			view.ctx.reading = { type: "book", language: "English" };
 			view.ctx.paperItem = { getField: () => "Theory of Statistics", getCreators: () => [] };
 			prefs["extensions.abstractin.readingEvidenceMode"] = "knowledge";

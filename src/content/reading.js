@@ -402,6 +402,7 @@ Object.assign(AbstractIn, {
 	},
 
 	updateReadingControls(view) {
+		this.updateComposerPlaceholder(view.root);
 		let reading = view.ctx.reading;
 		let evidence = view.root.querySelector(".abstractin-reading-evidence-mode");
 		if (evidence) {
@@ -416,8 +417,7 @@ Object.assign(AbstractIn, {
 			if (current?.dataset.icon !== icon) current?.replaceWith(this.svgIcon(view.doc, icon));
 		}
 		let label = view.root.querySelector(".abstractin-reading-status");
-		if (label) label.textContent = reading ?
-			(reading.type === "book" ? "Book" : "Paper") + " · " + (this.getLanguage() || "Same as my question") + " · " + this.BACKENDS[this.readingAgent()].label : "";
+		if (label) { label.textContent = ""; label.hidden = true; }
 		let button = view.root.querySelector(".abstractin-start-reading");
 		if (button) {
 			button.setLabel("Start Reading");
@@ -431,11 +431,16 @@ Object.assign(AbstractIn, {
 		let resume = view.root.querySelector(".abstractin-reading-resume-here");
 		if (resume) resume.hidden = !reading?.referenceNavigation;
 		let sourceStatus = view.root.querySelector(".abstractin-reading-source-status");
-		if (sourceStatus) sourceStatus.textContent = reading && this.getReadingEvidenceMode() === "knowledge" ?
-			"Knowledge discussion · context first · verify sources when needed" : reading?.pdfSource ? (reading.pdfSource.status === "ready" ?
-			"PDF text ready · " + reading.pdfSource.extractedPages + "/" + reading.pdfSource.totalPages + " pages" +
-			(reading.pdfSource.pageMapping ? "" : " · page links unverified") : reading.pdfSource.status === "context-only" ?
-			"Discussion context ready · full PDF text not loaded" : "PDF text unavailable — use a selected passage or page image") : "";
+		if (sourceStatus) {
+			const source = reading?.pdfSource;
+			sourceStatus.textContent = reading && this.getReadingEvidenceMode() === "source" && source ?
+				(source.status === "ready" ? (source.pageMapping ? "" : "Page links unverified") :
+				source.status === "context-only" ? "" :
+				["loading", "extracting"].includes(source.status) ? "Loading PDF text…" : "PDF text unavailable — use a selected passage or page image") : "";
+			sourceStatus.hidden = !sourceStatus.textContent;
+		}
+		const statusBar = view.root.querySelector(".abstractin-reading-statusbar");
+		if (statusBar) statusBar.hidden = !sourceStatus?.textContent;
 		let quick = view.root.querySelector(".abstractin-quick");
 		let type = reading?.type === "book" ? "book" : "paper";
 		if (quick && quick.dataset.materialType !== type) { this.closeMenu(view.root); this.renderQuickPrompts(view.root, quick); }
