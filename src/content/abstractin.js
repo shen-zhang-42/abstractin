@@ -1976,6 +1976,15 @@ AbstractIn = {
 						this.closeMenu(root);
 					},
 				});
+				this.menuItem(doc, menu, {
+					label: "Delete this turn",
+					desc: "Delete this question and its answer",
+					onSelect: async () => {
+						this.closeMenu(root);
+						try { await this.deleteConversationTurn(view, index, msg); }
+						catch (e) { this.logError("deleteConversationTurn", e); this.appendError(view, e.message || String(e)); }
+					},
+				});
 			}, { placement: "above", align: "end" });
 		});
 		more.setAttribute("aria-haspopup", "menu");
@@ -3298,6 +3307,51 @@ AbstractIn = {
 		}
 	},
 
+	async deleteConversationTurn(view, index, expected) {
+		const ctx = view.ctx, dir = ctx.dir, documentDir = this.discussionRoot(ctx);
+		if (this._pending.has(dir) || this._chatTransitions.has(dir) || this._discussionLocks.has(documentDir)) {
+			throw new Error("Wait for the current answer or discussion change before deleting a turn.");
+		}
+		this._chatTransitions.add(dir); this._discussionLocks.add(documentDir);
+		try {
+			const history = await this.loadHistory(dir), answer = history[index];
+			if (!answer || answer.role !== "assistant" || index < 1 || history[index - 1].role !== "user" ||
+				(expected && (expected.referenceID ? expected.referenceID !== answer.referenceID : expected.text !== answer.text))) {
+				throw new Error("This turn has changed. Refresh the conversation and try again.");
+			}
+			const kept = [...history.slice(0, index - 1), ...history.slice(index + 1)];
+			// Reset model threads so a subsequent answer cannot reuse deleted context.
+			await this.saveSessions(dir, {});
+			await this.writeChatSyncState(dir, { chatID: this.chatSyncID(), writerID: this.chatDeviceID() });
+			let discussionIndex;
+			if (ctx.discussion) {
+				discussionIndex = await this.discussionIndex(ctx);
+				const chat = discussionIndex.chats.find(chat => chat.id === ctx.discussion.id);
+				chat.numberingRevision = this.chatSyncID(); chat.updatedAt = Date.now();
+				await this.writeDiscussionIndex(ctx, discussionIndex);
+				view.ctx.discussion = { ...chat };
+			}
+			const warning = await this.saveHistory(dir, kept);
+			if (discussionIndex) await this.refreshRenumberedDiscussions(view, discussionIndex);
+			const updated = await this.loadHistory(dir);
+			const views = new Set([view]);
+			for (const win of new Set([...(Zotero.getMainWindows?.() || [Zotero.getMainWindow()]), ...this._readerPanelWindows.keys()])) {
+				try {
+					for (const root of win.document.querySelectorAll(".abstractin-root")) {
+						const other = this._views.get(root); if (other) views.add(other);
+					}
+				} catch (e) { this.logError("refresh deleted turn", e); }
+			}
+			for (const other of views) {
+				if (other.ctx?.dir !== dir || !other.logEl?.isConnected) continue;
+				const scroll = other.logEl.scrollTop;
+				this.renderMessages(other, updated); other.logEl.scrollTop = scroll;
+				this.updateControls(other.root);
+			}
+			if (warning) this.appendError(view, warning);
+		} finally { this._chatTransitions.delete(dir); this._discussionLocks.delete(documentDir); }
+	},
+
 	// Replaces the last answer: drop it and its question, then ask again.
 	async retry(view, index) {
 		if (this._pending.has(view.ctx.dir)) {
@@ -3472,6 +3526,8 @@ AbstractIn = {
 				ctx.reading.sourceLookup = sourceLookup;
 				ctx.reading.explicitSourceRequest = explicitSourceRequest;
 				ctx.reading.sourceQuestion = question;
+				ctx.reading.sourceSelection = pending.selection?.text || "";
+				ctx.reading.missingSourceEvidence = pending.missingSourceEvidence || "";
 				ctx.reading.selectedPageIndex = pending.selection?.position?.pageIndex ?? pending.selection?.pageIndex;
 				ctx.reading.action = pending.readingAction || "discuss";
 				ctx.reading.currentPage = pending.currentPage !== undefined ? pending.currentPage : this.currentReadingLocation(ctx);
@@ -3512,7 +3568,9 @@ AbstractIn = {
 			if (session && session.model !== (pending.model || "")) session = null;
 			if (ctx.reading && session && session.sourceSignature !== pdfSource.signature) session = null;
 			if (ctx.reading && session && (session.evidenceMode || "source") !== ctx.reading.evidenceMode) session = null;
-			if (pending.readingAction === "contents") session = null;
+			// Retire threads created with the former blanket no-source instructions.
+			if (ctx.reading && session && session.evidencePolicyVersion !== 2) session = null;
+			if (pending.readingAction === "contents" || ctx.reading?.sourceLookup) session = null;
 
 			let images = pending.images || [];
 			if (images.length && !this.BACKENDS[backend].images) {
@@ -3566,11 +3624,12 @@ AbstractIn = {
 				result = await this.runBackend(backend, Object.assign({}, request, { session: null }));
 			}
 
-			if (ctx.reading?.evidenceMode === "knowledge" && !ctx.discussion && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && !pending.sourceLookup &&
+			if (ctx.reading?.evidenceMode === "knowledge" && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && !pending.sourceLookup &&
 				!pending.cancelled && /<abstractin-source-needed>[\s\S]*?<\/abstractin-source-needed>/.test(result.text || "")) {
 				pending.progress({ text: "", status: "missing document evidence; verifying the requested passage" });
 				pending.evidenceMode = "source";
 				pending.sourceLookup = true;
+				pending.missingSourceEvidence = (result.text || "").match(/<abstractin-source-needed>([\s\S]*?)<\/abstractin-source-needed>/)?.[1] || "";
 				return await this.ask(ctx, question, pending);
 			}
 			if (/<abstractin-source-needed>/.test(result.text || "")) {
@@ -3654,7 +3713,7 @@ AbstractIn = {
 				sessions[backend] = { id: result.sessionId, seen: history.length + 2,
 					model: pending.model || "" };
 				if (ctx.reading) sessions[backend].sourceSignature = pdfSource.signature;
-				if (ctx.reading) sessions[backend].evidenceMode = ctx.reading.evidenceMode;
+				if (ctx.reading) { sessions[backend].evidenceMode = ctx.reading.evidenceMode; sessions[backend].evidencePolicyVersion = 2; }
 				if (ctx.discussion) sessions[sessionKey] = sessions[backend];
 				await this.saveSessions(ctx.dir, sessions);
 			}

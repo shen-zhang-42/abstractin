@@ -17,7 +17,18 @@ Object.assign(AbstractIn, {
 	requestsReadingSource(question) {
 		// Mentioning a numbered theorem is not permission to read another chapter.
 		return /\b(?:read|search|look up|look at|consult|check|verify)\b[^.!?;]{0,80}\b(?:pdf|document|source|paper|book|section|chapter|theorem|lemma|proof|passage)\b/i.test(question) ||
-			/(?:阅读|读取|搜索|检索|查阅|查看|核对|看一下|去看|看看)[^，。；]{0,40}(?:pdf|文档|原文|书|论文|章节|节|定理|引理|证明|页)/i.test(question);
+			/(?:阅读|读取|读一下|搜索|检索|查阅|查看|查找|查一下|找一下|核对|对照|看一下|去看|看看)[^，。；]{0,40}(?:pdf|文档|原文|书|论文|章节|节|定理|引理|证明|页)/i.test(question) ||
+			/(?:原文|pdf|文档|书|论文)[^，。；]{0,20}(?:搜索|检索|查找|查一下|核对)/i.test(question);
+	},
+
+	readingSourceReferences(question) {
+		const subject = this.discussionQuestionSubject ? this.discussionQuestionSubject(question) : String(question || "");
+		const references = [];
+		for (const match of subject.matchAll(/(?:theorem|lemma|proposition|corollary|definition|定理|引理|命题|推论|定义)\s*([A-Z]\s*\.\s*\d+|\d+)(?:\s*\.\s*\d+)*/ig)) {
+			if (/\bChat\s*$/i.test(subject.slice(0, match.index))) continue;
+			references.push(match[0].replace(/^(?:theorem|lemma|proposition|corollary|definition|定理|引理|命题|推论|定义)\s*/i, "").replace(/\s/g, ""));
+		}
+		return [...new Set(references)];
 	},
 
 	requestsCurrentReadingPage(question) {
@@ -452,10 +463,10 @@ Object.assign(AbstractIn, {
 		if (reading.evidenceMode === "knowledge" && (!reading.action || reading.action === "discuss")) {
 			return "AbstractIn Knowledge discussion. " + introduction + this.languageInstruction() +
 				" Answer from the supplied current page/selection, saved notes and previous conversation, supplemented by your existing knowledge. " +
-				"Do not open or search the PDF, source-text.md, skills or workspace files for this discussion. No file tools are needed. " +
+				"Use the supplied context first. Original-source retrieval is handled by the plugin; no file tools are needed in this context pass. Knowledge discussion is a preference for answering from available context, not a user prohibition on source verification. " +
 				(reading.forbidSource ?
 					"The user explicitly prohibited document access for this turn. If document-specific evidence is missing, explain that limitation and ask for the passage; do not guess or request tools. " :
-					"If the supplied context cannot establish a document-specific statement, exact quotation, section, theorem, experiment or page location, output ONLY <abstractin-source-needed>brief description of the missing evidence</abstractin-source-needed>. The plugin will verify the original source automatically before answering. Never guess a numbered theorem or claim it follows from general knowledge. ") +
+					"If the supplied context already establishes the answer without guessing, answer directly without requesting source retrieval. If answering requires missing document-specific evidence (such as a theorem statement, its proof or an author-specific claim), do not give speculative alternatives or refuse to search. Instead output ONLY <abstractin-source-needed>brief description of the missing evidence</abstractin-source-needed>. The plugin will verify the original source automatically before answering. Never guess a numbered theorem or claim it follows from general knowledge. ") +
 				"Write formulas as $...$ or $$...$$ (or standard LaTeX math delimiters), without wrapping the answer in a code fence. Use standard LaTeX commands supported by KaTeX; avoid undefined custom macros such as \\ThetaSpace and write the intended symbol explicitly. " +
 				"Label independent explanations and alternative derivations naturally. Do not claim that generic knowledge was verified in this document. " +
 				"Document identity: " + JSON.stringify({ itemKey: ctx.paperItem.key, attachmentKey: ctx.attachmentItem.key }) + ". " +

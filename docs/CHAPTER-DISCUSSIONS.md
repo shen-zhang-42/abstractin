@@ -44,12 +44,28 @@ index recovery does not restore removed sources. Busy or stale selections are
 rejected, and the index is committed atomically before switching discussions.
 
 
+Each answer’s More actions menu offers **Delete this turn**. It removes the
+question and its answer together, refreshes surviving result numbers and citation
+labels, and resets agent threads so deleted messages are not reused as context.
+Drafts remain intact. Deletion is blocked during a running answer or discussion
+change. Independently saved Zotero reading notes are retained.
+
 Knowledge discussion uses the current transcript, supplied passage or page and
-model knowledge. A theorem number alone never authorizes a source search.
-Explicit requests to check the book's proof allow a bounded source lookup for
-that turn, without changing the discussion's chapter or evidence preference.
+model knowledge. When this context establishes the answer without guessing,
+the assistant answers directly, including follow-ups about numbered theorems.
+When essential original evidence is missing, the assistant requests one automatic
+bounded lookup before answering. Explicit requests to check the source perform
+that lookup immediately. Both preserve the discussion's chapter and evidence
+preference; an explicit prohibition on document access prevents lookup.
+Appendix references such as Theorem A.78 and Definition A.1 are supported.
+A follow-up source request can reuse the last question's selected theorem as its
+lookup target. Older agent threads with blanket no-source instructions restart
+with the transcript preserved.
 The full PDF cache stays outside discussion workspaces. Scoped workspaces expose
-only authorized source excerpts. Codex command/web/app tools and Claude file
+only authorized source excerpts. Scoped exports first repair recoverable blank-page
+boundaries in the private document cache. When boundaries remain unverified,
+native reader pages still provide exact page indices, and bounded theorem-text
+lookups remain available without inventing page links. Codex command/web/app tools and Claude file
 tools are disabled for scoped requests; original skill resources and authorized
 source excerpts are supplied inline. Other adapters retain their established
 capability checks and workspace boundaries. Third-party executable adapters are

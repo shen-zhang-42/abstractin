@@ -594,25 +594,81 @@
    if (!ctx.discussion) return text;
    text = text.replace("saved notes and previous conversation", "this discussion's messages")
     .replace(/Current editable Zotero notes take precedence over older chat: .*?\. /, "")
-    .replace(/If the supplied context cannot establish a document-specific statement[\s\S]*?Never guess a numbered theorem or claim it follows from general knowledge\. /, "If the supplied context lacks document-specific evidence, explain the limitation and ask the user to provide the passage or explicitly request verification. Never guess numbered claims. ")
     .replace(/Existing contents and paper summary are in workspace\.md[\s\S]*?PDF source status:/, "PDF source status:")
     .replace(/When PDF source status is ready, source\.pdf is the exact attachment and source-text\.md contains its extracted text in this working directory\./, "source-text.md contains only the plugin-authorized original-source excerpt for this turn; the complete PDF is not available in this directory.")
     .replace(/Read records\.md only when previous discussions[\s\S]*?Current Zotero notes take precedence over old conversation text when the user has corrected a record\. /, "");
-   return text + "\nContext boundary: use only this discussion, this turn's supplied passage/page, and authorized source-text.md. Do not read parent directories, other chats, other chapters, unrelated notes or external sources. The current question's subject determines chapter ownership; supporting evidence never moves this discussion.";
+   if (ctx.reading.evidenceMode !== "knowledge") {
+    text = text.replace(/Read and follow the original skill at .*?\. Resolve its supporting resources relative to that skill directory; preserve the skill and its files\. /, "Follow the original skill resources supplied inline below. ")
+     .replace(/Use the original scientific-information-extraction skill at .*? for narrow local checks\. /, "Use the supplied scientific-information-extraction resources for narrow checks. ")
+     .replace("Its complete text is in current-page.md when file is specified.", "Its complete text is supplied by the plugin.")
+     .replace(/Read the requested portions of source-text\.md using local file tools; you do not need a Zotero browser or reader tool to access it\./, "The plugin has already located the requested original-source passages and supplied them in <authorized-source-excerpt> below. Read that excerpt directly; no file tools are required.");
+    text += "\nFor this turn, original-source verification is authorized. This supersedes earlier context-only instructions in the conversation. Verify the requested statement and proof against the supplied original-source excerpt before answering. Do not refuse verification because local tools are disabled: the original text is supplied inline. If the excerpt is insufficient, identify precisely what is missing.";
+   }
+   return text + "\nContext boundary: use only this discussion, this turn's supplied passage/page, and authorized original-source excerpts. Supporting passages from another chapter are permitted when supplied by the plugin for this question. Do not read parent directories, other chats, unrelated notes or external sources. The current question's subject determines chapter ownership; supporting evidence never moves this discussion.";
+  },
+  async discussionSourceTarget(ctx) {
+   let question = (ctx.reading.sourceQuestion || "") + "\n" + (ctx.reading.sourceSelection || "") + "\n" + (ctx.reading.missingSourceEvidence || "");
+   let references = this.readingSourceReferences(question);
+   if (!references.length) {
+    const history = await this.loadHistory(ctx.dir);
+    const previous = [...history].reverse().find(message => message.role === "user");
+    question += "\n" + (previous?.text || "") + "\n" + (previous?.selection?.text || "");
+    references = this.readingSourceReferences(question);
+   }
+   return { question, references };
+  },
+  async unmappedDiscussionSource(ctx, source, full) {
+   // Text extraction and page-link verification are separate capabilities.
+   // Native reader pages have exact indices even when full-text boundaries do not.
+   const sections = [], allowedPages = [];
+   const current = ctx.reading.selectedPageIndex ?? ctx.reading.currentPage?.pageIndex;
+   if (Number.isInteger(current)) {
+    for (let index = Math.max(0, current - 1); index <= Math.min(source.totalPages - 1, current + 2); index++) {
+     try {
+      const page = await this.readNativeReadingPage(ctx, index);
+      if (page.text.trim()) {
+       allowedPages.push(index);
+       sections.push("## PDF page " + (index + 1) + "; pageIndex " + index + "\n\n" + page.text);
+      }
+     } catch (e) { this.logError("scoped native source page", e); }
+    }
+   }
+   if (ctx.reading.explicitSourceRequest || ctx.reading.sourceLookup) {
+    const { references } = await this.discussionSourceTarget(ctx);
+    // Preserve source offsets; allow line wrapping between heading/number components.
+    // These excerpts establish original wording, never physical page indices.
+    const patterns = references.map(number => new RegExp("(?:theorem|lemma|proposition|corollary|definition|定理|引理|命题|推论|定义)\\s*" + number.split(".").join("\\s*\\.\\s*") + "(?!\\d|\\.\\d)", "ig"));
+    const ranges = [];
+    for (const pattern of patterns) {
+     for (const match of full.matchAll(pattern)) {
+      if (ranges.length >= 3) break;
+      const start = Math.max(0, match.index - 600), end = Math.min(full.length, match.index + 12000);
+      if (ranges.some(range => start >= range.start && end <= range.end)) continue;
+      ranges.push({ start, end });
+     }
+    }
+    for (const range of ranges) sections.push("## Original PDF text excerpt — physical page location unverified\n\n" + full.slice(range.start, range.end));
+   }
+   if (!sections.length) return { ...source, status: "unavailable", error: "The original text could not be located and native reader page text is unavailable. Open the relevant PDF page or provide its image." };
+   const bounded = { ...source, pdf: undefined, text: "source-text.md", scoped: true, allowedPages, pageMapping: false };
+   await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "source-text.md"), sections.join("\n\n"));
+   await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "source-manifest.json"), JSON.stringify(bounded));
+   return bounded;
   },
   async exportReadingSource(ctx) {
    if (!ctx.discussion) return original.exportReadingSource.call(this, ctx);
    // The complete PDF cache is plugin-private and never copied into an agent
    // discussion directory. Only bounded, authorized text is exposed there.
    const documentCtx = { ...ctx, dir: ctx.documentDir }; delete documentCtx.discussion;
-   const source = await original.exportReadingSource.call(this, documentCtx);
+   let source = await original.exportReadingSource.call(this, documentCtx);
    if (source.status !== "ready") return source;
+   source = await original.recoverReadingPageMapping.call(this, documentCtx, source);
    const full = await Zotero.File.getContentsAsync(OS.Path.join(ctx.documentDir, "source-text.md"));
    let excerpt = "", allowed = [];
    if (ctx.reading.action === "contents") excerpt = this.contentsExcerpt(full);
    else if (ctx.reading.action === "summary" && ctx.reading.type === "paper") excerpt = full;
    else {
-    if (!source.pageMapping) return { ...source, status: "unavailable", error: "Physical PDF page boundaries are unverified. Select the passage or supply a page image." };
+    if (!source.pageMapping) return this.unmappedDiscussionSource(ctx, source, full);
     const index = await this.discussionIndex(ctx); await this.refreshDiscussionChapters(ctx, index);
     const chapter = index.chapters.find(c => c.id === ctx.discussion.chapterID);
     if (ctx.reading.type === "book" && /(?:chapter|章节|第.+章|本章)/i.test(ctx.reading.sourceQuestion || "") && Number.isInteger(chapter?.pageIndex) && Number.isInteger(chapter?.endPageIndex)) {
@@ -620,16 +676,16 @@
     } else if (Number.isInteger(ctx.reading.selectedPageIndex ?? ctx.reading.currentPage?.pageIndex)) allowed.push(ctx.reading.selectedPageIndex ?? ctx.reading.currentPage.pageIndex);
     // Explicit source requests permit a narrowly bounded lookup. Match an
     // explicit chapter, theorem or exact quoted phrase locally, without tokens.
-    if (ctx.reading.explicitSourceRequest) {
-     const q = ctx.reading.sourceQuestion || "";
-     const requested = q.match(/(?:theorem|lemma|proposition|corollary|定理|引理|命题)\s*\d+(?:\.\d+)*/ig) || [];
+    if (ctx.reading.explicitSourceRequest || ctx.reading.sourceLookup) {
+     const { question: q, references: requested } = await this.discussionSourceTarget(ctx);
+     const matches = requested.map(number => new RegExp("(?:theorem|lemma|proposition|corollary|definition|定理|引理|命题|推论|定义)" + number.replace(/\./g, "\\.") + "(?!\\d|\\.\\d)", "i"));
      const route = this.resolveDiscussionChapter({ ...ctx, reading: { ...ctx.reading } }, index, q.replace(/这里|此处|这一步|\bhere\b|\bthis\b/ig, ""), null, null);
      const target = !route.ambiguous && index.chapters.find(c => c.id === route.chapterID);
      if (target && target.id !== chapter?.id && Number.isInteger(target.pageIndex) && Number.isInteger(target.endPageIndex)) for (let page = target.pageIndex; page <= target.endPageIndex; page++) allowed.push(page);
      let found = 0;
      for (let page = 0; page < source.totalPages && requested.length && found < 3; page++) {
       const text = this.pdfPageText(full, page);
-      if (requested.some(needle => text.toLowerCase().replace(/\s/g, "").includes(needle.toLowerCase().replace(/\s/g, "")))) { found++; for (let near = Math.max(0, page - 1); near <= Math.min(source.totalPages - 1, page + 2); near++) allowed.push(near); }
+      if (matches.some(pattern => pattern.test(text.replace(/\s/g, "")))) { found++; for (let near = Math.max(0, page - 1); near <= Math.min(source.totalPages - 1, page + 2); near++) allowed.push(near); }
      }
     }
     allowed = [...new Set(allowed)].filter(page => page >= 0 && page < source.totalPages).sort((a, b) => a - b);

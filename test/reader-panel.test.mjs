@@ -271,3 +271,26 @@ test("dedicated reading panel ignores old decorations and follows the chosen acc
  p.refreshRoot(root); assert.equal(root.dataset.style, 'flat'); assert.equal(root.dataset.pattern, 'none');
  assert.equal(root.style.getPropertyValue('--abstractin-accent'), '#6d4fd6');
 });
+
+test("opening a panel discards toolbar nodes from a destroyed reader document", async () => {
+ const { plugin: p, window: win, document: doc, a } = setup();
+ const dead = new Proxy({}, { get() { throw new Error("can't access dead object"); } });
+ p._readerToolbarButtons.set(win, new Map([[a, dead]]));
+ await p.openReaderPanel(a);
+ assert.equal(doc.querySelector('.abstractin-reader-panel').hidden, false);
+ assert.equal(p._readerToolbarButtons.get(win).has(a), false);
+ p._readerToolbarButtons.get(win).set(a, dead);
+ p.renderReaderToolbar({ reader: a, doc, append: node => doc.body.append(node) });
+ assert.ok(doc.querySelector('.abstractin-reader-toggle'));
+});
+
+test("dead cached view and panel nodes are replaced and cleanup still unregisters observers", async () => {
+ const { plugin: p, window: win, document: doc, a, observer } = setup();
+ await p.openReaderPanel(a); const state = p._readerPanelWindows.get(win);
+ const dead = new Proxy({}, { get() { throw new Error("can't access dead object"); } });
+ const entry = state.views.get(a); entry.body.remove(); entry.body = dead; entry.root = dead;
+ await p.openReaderPanel(a); assert.notEqual(state.views.get(a), entry);
+ state.panel.remove(); state.panel = dead;
+ await p.openReaderPanel(a); assert.notEqual(p._readerPanelWindows.get(win), state);
+ p.removeReaderPanel(win); assert.equal(observer(), null); assert.equal(p._readerPanelWindows.has(win), false);
+});

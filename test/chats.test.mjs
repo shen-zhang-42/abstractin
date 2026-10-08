@@ -161,16 +161,73 @@ test("plain text search covers chapter chats and jumps without deleting records 
  assert.match(p.chatTitle(results[0].chat), /^chap-01_chat-01_/);
 });
 
-test("knowledge mode never reads other notes, extracts the PDF or escalates missing evidence automatically", async () => {
- const { p, view, send, requests } = await setup(); await send("Chapter 1: first topic");
- p.exportReadingSource = async () => { throw new Error("unrequested source access"); };
- p.readNativeReadingPage = async () => { throw new Error("unrequested page access"); };
- p.reuseCurrentReadingPage = async () => { throw new Error("unrequested cached page access"); };
- p.runBackend = async (_, request) => { requests.push(request); return { text: "<abstractin-source-needed>missing theorem</abstractin-source-needed>", sessionId: request.session?.id }; };
- const count = requests.length; await send("What does theorem 2.3 say?");
- assert.equal(requests.length, count + 1); assert.equal(requests.at(-1).ctx.reading.evidenceMode, "knowledge");
- assert.doesNotMatch(requests.at(-1).question, /verify the original source automatically|saved notes and previous conversation/);
- assert.match((await p.loadHistory(view.ctx.dir)).at(-1).text, /provide the passage or allow source verification/);
+test("ordinary knowledge discussion stays local unless original evidence is missing", async () => {
+ const { p, view, send, requests, window } = await setup(); await send("Chapter 1: first topic");
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array.from({ length: 15 }, (_, i) => i === 6 ? "Theorem 2.3: verified proof." : "PAGE-" + i).join("\f") }) };
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  calls++; requests.push(request);
+  if (calls === 1) {
+   assert.equal(request.ctx.reading.evidenceMode, "knowledge");
+   assert.match(request.question, /verify the original source automatically/);
+   assert.doesNotMatch(request.question, /saved notes and previous conversation/);
+   return { text: "<abstractin-source-needed>Theorem 2.3 proof is missing</abstractin-source-needed>" };
+  }
+  assert.equal(request.ctx.reading.evidenceMode, "source");
+  assert.match(request.question, /Theorem 2.3: verified proof/);
+  assert.match(request.question, /original-source verification is authorized/);
+  assert.doesNotMatch(request.question, /Do not open or search the PDF|using local file tools/);
+  assert.equal(request.session, null);
+  return { text: "Verified proof answer" };
+ };
+ await send("Why did the author use that index set?"); assert.equal(calls, 2);
+ const history = await p.loadHistory(view.ctx.dir);
+ assert.equal(history.at(-1).text, "Verified proof answer");
+ assert.ok(!JSON.stringify(history).includes("abstractin-source-needed"));
+ assert.equal(p.getReadingEvidenceMode(), "knowledge");
+});
+
+test("a selected appendix theorem verifies automatically and a follow-up lookup finds its original page", async () => {
+ const { p, view, send, requests, window, attachment, setLocation } = await setup();
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array.from({ length: 15 }, (_, i) => i === 11 ? "Theorem A.78. The index family may be uncountable. Proof: only countably many terms are nonzero." : i === 5 ? "Theorem A.780. Wrong statement." : "PAGE-" + i).join("\f") }) };
+ const run = p.runBackend.bind(p);
+ p.runBackend = async (backend, request) => {
+  if (request.ctx.reading.evidenceMode === "knowledge") {
+   requests.push(request);
+   return { text: "<abstractin-source-needed>Theorem A.78 statement and proof are missing</abstractin-source-needed>" };
+  }
+  return run(backend, request);
+ };
+ await send("这里的 ci 的 index 集合是可数的吗？", { selection: { text: "Theorem A.78.", attachmentID: attachment.id, position: { pageIndex: 11 } } });
+ assert.equal(requests.at(-1).ctx.reading.evidenceMode, "source");
+ assert.match(requests.at(-1).question, /only countably many terms/);
+ assert.doesNotMatch(requests.at(-1).question, /Wrong statement/);
+ const owner = view.ctx.discussion.id;
+ setLocation({ pageIndex: 1 });
+ await send("请去搜索原文核对刚才的证明");
+ assert.equal(requests.at(-1).ctx.reading.evidenceMode, "source");
+ assert.match(requests.at(-1).question, /only countably many terms/);
+ assert.equal(view.ctx.discussion.id, owner);
+ assert.equal(p.requestsReadingSource("去原文里查一下"), true);
+ assert.equal(p.requestsReadingSource("请查找原文"), true);
+});
+
+test("a numbered theorem with sufficient discussion evidence answers without another PDF lookup", async () => {
+ const { p, view, send, requests } = await setup();
+ await p.saveHistory(view.ctx.dir, [{ role: "user", text: "Theorem A.78 proof" }, { role: "assistant", text: "Verified proof: only countably many terms are nonzero." }]);
+ p.exportReadingSource = async () => { throw new Error("Unnecessary source lookup"); };
+ await send("解释 Theorem A.78 中已经确认的可数性结论");
+ assert.equal(requests.at(-1).ctx.reading.evidenceMode, "knowledge");
+ assert.match(requests.at(-1).history.at(-1).text, /only countably many terms/);
+ assert.match(requests.at(-1).question, /answer directly without requesting source retrieval/);
+});
+
+test("an explicit no-source request prevents automatic checks of numbered appendix theorems", async () => {
+ const { p, send, requests } = await setup();
+ p.exportReadingSource = async () => { throw new Error("Document access prohibited"); };
+ await send("不要搜索原文，根据已有知识解释 Theorem A.78");
+ assert.equal(requests.at(-1).ctx.reading.evidenceMode, "knowledge");
+ assert.match(requests.at(-1).question, /explicitly prohibited document access/);
 });
 
 test("scoped source files expose only the selected chapter page and explicit cross-chapter evidence", async () => {
@@ -184,6 +241,53 @@ test("scoped source files expose only the selected chapter page and explicit cro
  ctx.reading.explicitSourceRequest = true; ctx.reading.sourceQuestion = "Here uses theorem 2.3; look up its proof in the book";
  await p.exportReadingSource(ctx); text = await readFile(join(ctx.dir, "source-text.md"), "utf8"); assert.match(text, /Theorem 2.3/); assert.doesNotMatch(text, /PAGE-12/);
  assert.equal(ctx.discussion.chapterID, "ch-01");
+});
+
+test("unmapped full text still verifies the selected theorem through native reader pages", async () => {
+ const { p, view, send, requests, window, attachment, setLocation } = await setup();
+ setLocation({ pageIndex: 6 });
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: "Extracted text with unverified boundaries" }) };
+ const calls = [];
+ const pdf = { numPages: 15, getPage: async number => {
+  calls.push(number - 1);
+  return { getTextContent: async () => ({ items: [{ str: number === 7 ? "Theorem A.78. An index family can be uncountable." : number === 8 ? "Proof: only countably many coefficients are nonzero." : "NEARBY-" + number }] }) };
+ } };
+ p.readingPDFApplication = () => ({ pdfDocument: pdf });
+ await send("你看一下这个定理，为什么指标集的可不可数会影响证明？", { selection: { text: "Theorem A.78.34", attachmentID: attachment.id, position: { pageIndex: 6 } } });
+ const request = requests.at(-1);
+ assert.equal(request.ctx.reading.pdfSource.status, "ready");
+ assert.equal(request.ctx.reading.pdfSource.pageMapping, false);
+ assert.match(request.question, /Theorem A.78\. An index family/);
+ assert.match(request.question, /only countably many coefficients/);
+ assert.match(request.question, /PDF page 7; pageIndex 6/);
+ assert.deepEqual(calls, [5, 6, 7, 8]);
+ assert.equal(await window.OS.File.exists(join(view.ctx.dir, "source.pdf")), false);
+});
+
+test("unmapped cached text supports bounded theorem lookup without inventing a page index", async () => {
+ const { p, view, send, requests, window } = await setup();
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: "Preface. " + "irrelevant ".repeat(3000) + "Theorem A.78. Exact statement. Proof: countable support." + " nearby ".repeat(3000) + "UNRELATED-END" }) };
+ p.readNativeReadingPage = async () => { throw new Error("Reader not available"); };
+ await send("查看定理 A.78 的原文证明");
+ const request = requests.at(-1);
+ assert.equal(request.ctx.reading.pdfSource.status, "ready");
+ assert.equal(request.ctx.reading.pdfSource.allowedPages.length, 0);
+ assert.match(request.question, /Exact statement\. Proof: countable support/);
+ assert.match(request.question, /physical page location unverified/);
+ const excerpt = await readFile(join(view.ctx.dir, "source-text.md"), "utf8");
+ assert.doesNotMatch(excerpt, /## PDF page|UNRELATED-END/);
+ assert.ok(excerpt.length < 14000);
+});
+
+test("scoped export recovers trimmed blank-page mapping in the private document cache", async () => {
+ const { p, view, send, requests, window, dir } = await setup();
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array.from({ length: 14 }, (_, i) => "CONTENT-" + (i + 1)).join("\f") }) };
+ p.readingPDFApplication = () => ({ pdfDocument: { numPages: 15, getPage: async number => ({ getTextContent: async () => ({ items: [{ str: number === 1 ? "" : "CONTENT-" + (number - 1) }] }) }) } });
+ await send("查看原文当前页");
+ assert.equal(requests.at(-1).ctx.reading.pdfSource.status, "ready");
+ assert.equal(requests.at(-1).ctx.reading.pdfSource.pageMapping, true);
+ assert.match(await readFile(join(dir, "source-text.md"), "utf8"), /## PDF page 1; pageIndex 0\n\n\[No extractable text/);
+ assert.match(await readFile(join(view.ctx.dir, "source-text.md"), "utf8"), /## PDF page 2; pageIndex 1\n\nCONTENT-1/);
 });
 
 test("native agent tool flags prevent cross-directory file reads in scoped discussions", async () => {
@@ -548,4 +652,52 @@ test("deleting compacts surviving chats and results and refreshes citation label
  const history = await p.loadHistory(view.ctx.dir); assert.equal(history[1].results[0].number, "1.2.1.1");
  assert.match(history[0].text, /Chat Result 1\.1\.1\.1/);
  await p.newChat(view.root); assert.equal(view.ctx.discussion.number, 3);
+});
+
+test("deleting a middle turn removes its pair, compacts result numbers and resets all model threads", async () => {
+ const { p, view, send } = await setup();
+ await send("Chapter 1: discussion");
+ await p.saveHistory(view.ctx.dir, [
+  { role: "user", text: "First question" }, { role: "assistant", text: "### Definition — First\nFirst statement." },
+  { role: "user", text: "Second question" }, { role: "assistant", text: "### Definition — Second\nSecond statement." },
+  { role: "user", text: "Third question" }, { role: "assistant", text: "### Theorem — Third\nThird statement." },
+ ]);
+ const before = await p.loadHistory(view.ctx.dir), survivor = before[5].results[0];
+ await p.saveSessions(view.ctx.dir, { codex: { id: "old" }, "codex:knowledge": { id: "old" }, "codex:source": { id: "source-old" } });
+ view.input.value = "Unsent draft";
+ p.renderMessages(view, before);
+ const more = view.logEl.querySelectorAll('.abstractin-more')[1]; more.click();
+ const remove = [...view.root.querySelectorAll('.abstractin-menu-item')].find(item => item.textContent.includes('Delete this turn'));
+ assert.ok(remove); remove.click();
+ for (let tries = 0; tries < 100 && ((await p.loadHistory(view.ctx.dir)).length !== 4 || p._chatTransitions.has(view.ctx.dir)); tries++) await new Promise(resolve => setTimeout(resolve, 10));
+ const after = await p.loadHistory(view.ctx.dir);
+ assert.deepEqual(Array.from(after, message => message.text.split('\n')[0]), ['First question', '### Definition — First', 'Third question', '### Theorem — Third']);
+ assert.equal(after[3].results[0].id, survivor.id);
+ assert.equal(after[3].results[0].number, '1.1.2.1');
+ assert.equal(Object.keys(await p.loadSessions(view.ctx.dir)).length, 0);
+ assert.equal(view.input.value, 'Unsent draft');
+ assert.doesNotMatch(view.logEl.textContent, /Second question|Second statement/);
+});
+
+test("turn deletion handles the last pair and the final empty conversation", async () => {
+ const { p, view, send } = await setup(); await send('First'); await send('Second');
+ let history = await p.loadHistory(view.ctx.dir);
+ await p.deleteConversationTurn(view, 3, history[3]);
+ history = await p.loadHistory(view.ctx.dir); assert.equal(history.length, 2);
+ await p.deleteConversationTurn(view, 1, history[1]);
+ assert.equal((await p.loadHistory(view.ctx.dir)).length, 0);
+ assert.ok(view.logEl.querySelector('.abstractin-empty'));
+ assert.equal(p._chatTransitions.has(view.ctx.dir), false);
+});
+
+test("turn deletion rejects pending answers and stale indices without changing the transcript", async () => {
+ const { p, view, send } = await setup(); await send('First'); await send('Second');
+ const history = await p.loadHistory(view.ctx.dir);
+ p._pending.set(view.ctx.dir, {});
+ await assert.rejects(p.deleteConversationTurn(view, 1, history[1]), /Wait for the current answer/);
+ p._pending.delete(view.ctx.dir);
+ await assert.rejects(p.deleteConversationTurn(view, 1, history[3]), /turn has changed/);
+ assert.equal((await p.loadHistory(view.ctx.dir)).length, 4);
+ assert.equal(p._chatTransitions.has(view.ctx.dir), false);
+ assert.equal(p._discussionLocks.has(p.discussionRoot(view.ctx)), false);
 });

@@ -403,7 +403,7 @@ test("knowledge discussion skips full PDF extraction, supplies corrected notes i
  p.exportReadingSource = async () => { throw new Error('Knowledge discussion must not extract PDF'); };
  p.runBackend = async (_, request) => {
   assert.match(request.question, /Knowledge discussion/); assert.match(request.question, /Corrected understanding/);
-  assert.match(request.question, /Do not open or search/); assert.ok(!request.question.includes('Read and follow the original skill'));
+  assert.match(request.question, /Original-source retrieval is handled by the plugin/); assert.ok(!request.question.includes('Read and follow the original skill'));
   return { text: 'A supplementary explanation\n<abstractin-record>{"title":"Intuition","summary":"Supplementary explanation","openQuestions":[],"sources":[]}</abstractin-record>', sessionId: 'knowledge-thread' };
  };
  let result = await p.ask(ctx, 'Why does this work?', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined); assert.ok(result.recordKey);

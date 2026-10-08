@@ -150,7 +150,7 @@ test("answers retain Retry, Copy and More without the removed Explain better act
 	assert.equal(root.querySelector(".abstractin-explain"), null);
 	assert.ok(turns[1].querySelector(".abstractin-copy"));
 	turns[1].querySelector(".abstractin-more").click();
-	assert.deepEqual(menuLabels(root), ["Save as note", "Copy"]);
+	assert.deepEqual(menuLabels(root), ["Save as note", "Copy", "Delete this turn"]);
 });
 
 test("answers from different assistants or models are labelled", () => {

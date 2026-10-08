@@ -8,6 +8,17 @@ Object.assign(AbstractIn, {
 	_readerToolbarObservers: new Map(),
 	_readerToolbarGeneration: 0,
 
+	readerPanelNodeAlive(node) {
+		// Even reading isConnected throws on Gecko wrappers from destroyed windows.
+		try { return !!node?.isConnected && !node.ownerDocument?.defaultView?.closed; }
+		catch (_) { return false; }
+	},
+
+	cleanupReaderPanelResource(callback) {
+		try { callback(); }
+		catch (e) { this.logError("reader panel cleanup", e); }
+	},
+
 	async restoreReaderToolbarEntries() {
 		let generation = this._readerToolbarGeneration;
 		await Promise.all((Zotero.Reader?._readers || []).map(async reader => {
@@ -19,7 +30,7 @@ Object.assign(AbstractIn, {
 				if (!doc) return;
 				let restore = () => {
 					let button = this._readerToolbarButtons.get(this.readerPanelWindow(reader))?.get(reader);
-					if (button?.isConnected) return true;
+					if (this.readerPanelNodeAlive(button)) return true;
 					let end = doc.querySelector(".toolbar .end");
 					if (!end) return false;
 					this.renderReaderToolbar({ reader, doc, append: node => end.insertBefore(node, end.firstChild) });
@@ -77,7 +88,7 @@ Object.assign(AbstractIn, {
 		let buttons = this._readerToolbarButtons.get(win);
 		if (!buttons) { buttons = new Map(); this._readerToolbarButtons.set(win, buttons); }
 		let old = buttons.get(reader);
-		if (old) old.remove();
+		if (this.readerPanelNodeAlive(old)) old.remove();
 		let button = this.el(doc, "button", "toolbar-button abstractin-reader-toggle");
 		button.type = "button";
 		button.title = "Toggle AbstractIn panel";
@@ -90,6 +101,7 @@ Object.assign(AbstractIn, {
 		icon.style.cssText = "display:block;width:20px;height:20px;";
 		// The reader toolbar is in its own document without the chat stylesheet.
 		this.loadIcon(doc, "app").then(() => {
+			if (!this.readerPanelNodeAlive(icon)) return;
 			let svg = icon.querySelector("svg");
 			if (!svg) icon.style.display = "none";
 			if (svg) {
@@ -113,6 +125,7 @@ Object.assign(AbstractIn, {
 	updateReaderPanelButtons(win) {
 		let state = this._readerPanelWindows.get(win);
 		for (let [reader, button] of this._readerToolbarButtons.get(win) || []) {
+			if (!this.readerPanelNodeAlive(button)) { this._readerToolbarButtons.get(win)?.delete(reader); continue; }
 			let active = !!state?.active && state.reader === reader;
 			button.setAttribute("aria-pressed", String(active));
 			button.classList.toggle("active", active);
@@ -194,6 +207,7 @@ Object.assign(AbstractIn, {
 		if (reader.type !== "pdf") throw new Error("Open a PDF to use the AbstractIn reading panel.");
 		let win = this.readerPanelWindow(reader);
 		let state = this._readerPanelWindows.get(win);
+		if (state && (!this.readerPanelNodeAlive(state.panel) || !this.readerPanelNodeAlive(state.splitter))) { this.removeReaderPanel(win); state = null; }
 		if (toggle && state?.active && state.reader === reader) { this.closeReaderPanel(win); return; }
 		let item = Zotero.Items.get(reader.itemID);
 		if (!item) throw new Error("The selected PDF attachment is no longer available.");
@@ -204,7 +218,12 @@ Object.assign(AbstractIn, {
 		state.panel.querySelector(".abstractin-reader-loading")?.remove();
 		state.panel.hidden = false; state.splitter.hidden = false; state.splitter.setAttribute("state", "open");
 		let entry = state.views.get(reader);
-		for (let existing of state.views.values()) existing.body.hidden = true;
+		for (let [cachedReader, existing] of state.views) {
+			if (!this.readerPanelNodeAlive(existing.body) || !this.readerPanelNodeAlive(existing.root)) {
+				this.releaseReaderPanelView(state, cachedReader, existing);
+				if (cachedReader === reader) entry = null;
+			} else existing.body.hidden = true;
+		}
 		if (!entry) {
 			let body = this.el(win.document, "div", "abstractin-reader-view");
 			state.panel.append(body);
@@ -217,6 +236,7 @@ Object.assign(AbstractIn, {
 			// request here, so a panel can close or switch while an answer streams.
 			entry.render = this.renderContent(win.document, body, item, reader).catch(e => {
 				this.logError("reader panel render", e);
+				if (!this.readerPanelNodeAlive(root)) return;
 				let view = this._views.get(root);
 				if (view) this.appendError(view, e.message || String(e));
 				else root.querySelector(".abstractin-log").textContent = "AbstractIn could not load this PDF: " + (e.message || e);
@@ -232,48 +252,61 @@ Object.assign(AbstractIn, {
 	closeReaderPanel(win, { restoreContext = true } = {}) {
 		let state = this._readerPanelWindows.get(win);
 		if (!state?.active) return;
-		state.active = false;
-		state.panel.hidden = true; state.splitter.hidden = true;
-		if (restoreContext && state.contextWasOpen && win.ZoteroContextPane) win.ZoteroContextPane.collapsed = false;
+		this.closeReaderPanelState(state, { restoreContext });
 		this.updateReaderPanelButtons(win);
 	},
 
 	releaseReaderPanelView(state, reader, entry) {
-		this._views.delete(entry.root);
-		entry.root.disposeUI?.();
-		entry.body.remove();
-		state.views.delete(reader);
-		let binding = this._positionBindings.get(reader);
+		// Remove registrations before touching any potentially dead DOM wrapper.
+		state.views.delete(reader); this._views.delete(entry.root);
+		this.cleanupReaderPanelResource(() => entry.root.disposeUI?.());
+		this.cleanupReaderPanelResource(() => entry.body.remove());
+		const binding = this._positionBindings.get(reader);
+		this._positionBindings.delete(reader);
 		if (binding) {
-			(binding.bus.off || binding.bus._off)?.call(binding.bus, "pagechanging", binding.listener);
-			binding.win.clearTimeout(binding.timer);
-			this._positionBindings.delete(reader);
+			this.cleanupReaderPanelResource(() => (binding.bus.off || binding.bus._off)?.call(binding.bus, "pagechanging", binding.listener));
+			this.cleanupReaderPanelResource(() => binding.win.clearTimeout(binding.timer));
 		}
-		let button = this._readerToolbarButtons.get(state.win)?.get(reader);
-		button?.remove();
-		this._readerToolbarButtons.get(state.win)?.delete(reader);
+		const buttons = this._readerToolbarButtons.get(state.win), button = buttons?.get(reader);
+		buttons?.delete(reader);
+		if (this.readerPanelNodeAlive(button)) button.remove();
 	},
 
 	removeReaderPanel(win) {
 		for (let [reader, observer] of this._readerToolbarObservers) {
-			if (this.readerPanelWindow(reader) === win) { observer.disconnect(); this._readerToolbarObservers.delete(reader); }
+			this.cleanupReaderPanelResource(() => {
+				if (this.readerPanelWindow(reader) === win) {
+					this._readerToolbarObservers.delete(reader); observer.disconnect();
+				}
+			});
 		}
-		let state = this._readerPanelWindows.get(win);
+		const state = this._readerPanelWindows.get(win);
+		this._readerPanelWindows.delete(win);
 		if (state) {
-			this.closeReaderPanel(win);
-			state.observer.disconnect(); state.resize?.disconnect();
-			Zotero.Notifier.unregisterObserver(state.notifier);
-			win.removeEventListener("unload", state.unload);
+			if (this.readerPanelNodeAlive(state.panel)) this.cleanupReaderPanelResource(() => this.closeReaderPanelState(state));
+			this.cleanupReaderPanelResource(() => state.observer.disconnect());
+			this.cleanupReaderPanelResource(() => state.resize?.disconnect());
+			this.cleanupReaderPanelResource(() => Zotero.Notifier.unregisterObserver(state.notifier));
+			this.cleanupReaderPanelResource(() => win.removeEventListener("unload", state.unload));
 			for (let [reader, entry] of state.views) this.releaseReaderPanelView(state, reader, entry);
-			state.panel.remove(); state.splitter.remove();
-			this._readerPanelWindows.delete(win);
+			this.cleanupReaderPanelResource(() => state.panel.remove());
+			this.cleanupReaderPanelResource(() => state.splitter.remove());
 		}
-		for (let button of this._readerToolbarButtons.get(win)?.values() || []) button.remove();
-		this._readerToolbarButtons.delete(win);
-		if (!win.ZoteroPane) {
-			win.document.getElementById("abstractin-stylesheet")?.remove();
-			win.document.querySelector('[href="abstractin.ftl"]')?.remove();
-		}
+		const buttons = this._readerToolbarButtons.get(win); this._readerToolbarButtons.delete(win);
+		for (const button of buttons?.values() || []) if (this.readerPanelNodeAlive(button)) button.remove();
+		this.cleanupReaderPanelResource(() => {
+			if (!win.closed && !win.ZoteroPane) {
+				win.document.getElementById("abstractin-stylesheet")?.remove();
+				win.document.querySelector('[href="abstractin.ftl"]')?.remove();
+			}
+		});
+	},
+
+	closeReaderPanelState(state, { restoreContext = true } = {}) {
+		if (!state.active) return;
+		state.active = false;
+		state.panel.hidden = true; state.splitter.hidden = true;
+		if (restoreContext && state.contextWasOpen && state.win.ZoteroContextPane) state.win.ZoteroContextPane.collapsed = false;
 	},
 
 	removeAllReaderPanels() {
