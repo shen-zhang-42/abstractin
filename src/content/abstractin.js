@@ -527,6 +527,7 @@ AbstractIn = {
 		}
 		let image = root.querySelector(":scope > .abstractin-backdrop > .abstractin-backdrop-image");
 		if (image) image.style.backgroundImage = "";
+		this.syncMascotAnimations(root);
 	},
 
 	migrateInstructionPrompts() {
@@ -2058,6 +2059,7 @@ AbstractIn = {
 		}
 		if (!history.length) {
 			this.renderEmptyState(view);
+			this.syncMascotAnimations(view.root);
 			return;
 		}
 		// Only label answers once more than one assistant or model took part.
@@ -2120,9 +2122,23 @@ AbstractIn = {
 		update();
 	},
 
+	syncMascotAnimations(root) {
+		let reduced = root.ownerDocument.defaultView.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+		for (let icon of root.querySelectorAll(".abstractin-mascot")) {
+			let running = !reduced && (!!icon.closest(".abstractin-reading-welcome, .abstractin-wizard") || root.dataset.answering === "true");
+			for (let animation of icon.querySelectorAll("animateTransform")) {
+				if (animation._abstractinRunning === running) continue;
+				if (running) animation.beginElement?.();
+				else if (animation._abstractinRunning) animation.endElement?.();
+				animation._abstractinRunning = running;
+			}
+		}
+	},
+
 	setBusy(view, busy) {
 		let { root } = view;
 		root.dataset.answering = String(!!busy);
+		this.syncMascotAnimations(root);
 		let send = root.querySelector(".abstractin-send");
 		if (send) {
 			send.classList.toggle("abstractin-stop", busy);
@@ -2943,6 +2959,7 @@ AbstractIn = {
 			wizard.dataset.step = name;
 			stage.textContent = "";
 			stage.appendChild(this.wizardStep(root, name));
+			this.syncMascotAnimations(root);
 			prev.hidden = index === 0;
 			let last = index === this.WIZARD_STEPS.length - 1;
 			next.replaceChildren(this.svgIcon(doc, last ? "done" : index === 0 ? "rocket" : "next"));

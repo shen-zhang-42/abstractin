@@ -918,3 +918,34 @@ test("reading mode menu wraps check, symbol and text in an inner layout and swit
  assert.equal(root.querySelector(".abstractin-reading-evidence-mode .abstractin-i").dataset.icon, "readingKnowledge");
  assert.equal(root.querySelector(".abstractin-menu"), null);
 });
+
+test("vector marmoset tail starts on welcome and follows answer state in the composer", () => {
+	const { root, view, plugin } = sidebar();
+	plugin.renderMessages(view, []);
+	const welcome = root.querySelector('.abstractin-reading-welcome .abstractin-mascot');
+	const companion = root.querySelector('.abstractin-discussion-companion .abstractin-mascot');
+	assert.ok(welcome && companion);
+	const calls = [];
+	for (const [location, icon] of [['welcome', welcome], ['companion', companion]]) {
+		assert.equal(icon.querySelector('image'), null, 'artwork contains vector paths');
+		assert.equal(icon.querySelectorAll('animateTransform').length, 2);
+		for (const animation of icon.querySelectorAll('animateTransform')) {
+			animation._abstractinRunning = undefined;
+			animation.beginElement = () => calls.push(location + ':start');
+			animation.endElement = () => calls.push(location + ':stop');
+		}
+	}
+	root.dataset.answering = 'false';
+	plugin.syncMascotAnimations(root);
+	assert.deepEqual(calls, ['welcome:start', 'welcome:start']);
+	calls.length = 0;
+	plugin.setBusy(view, true);
+	assert.deepEqual(calls, ['companion:start', 'companion:start']);
+	calls.length = 0;
+	plugin.setBusy(view, false);
+	assert.deepEqual(calls, ['companion:stop', 'companion:stop']);
+	calls.length = 0;
+	view.doc.defaultView.matchMedia = () => ({ matches: true });
+	plugin.syncMascotAnimations(root);
+	assert.deepEqual(calls, ['welcome:stop', 'welcome:stop']);
+});
