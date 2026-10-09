@@ -371,7 +371,7 @@ test("every icon shown anywhere maps to a bundled icon file", async () => {
 		// Icon coordinate systems include the original raster mascot canvas.
 		let svg = new document.defaultView.DOMParser().parseFromString(readFileSync(url, "utf8"), "image/svg+xml").documentElement;
 		assert.equal(svg.namespaceURI, "http://www.w3.org/2000/svg");
-		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24", "0 0 590 546", "-12 -12 614 570"].includes(svg.getAttribute("viewBox")));
+		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24", "0 0 590 546", "-12 -12 614 570", "150 0 1120 1210"].includes(svg.getAttribute("viewBox")));
 	}
 });
 

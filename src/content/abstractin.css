@@ -289,15 +289,7 @@
 	0%, 100% { transform: rotate(-8deg); }
 	50% { transform: rotate(8deg); }
 }
-.abstractin-mascot .abstractin-mascot-puffin-wing {
-	transform-box: view-box;
-	transform-origin: 31px 24px;
-	animation: abstractin-mascot-wing-bob 2.8s ease-in-out infinite;
-}
-@keyframes abstractin-mascot-wing-bob {
-	0%, 100% { transform: rotate(-4deg); }
-	50% { transform: rotate(4deg); }
-}
+/* Puffin flapping uses SVG-native animation controlled by syncMascotAnimations. */
 
 /* ---- header ---- */
 
