@@ -424,9 +424,10 @@ test("formal definitions and key equations receive referenceable formatting with
 
 test("the migration button opens classification review before writing grouped discussions", async () => {
  const { p, view, dir } = await setup(); await writeFile(join(dir, "chat.json"), JSON.stringify([{ role: "user", text: "Chapter 1: old result" }, { role: "assistant", text: "Result" }]));
- p.openHistoryMenu(view.root); await new Promise(resolve => setTimeout(resolve, 30));
+ await p.openHistoryMenu(view.root);
  const button = view.root.querySelector(".abstractin-reclassify"); assert.ok(button); button.click();
- await new Promise(resolve => setTimeout(resolve, 30)); assert.ok(view.root.querySelector(".abstractin-migration-review"));
+ for (let i = 0; i < 100 && !view.root.querySelector(".abstractin-migration-review"); i++) await new Promise(resolve => setTimeout(resolve, 10));
+ assert.ok(view.root.querySelector(".abstractin-migration-review"));
  assert.equal((await p.discussionIndex(view.ctx)).chats.filter(c => c.classifiedKey).length, 0);
 });
 
@@ -551,6 +552,7 @@ test("history selection enables merge and deletion only after an explicit review
  assert.ok(merge.disabled); assert.ok(!remove.disabled); checks[1].click(); assert.ok(!merge.disabled);
  merge.click(); await new Promise(r => setTimeout(r, 10));
  let panel = view.logEl.querySelector(".abstractin-history-confirm"); assert.ok(panel);
+ assert.ok(panel.parentElement.classList.contains("abstractin-history-selection"), "bulk confirmation stays inside the visible selection toolbar");
  [...panel.querySelectorAll("button")].find(b => b.textContent === "Cancel").click();
  assert.ok(p.visibleDiscussions(await p.discussionIndex(view.ctx)).some(c => c.id === first));
  merge.click(); await new Promise(r => setTimeout(r, 10));
@@ -560,10 +562,22 @@ test("history selection enables merge and deletion only after an explicit review
  assert.ok(view.ctx.discussion.mergedFrom); assert.ok(view.historyBrowser);
  assert.equal(view.logEl.querySelectorAll(".abstractin-history-check").length, 2); // Unassigned plus merged chapter discussion.
  const row = view.logEl.querySelector('[data-discussion-id="' + view.ctx.discussion.id + '"]').parentElement;
- row.querySelector(".abstractin-history-row-delete").click(); await new Promise(r => setTimeout(r, 10));
+ const deleteButton = row.querySelector(".abstractin-history-row-delete");
+ view.logEl.scrollTop = 320;
+ deleteButton.click(); await new Promise(r => setTimeout(r, 10));
+ panel = view.logEl.querySelector(".abstractin-history-confirm");
+ assert.equal(panel.parentElement, row.parentElement, "single deletion is confirmed within its own chat card");
+ assert.equal(panel.previousElementSibling, row);
+ assert.equal(view.logEl.scrollTop, 320, "focusing confirmation does not jump to the top");
+ [...panel.querySelectorAll("button")].find(b => b.textContent === "Cancel").click();
+ assert.equal(view.doc.activeElement, deleteButton, "cancel returns focus to the delete action");
+ deleteButton.click(); await new Promise(r => setTimeout(r, 10));
  panel = view.logEl.querySelector(".abstractin-history-confirm"); panel.querySelector("button").click();
  for (let i = 0; i < 50 && view.ctx.discussion.mergedFrom; i++) await new Promise(r => setTimeout(r, 10));
  assert.ok(!view.ctx.discussion.mergedFrom);
+ for (let i = 0; i < 100 && !view.historyBrowser; i++) await new Promise(r => setTimeout(r, 10));
+ await new Promise(r => setTimeout(r, 30));
+ assert.equal(view.logEl.scrollTop, 320, "the refreshed chat list preserves its scroll position");
 });
 
 test("formal results share numbering and keep IDs when a merge updates numbers", async () => {

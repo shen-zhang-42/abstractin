@@ -191,26 +191,33 @@
      merge.disabled = selected.size < 2; remove.disabled = !selected.size;
      selectAll.textContent = checks.length && selected.size === checks.length ? "Clear selection" : "Select all";
     };
-    const confirmChange = (kind, ids = [...selected]) => {
+    const confirmChange = (kind, ids = [...selected], anchor = toolbar, trigger = null) => {
      screen.querySelector(".abstractin-history-confirm")?.remove();
      const panel = this.el(view.doc, "div", "abstractin-history-confirm");
      panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", kind === "merge" ? "Merge discussions" : "Delete discussions");
-     panel.append(this.el(view.doc, "p", null, kind === "merge" ? "Merge " + ids.length + " discussions? Complete transcripts will be combined and named automatically. The merged discussion starts a new agent thread; different chapters go to Unassigned." : "Delete " + ids.length + " discussion(s) from history? Local originals are retained for recovery."));
+     panel.dataset.kind = kind;
+     panel.append(this.el(view.doc, "strong", "abstractin-history-confirm-title", kind === "merge" ? "Merge selected discussions?" : "Delete " + (ids.length === 1 ? "this discussion?" : "selected discussions?")));
+     panel.append(this.el(view.doc, "p", null, kind === "merge" ? "Messages will be combined and the new discussion named automatically. Discussions from different chapters move to Unassigned." : "The selected " + (ids.length === 1 ? "discussion will" : "discussions will") + " be removed from the chat list."));
      const names = this.el(view.doc, "ul");
      for (const id of ids) names.append(this.el(view.doc, "li", null, index.chats.find(c => c.id === id)?.topic || "Discussion"));
      panel.append(names);
      const error = this.el(view.doc, "p", "abstractin-menu-note"); error.setAttribute("role", "alert"); panel.append(error);
-     const apply = action(panel, kind === "merge" ? "Confirm merge" : "Confirm delete", async () => {
+     const buttons = this.el(view.doc, "div", "abstractin-history-confirm-actions"); panel.append(buttons);
+     const apply = action(buttons, kind === "merge" ? "Confirm merge" : "Confirm delete", async () => {
       cancel.disabled = true;
+      const scrollTop = view.logEl.scrollTop;
       try {
        if (kind === "merge") await this.mergeDiscussions(view, ids); else await this.deleteDiscussions(view, ids);
        // Switching restores the new/current transcript; reopen the refreshed list.
        await this.openHistoryMenu(root);
+       view.logEl.scrollTop = scrollTop;
       } catch (e) { error.textContent = e.message || String(e); }
       finally { cancel.disabled = false; }
-     });
-     const cancel = action(panel, "Cancel", () => panel.remove());
-     toolbar.after(panel); apply.focus();
+     }, kind === "merge" ? "abstractin-history-confirm-merge" : "abstractin-history-confirm-delete");
+     const cancel = action(buttons, "Cancel", () => { panel.remove(); trigger?.focus({ preventScroll: true }); });
+     if (anchor === toolbar) toolbar.append(panel); else anchor.after(panel);
+     apply.focus({ preventScroll: true });
+     if (anchor !== toolbar) panel.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
     };
     let count = 0;
     for (const chapter of chapters) {
@@ -221,6 +228,7 @@
      heading.append(this.el(view.doc, "h3", null, (chapter.prefix ? chapter.prefix + " · " : "") + chapter.title), this.el(view.doc, "span", "abstractin-history-count", String(chats.length)));
      group.append(heading);
      for (const chat of chats) {
+      const item = this.el(view.doc, "div", "abstractin-history-item");
       const row = this.el(view.doc, "div", "abstractin-history-row");
       const check = this.el(view.doc, "input", "abstractin-history-check"); check.type = "checkbox";
       check.setAttribute("aria-label", "Select " + this.discussionName(view.ctx, chat, index));
@@ -236,25 +244,34 @@
       if (chat.id === view.ctx.discussion.id) { button.setAttribute("aria-current", "true"); row.classList.add("abstractin-current-discussion"); meta.append(this.el(view.doc, "span", "abstractin-history-current", "Current")); }
       button.append(meta);
       const turns = this.el(view.doc, "div", "abstractin-chat-turns"); turns.hidden = true;
-      const showTurns = action(row, "Turns", async () => {
+      const rowActions = this.el(view.doc, "div", "abstractin-history-row-actions"); row.append(rowActions);
+      const showTurns = action(rowActions, "Turns", async () => {
        turns.hidden = !turns.hidden; showTurns.setAttribute("aria-expanded", String(!turns.hidden));
        if (!turns.hidden) await this.showManagedTurns(view, chat, turns);
       }, "abstractin-history-row-turns");
       showTurns.setAttribute("aria-expanded", "false"); showTurns.dataset.discussionId = chat.id;
-      action(row, "Rename", () => {
+      action(rowActions, "Rename", () => {
        turns._turnRequest = {}; turns.hidden = false; turns.replaceChildren();
        const field = this.el(view.doc, "input", "abstractin-field"); field.value = chat.topic; field.setAttribute("aria-label", "Discussion topic");
-       turns.append(field);
-       action(turns, "Save", async () => {
+       const editorActions = this.el(view.doc, "div", "abstractin-history-confirm-actions");
+       turns.append(field, editorActions);
+       action(editorActions, "Save", async () => {
+        const scrollTop = view.logEl.scrollTop;
         await this.renameDiscussion(view, field.value, chat.id);
         if (view.historyBrowser !== browser || !screen.isConnected) return;
         this.leaveHistoryBrowser(view); await this.openHistoryMenu(root);
         if (view.historyBrowser?.dir === browser.dir) view.historyBrowser.scrollTop = browser.scrollTop;
+        view.logEl.scrollTop = scrollTop;
        });
-       action(turns, "Cancel", () => { turns.hidden = true; }); field.focus();
+       action(editorActions, "Cancel", () => { turns.hidden = true; }); field.focus({ preventScroll: true });
       }, "abstractin-history-row-rename");
-      action(row, "Delete", () => confirmChange("delete", [chat.id]), "abstractin-history-row-delete");
-      group.append(row, turns); count++;
+      const deleteButton = action(rowActions, "Delete", () => confirmChange("delete", [chat.id], row, deleteButton), "abstractin-history-row-delete");
+      for (const [button, icon] of [[showTurns, "chatManager"], [rowActions.querySelector(".abstractin-history-row-rename"), "edit"], [deleteButton, "remove"]]) {
+       const content = this.el(view.doc, "span", "abstractin-history-action-content");
+       content.append(this.svgIcon(view.doc, icon), this.el(view.doc, "span", null, button.textContent));
+       button.replaceChildren(content);
+      }
+      item.append(row, turns); group.append(item); count++;
      }
      body.append(group);
     }
