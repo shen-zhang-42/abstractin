@@ -341,7 +341,7 @@
        action(editorActions, "Cancel", () => { turns.hidden = true; }); field.focus({ preventScroll: true });
       }, "abstractin-history-row-rename");
       const deleteButton = action(rowActions, "Delete", () => confirmChange("delete", [chat.id], row, deleteButton), "abstractin-history-row-delete");
-      for (const [button, icon] of [[showTurns, "chatManager"], [rowActions.querySelector(".abstractin-history-row-rename"), "edit"], [deleteButton, "remove"]]) {
+      for (const [button, icon] of [[showTurns, "chatManager"], [rowActions.querySelector(".abstractin-history-row-rename"), "edit"], [deleteButton, "trash"]]) {
        const content = this.el(view.doc, "span", "abstractin-history-action-content");
        content.append(this.svgIcon(view.doc, icon), this.el(view.doc, "span", null, button.textContent));
        button.replaceChildren(content);
