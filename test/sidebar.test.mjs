@@ -371,7 +371,7 @@ test("every icon shown anywhere maps to a bundled icon file", async () => {
 		// Icon coordinate systems include the original raster mascot canvas.
 		let svg = new document.defaultView.DOMParser().parseFromString(readFileSync(url, "utf8"), "image/svg+xml").documentElement;
 		assert.equal(svg.namespaceURI, "http://www.w3.org/2000/svg");
-		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24", "0 0 590 546"].includes(svg.getAttribute("viewBox")));
+		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24", "0 0 590 546", "-12 -12 614 570"].includes(svg.getAttribute("viewBox")));
 	}
 });
 
@@ -928,7 +928,7 @@ test("vector marmoset tail starts on welcome and follows answer state in the com
 	const calls = [];
 	for (const [location, icon] of [['welcome', welcome], ['companion', companion]]) {
 		assert.equal(icon.querySelector('image'), null, 'artwork contains vector paths');
-		assert.equal(icon.querySelectorAll('animateTransform').length, 2);
+		assert.equal(icon.querySelectorAll('animateTransform').length, 3);
 		for (const animation of icon.querySelectorAll('animateTransform')) {
 			animation._abstractinRunning = undefined;
 			animation.beginElement = () => calls.push(location + ':start');
@@ -937,15 +937,15 @@ test("vector marmoset tail starts on welcome and follows answer state in the com
 	}
 	root.dataset.answering = 'false';
 	plugin.syncMascotAnimations(root);
-	assert.deepEqual(calls, ['welcome:start', 'welcome:start']);
+	assert.deepEqual(calls, ['welcome:start', 'welcome:start', 'welcome:start']);
 	calls.length = 0;
 	plugin.setBusy(view, true);
-	assert.deepEqual(calls, ['companion:start', 'companion:start']);
+	assert.deepEqual(calls, ['companion:start', 'companion:start', 'companion:start']);
 	calls.length = 0;
 	plugin.setBusy(view, false);
-	assert.deepEqual(calls, ['companion:stop', 'companion:stop']);
+	assert.deepEqual(calls, ['companion:stop', 'companion:stop', 'companion:stop']);
 	calls.length = 0;
 	view.doc.defaultView.matchMedia = () => ({ matches: true });
 	plugin.syncMascotAnimations(root);
-	assert.deepEqual(calls, ['welcome:stop', 'welcome:stop']);
+	assert.deepEqual(calls, ['welcome:stop', 'welcome:stop', 'welcome:stop']);
 });
