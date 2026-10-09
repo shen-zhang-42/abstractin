@@ -831,13 +831,32 @@ AbstractIn = {
 		icon.dataset.icon = name;
 		icon.setAttribute("aria-hidden", "true");
 		let source = this.BUNDLED_ICONS[this.ICON_FILES[name]];
+		// Inline mascot copies need their own clip/image IDs in the same document.
+		let mount = (svg) => {
+			let copy = doc.importNode(svg, true);
+			let prefix = "abstractin-icon-" + (this._iconInstance = (this._iconInstance || 0) + 1) + "-";
+			let ids = new Map();
+			for (let node of copy.querySelectorAll("[id]")) {
+				let id = node.getAttribute("id");
+				ids.set(id, prefix + id);
+				node.setAttribute("id", prefix + id);
+			}
+			for (let node of copy.querySelectorAll("*")) {
+				for (let attr of Array.from(node.attributes)) {
+					let value = attr.value.replace(/url\(#([^)]*)\)/g, (match, id) => ids.has(id) ? "url(#" + ids.get(id) + ")" : match);
+					if ((attr.localName === "href") && value.startsWith("#") && ids.has(value.slice(1))) value = "#" + ids.get(value.slice(1));
+					if (value !== attr.value) node.setAttributeNS(attr.namespaceURI, attr.name, value);
+				}
+			}
+			icon.appendChild(copy);
+		};
 		if (source) {
-			icon.appendChild(doc.importNode(this.parseIcon(doc, source), true));
+			mount(this.parseIcon(doc, source));
 		}
 		else if (this.ICON_FILES[name]) {
 			this.loadIcon(doc, name).then((svg) => {
 				if (svg && !icon.firstChild) {
-					icon.appendChild(doc.importNode(svg, true));
+					mount(svg);
 				}
 			});
 		}

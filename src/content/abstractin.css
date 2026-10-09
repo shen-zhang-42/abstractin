@@ -3004,3 +3004,42 @@
 .abstractin-chat-turn > span, .abstractin-chat-search-result > span { line-height: 1.5; font-size: 12px; }
 .abstractin-chat-search-result > strong { font-size: 13px; }
 .abstractin-chat-turns > .abstractin-field { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+
+/* Original artwork: keep the curved tail fixed except for its last two segments. */
+.abstractin-mascot .abstractin-marmoset-tip,
+.abstractin-mascot .abstractin-marmoset-tip-end {
+	transform-box: view-box;
+	transform: rotate(0deg);
+}
+.abstractin-mascot .abstractin-marmoset-tip {
+	transform-origin: 536px 48px;
+	animation: abstractin-marmoset-tip-sway 3.6s ease-in-out infinite;
+}
+.abstractin-mascot .abstractin-marmoset-tip-end {
+	transform-origin: 550px 87px;
+	animation: abstractin-marmoset-tip-follow 3.6s ease-in-out infinite;
+}
+@keyframes abstractin-marmoset-tip-sway {
+	0%, 100% { transform: rotate(0deg); }
+	22% { transform: rotate(1.4deg); }
+	45%, 52% { transform: rotate(-2.2deg); }
+	78% { transform: rotate(.9deg); }
+}
+@keyframes abstractin-marmoset-tip-follow {
+	0%, 100% { transform: rotate(0deg); }
+	28% { transform: rotate(2.1deg); }
+	51%, 58% { transform: rotate(-3.2deg); }
+	84% { transform: rotate(1.1deg); }
+}
+/* The start screen welcomes the reader continuously, independent of requests. */
+.abstractin-root .abstractin-reading-welcome .abstractin-mascot,
+.abstractin-root .abstractin-reading-welcome .abstractin-mascot *,
+.abstractin-root .abstractin-wizard .abstractin-mascot,
+.abstractin-root .abstractin-wizard .abstractin-mascot * { animation-play-state: running; }
+/* Return to the original pose after an answer instead of freezing mid-sway. */
+.abstractin-root:not([data-answering="true"]) .abstractin-discussion-companion .abstractin-marmoset-tip,
+.abstractin-root:not([data-answering="true"]) .abstractin-discussion-companion .abstractin-marmoset-tip-end { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+	.abstractin-mascot .abstractin-marmoset-tip,
+	.abstractin-mascot .abstractin-marmoset-tip-end { animation: none !important; }
+}

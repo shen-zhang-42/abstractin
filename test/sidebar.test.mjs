@@ -368,10 +368,10 @@ test("every icon shown anywhere maps to a bundled icon file", async () => {
 	for (const file of Object.values(plugin.ICON_FILES)) {
 		const url = new URL("../src/content/icons/" + file, import.meta.url);
 		assert.ok(existsSync(url), "missing " + file);
-		// Phosphor (256), original mascots (64), or Lucide mode icons (24).
+		// Icon coordinate systems include the original raster mascot canvas.
 		let svg = new document.defaultView.DOMParser().parseFromString(readFileSync(url, "utf8"), "image/svg+xml").documentElement;
 		assert.equal(svg.namespaceURI, "http://www.w3.org/2000/svg");
-		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24"].includes(svg.getAttribute("viewBox")));
+		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24", "0 0 590 546"].includes(svg.getAttribute("viewBox")));
 	}
 });
 
@@ -693,7 +693,7 @@ test("changing reading companions refreshes the composer companion", () => {
 		for (const location of [".abstractin-discussion-companion"]) {
 			const icon = root.querySelector(location + " .abstractin-mascot");
 			assert.equal(icon.dataset.icon, "mascot-" + mascot);
-			const animatedPart = mascot === "puffin" ? ".abstractin-mascot-puffin-wing" : ".abstractin-mascot-tail";
+			const animatedPart = mascot === "puffin" ? ".abstractin-mascot-puffin-wing" : mascot === "marmoset" ? ".abstractin-marmoset-tip" : ".abstractin-mascot-tail";
 			assert.ok(icon.querySelector("svg " + animatedPart), "animated artwork loads immediately");
 		}
 	}
