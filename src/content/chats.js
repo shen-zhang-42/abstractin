@@ -291,11 +291,12 @@
     await this.switchDiscussion(view, chat, index, { locked: true }); view.input.value = ""; view.input.focus();
    } finally { this._discussionLocks.delete(dir); }
   },
-  async renameDiscussion(view, title) {
-   if (!title.trim() || this._discussionLocks.has(this.discussionRoot(view.ctx))) return;
-   const index = await this.discussionIndex(view.ctx), chat = index.chats.find(c => c.id === view.ctx.discussion.id);
+  async renameDiscussion(view, title, chatID = view.ctx.discussion.id) {
+   if (!title.trim() || this._pending.has(view.ctx.dir) || this._discussionLocks.has(this.discussionRoot(view.ctx))) return;
+   const index = await this.discussionIndex(view.ctx), chat = this.visibleDiscussions(index).find(c => c.id === chatID);
+   if (!chat) throw new Error("This discussion is unavailable.");
    chat.topic = title.trim().slice(0, 200); await this.writeDiscussionIndex(view.ctx, index);
-   view.ctx.discussion = { ...chat }; this.updateReadingControls(view);
+   if (chat.id === view.ctx.discussion.id) view.ctx.discussion = { ...chat }; this.updateReadingControls(view);
   },
   async assignDiscussionChapter(view, chapterID) {
    if (this._pending.has(view.ctx.dir) || this._discussionLocks.has(this.discussionRoot(view.ctx))) throw new Error("Wait for the current answer before moving this discussion.");
@@ -468,7 +469,7 @@
       const dir = OS.Path.join(document.path, "discussions", chat.id), history = await this.readDiscussionJSON(OS.Path.join(dir, "chat.json"), []);
       if (history.length) results.push({ dir, documentDir: document.path, discussionID: chat.id, attachmentKey: document.name.slice(8),
        libraryID: Number(identity[1]), key: identity[2], path: OS.Path.join(dir, "chat.json"), current: true, history,
-       title: this.discussionName({ reading }, chat, index) });
+       topic: chat.topic, documentTitle: reading.title || "", title: this.discussionName({ reading }, chat, index) });
      }
     }
    }
@@ -482,7 +483,7 @@
     const doc = root.ownerDocument, panel = this.el(doc, "div", "abstractin-panel abstractin-discussion-transfer");
     panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", "Legacy discussion preview");
     const close = this.el(doc, "button", "abstractin-btn", "Close"); close.onclick = () => panel.remove();
-    panel.append(this.el(doc, "p", null, "Legacy discussion — preserved original. Use Migrate legacy discussions in history to continue it."), close);
+    panel.append(this.el(doc, "p", null, "Legacy discussion — preserved original. Use Chats → Classify / reimport legacy discussions to continue it."), close);
     let target;
     for (let i = 0; i < chat.history.length; i++) {
      const message = this.el(doc, "div"); message.append(this.el(doc, "strong", null, chat.history[i].role === "user" ? "You" : "Answer"));
@@ -611,11 +612,29 @@
    let references = this.readingSourceReferences(question);
    if (!references.length) {
     const history = await this.loadHistory(ctx.dir);
-    const previous = [...history].reverse().find(message => message.role === "user");
-    question += "\n" + (previous?.text || "") + "\n" + (previous?.selection?.text || "");
-    references = this.readingSourceReferences(question);
+    for (const previous of [...history].reverse().filter(message => message.role === "user")) {
+     const candidate = (previous.text || "") + "\n" + (previous.selection?.text || "");
+     references = this.readingSourceReferences(candidate);
+     if (references.length) { question += "\n" + candidate; break; }
+    }
    }
    return { question, references };
+  },
+  sourceStatementMatches(text, references) {
+   const hits = [];
+   for (const number of references) {
+    const pattern = new RegExp("(?:theorem|lemma|proposition|corollary|definition|定理|引理|命题|推论|定义)\\s*" + number.split(".").join("\\s*\\.\\s*") + "(?!\\d|\\.\\d)", "ig");
+    for (const match of text.matchAll(pattern)) {
+     const before = text.slice(Math.max(0, match.index - 100), match.index);
+     const after = text.slice(match.index + match[0].length, match.index + match[0].length + 12000);
+     // An inline citation is weaker evidence than the actual statement heading.
+     const heading = /(?:^|\n)\s*$/.test(before);
+     const proof = /(?:^|\n)\s*(?:proof\b|证明)/im.test(after);
+     const score = (heading ? 100 : 0) + (/^\s*[.(：:]/.test(after) ? 20 : 0) + (proof ? 10 : 0);
+     hits.push({ index: match.index, score });
+    }
+   }
+   return hits.sort((a, b) => b.score - a.score || a.index - b.index);
   },
   async unmappedDiscussionSource(ctx, source, full) {
    // Text extraction and page-link verification are separate capabilities.
@@ -623,7 +642,8 @@
    const sections = [], allowedPages = [];
    const current = ctx.reading.selectedPageIndex ?? ctx.reading.currentPage?.pageIndex;
    if (Number.isInteger(current)) {
-    for (let index = Math.max(0, current - 1); index <= Math.min(source.totalPages - 1, current + 2); index++) {
+    for (const index of [current, current - 1, current + 1, current + 2]) {
+     if (index < 0 || index >= source.totalPages) continue;
      try {
       const page = await this.readNativeReadingPage(ctx, index);
       if (page.text.trim()) {
@@ -637,15 +657,49 @@
     const { references } = await this.discussionSourceTarget(ctx);
     // Preserve source offsets; allow line wrapping between heading/number components.
     // These excerpts establish original wording, never physical page indices.
-    const patterns = references.map(number => new RegExp("(?:theorem|lemma|proposition|corollary|definition|定理|引理|命题|推论|定义)\\s*" + number.split(".").join("\\s*\\.\\s*") + "(?!\\d|\\.\\d)", "ig"));
     const ranges = [];
-    for (const pattern of patterns) {
-     for (const match of full.matchAll(pattern)) {
-      if (ranges.length >= 3) break;
-      const start = Math.max(0, match.index - 600), end = Math.min(full.length, match.index + 12000);
-      if (ranges.some(range => start >= range.start && end <= range.end)) continue;
-      ranges.push({ start, end });
+    const hasNativeStatement = () => sections.some(section => this.sourceStatementMatches(section.replace(/^## PDF page.*\n\n/, ""), references).some(hit => hit.score >= 100));
+    if (!hasNativeStatement() && references.length && Number.isInteger(current)) {
+     for (const index of [current - 2, current - 3, current + 3, current - 4, current + 4]) {
+      if (index < 0 || index >= source.totalPages) continue;
+      try {
+       const page = await this.readNativeReadingPage(ctx, index);
+       if (page.text.trim()) {
+        allowedPages.push(index);
+        sections.push("## PDF page " + (index + 1) + "; pageIndex " + index + "\n\n" + page.text);
+       }
+      } catch (e) { this.logError("nearby native source page", e); }
      }
+    }
+    if (!hasNativeStatement() && references.length && Number.isInteger(current) && this.readingPDFApplication(ctx)?.pdfDocument?.getPage) {
+     const index = await this.discussionIndex(ctx); await this.refreshDiscussionChapters(ctx, index);
+     const chapter = index.chapters.find(c => c.id === this.chapterAtPage(index, current));
+     if (Number.isInteger(chapter?.pageIndex) && Number.isInteger(chapter?.endPageIndex)) {
+      for (let pageIndex = chapter.pageIndex; pageIndex <= chapter.endPageIndex; pageIndex++) {
+       if (allowedPages.includes(pageIndex)) continue;
+       let page;
+       try { page = await this.readNativeReadingPage(ctx, pageIndex); }
+       catch (e) { this.logError("native chapter source lookup", e); continue; }
+       if (!this.sourceStatementMatches(page.text, references).some(hit => hit.score >= 100)) continue;
+       for (let near = Math.max(0, pageIndex - 1); near <= Math.min(source.totalPages - 1, pageIndex + 2); near++) {
+        if (allowedPages.includes(near)) continue;
+        try {
+         const evidence = await this.readNativeReadingPage(ctx, near);
+         if (evidence.text.trim()) {
+          allowedPages.push(near);
+          sections.push("## PDF page " + (near + 1) + "; pageIndex " + near + "\n\n" + evidence.text);
+         }
+        } catch (e) { this.logError("native chapter proof page", e); }
+       }
+       break;
+      }
+     }
+    }
+    for (const match of hasNativeStatement() ? [] : this.sourceStatementMatches(full, references)) {
+     if (ranges.length >= 3) break;
+     const start = Math.max(0, match.index - 600), end = Math.min(full.length, match.index + 12000);
+     if (ranges.some(range => start >= range.start && end <= range.end)) continue;
+     ranges.push({ start, end });
     }
     for (const range of ranges) sections.push("## Original PDF text excerpt — physical page location unverified\n\n" + full.slice(range.start, range.end));
    }
@@ -665,6 +719,7 @@
    source = await original.recoverReadingPageMapping.call(this, documentCtx, source);
    const full = await Zotero.File.getContentsAsync(OS.Path.join(ctx.documentDir, "source-text.md"));
    let excerpt = "", allowed = [];
+   const nativePages = new Map();
    if (ctx.reading.action === "contents") excerpt = this.contentsExcerpt(full);
    else if (ctx.reading.action === "summary" && ctx.reading.type === "paper") excerpt = full;
    else {
@@ -678,18 +733,55 @@
     // explicit chapter, theorem or exact quoted phrase locally, without tokens.
     if (ctx.reading.explicitSourceRequest || ctx.reading.sourceLookup) {
      const { question: q, references: requested } = await this.discussionSourceTarget(ctx);
-     const matches = requested.map(number => new RegExp("(?:theorem|lemma|proposition|corollary|definition|定理|引理|命题|推论|定义)" + number.replace(/\./g, "\\.") + "(?!\\d|\\.\\d)", "i"));
      const route = this.resolveDiscussionChapter({ ...ctx, reading: { ...ctx.reading } }, index, q.replace(/这里|此处|这一步|\bhere\b|\bthis\b/ig, ""), null, null);
      const target = !route.ambiguous && index.chapters.find(c => c.id === route.chapterID);
      if (target && target.id !== chapter?.id && Number.isInteger(target.pageIndex) && Number.isInteger(target.endPageIndex)) for (let page = target.pageIndex; page <= target.endPageIndex; page++) allowed.push(page);
-     let found = 0;
-     for (let page = 0; page < source.totalPages && requested.length && found < 3; page++) {
-      const text = this.pdfPageText(full, page);
-      if (matches.some(pattern => pattern.test(text.replace(/\s/g, "")))) { found++; for (let near = Math.max(0, page - 1); near <= Math.min(source.totalPages - 1, page + 2); near++) allowed.push(near); }
+     const current = ctx.reading.selectedPageIndex ?? ctx.reading.currentPage?.pageIndex;
+     const localPages = [];
+     if (Number.isInteger(current)) {
+      for (const page of [current, current - 1, current + 1, current + 2]) {
+       if (page < 0 || page >= source.totalPages) continue;
+       localPages.push(page);
+       try { const native = await this.readNativeReadingPage(ctx, page); if (native.text.trim()) nativePages.set(page, native.text); }
+       catch (e) { this.logError("current-page source lookup", e); }
+      }
      }
+     const hasLocalStatement = () => localPages.some(page => this.sourceStatementMatches(nativePages.get(page) || this.pdfPageText(full, page), requested).some(hit => hit.score >= 100));
+     // A proof can start before the visible page; widen nearby before searching the book.
+     if (!hasLocalStatement() && requested.length && Number.isInteger(current)) {
+      for (const page of [current - 2, current - 3, current + 3, current - 4, current + 4]) {
+       if (page < 0 || page >= source.totalPages) continue;
+       localPages.push(page);
+       try { const native = await this.readNativeReadingPage(ctx, page); if (native.text.trim()) nativePages.set(page, native.text); }
+       catch (e) { this.logError("nearby source lookup", e); }
+      }
+     }
+     const localStatement = hasLocalStatement();
+     const candidates = [];
+     const currentChapter = index.chapters.find(c => c.id === this.chapterAtPage(index, current)) || chapter;
+     const scan = (start, end) => {
+      for (let page = start; page <= end && requested.length; page++) {
+       const hits = this.sourceStatementMatches(this.pdfPageText(full, page), requested);
+       if (hits.length) candidates.push({ page, score: hits[0].score });
+      }
+     };
+     if (!localStatement) {
+      if (Number.isInteger(currentChapter?.pageIndex) && Number.isInteger(currentChapter?.endPageIndex)) scan(currentChapter.pageIndex, currentChapter.endPageIndex);
+      if (!candidates.some(candidate => candidate.score >= 100)) {
+       candidates.length = 0;
+       scan(0, source.totalPages - 1);
+      }
+     }
+     candidates.sort((a, b) => b.score - a.score || a.page - b.page);
+     const targetPages = [];
+     for (const { page } of candidates.slice(0, 3)) {
+      for (let near = Math.max(0, page - 1); near <= Math.min(source.totalPages - 1, page + 2); near++) targetPages.push(near);
+     }
+     // Put the target ahead of contextual pages so prompt limits cannot hide it.
+     allowed = localStatement ? [...localPages, ...allowed] : [...targetPages, ...localPages, ...allowed];
     }
-    allowed = [...new Set(allowed)].filter(page => page >= 0 && page < source.totalPages).sort((a, b) => a - b);
-    excerpt = allowed.map(page => "## PDF page " + (page + 1) + "; pageIndex " + page + "\n\n" + this.pdfPageText(full, page)).join("\n\n");
+    allowed = [...new Set(allowed)].filter(page => page >= 0 && page < source.totalPages);
+    excerpt = allowed.map(page => "## PDF page " + (page + 1) + "; pageIndex " + page + "\n\n" + (nativePages.get(page) || this.pdfPageText(full, page))).join("\n\n");
    }
    if (!excerpt.trim()) return { ...source, status: "unavailable", error: "No authorized source excerpt is located. Select a passage or explicitly request the relevant chapter." };
    const bounded = { ...source, pdf: undefined, text: "source-text.md", scoped: true, allowedPages: allowed };
@@ -727,6 +819,7 @@
    if (ctx.reading.evidenceMode !== "knowledge") {
     const path = OS.Path.join(ctx.dir, "source-text.md");
     const source = await OS.File.exists(path) ? await Zotero.File.getContentsAsync(path) : "No original-source excerpt is available; use only the supplied passage or image.";
+    this.log("Reading excerpt delivered: " + JSON.stringify({ diagnostics: "native-xray-v1", attachmentKey: ctx.attachmentItem.key, pageIndices: ctx.reading.pdfSource?.allowedPages, characters: source.length, truncated: source.length > 80000, beginning: source.slice(0, 240) }));
     text += "\n<authorized-source-excerpt>\n" + source.slice(0, 80000) + "\n</authorized-source-excerpt>" + (source.length > 80000 ? "\nThis excerpt is truncated. Do not claim complete coverage; ask for a narrower passage." : "");
    }
    return text;

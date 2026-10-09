@@ -58,6 +58,7 @@ test("first entry welcomes the reader with a companion and one Start Reading but
 	plugin.renderEmptyState(view);
 	assert.equal(view.logEl.querySelectorAll(".abstractin-start-reading").length, 1);
 	assert.equal(view.logEl.querySelector(".abstractin-empty-title").textContent, "let's start reading");
+	assert.equal(view.logEl.querySelector(".abstractin-empty-title").tagName, "BUTTON");
 	assert.ok(view.logEl.querySelector(".abstractin-mascot"));
 });
 
@@ -74,10 +75,10 @@ test("Start Reading appears only before entering a reading chat", () => {
 	plugin.updateReadingControls(view);
 	const button = root.querySelector(".abstractin-start-reading");
 	assert.equal(button.hidden, true);
-	assert.equal(button.textContent, "Start Reading");
+	assert.equal(button.textContent, "let's start reading");
 	assert.ok(button.classList.contains("abstractin-reading-primary"));
 	assert.ok(!button.classList.contains("abstractin-ghost"));
-	assert.equal(button.getAttribute("aria-label"), "Start Reading");
+	assert.equal(button.getAttribute("aria-label"), "let's start reading");
 	assert.equal(root.querySelector(".abstractin-reading-status").textContent, "");
 	assert.ok(root.querySelector(".abstractin-reading-statusbar").hidden);
 	assert.equal(root.querySelector(".abstractin-reading-statusbar").previousElementSibling, root.querySelector(".abstractin-composer"));
@@ -839,7 +840,7 @@ const record = (over = {}) => ({
 test("clarifications panel: lists saved clarifications newest first, opens a detail with passage, prompt and answer", async () => {
 	const env = clarificationPanel([record(), record({ id: "c2", ts: Date.parse("2026-09-18T10:00:00Z"), passage: "Newer passage", pageLabel: "70" })]);
 	const { root, plugin } = env;
-	assert.ok(root.querySelector(".abstractin-header .abstractin-clarifications"), "header button");
+	assert.ok(root.querySelector(".abstractin-header .abstractin-chats"), "replacement navigation button");
 	await plugin.openClarifications(root);
 	const panel = root.querySelector(".abstractin-panel");
 	assert.ok(panel);

@@ -405,36 +405,56 @@ Object.assign(AbstractIn, {
 	},
 
 	exactReadingReader(ctx) {
-		let matches = reader => !!reader && reader.itemID === ctx.attachmentItem.id && reader.type === "pdf";
+		let matches = reader => { try { return !!reader && reader.itemID === ctx.attachmentItem.id && reader.type === "pdf"; } catch (_) { return false; } };
 		if (matches(ctx.reader)) return ctx.reader;
 		let selected = Zotero.Reader?.getByTabID?.(Zotero.getMainWindow()?.Zotero_Tabs?.selectedID);
 		return (matches(selected) ? selected : null) || (Zotero.Reader?._readers || []).find(matches) || null;
 	},
 
-	readingPDFApplication(ctx) {
-		let internal = this.exactReadingReader(ctx)?._internalReader;
-		let frame = (internal?._lastView || internal?._primaryView)?._iframeWindow;
-		return (frame?.wrappedJSObject || frame)?.PDFViewerApplication || null;
+	unwrapReadingValue(value) {
+		// PDF.js objects and promises cross from the reader iframe into privileged
+		// plugin code. Xray wrappers hide their JavaScript-defined methods.
+		if (value == null) return value;
+		if (typeof Components !== "undefined" && Components.utils?.waiveXrays) return Components.utils.waiveXrays(value);
+		return value.wrappedJSObject || value;
+	},
+
+	readingPDFApplication(ctx, { activeOnly = false } = {}) {
+		const internal = this.unwrapReadingValue(this.exactReadingReader(ctx)?._internalReader);
+		const candidates = activeOnly ? [() => internal?._lastView || internal?._primaryView] : [() => internal?._lastView, () => internal?._primaryView, () => internal?._secondaryView];
+		for (const getView of candidates) {
+			try {
+				const frame = getView()?._iframeWindow;
+				const app = this.unwrapReadingValue(this.unwrapReadingValue(frame)?.PDFViewerApplication);
+				if (app?.pdfDocument || app?.pdfViewer) return app;
+			} catch (_) { /* A detached or initializing iframe may not be accessible. */ }
+		}
+		return null;
 	},
 
 	_nativeReadingPages: new WeakMap(),
 
 	async readNativeReadingPage(ctx, pageIndex) {
-		let app = this.readingPDFApplication(ctx), pdf = app?.pdfDocument;
+		let app = this.readingPDFApplication(ctx), pdf = this.unwrapReadingValue(app?.pdfDocument);
 		if (!pdf) throw new Error("Open this PDF in the Zotero reader to verify page locations.");
 		if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pdf.numPages) throw new Error("This location is outside the selected PDF.");
 		let pages = this._nativeReadingPages.get(pdf);
 		if (!pages) { pages = new Map(); this._nativeReadingPages.set(pdf, pages); }
 		if (!pages.has(pageIndex)) {
 			let request = (async () => {
-				let page = await pdf.getPage(pageIndex + 1);
-				let content = await page.getTextContent();
+				const page = this.unwrapReadingValue(await this.unwrapReadingValue(pdf.getPage(pageIndex + 1)));
+				if (typeof page?.getTextContent !== "function") throw new Error("PDF.js page " + (pageIndex + 1) + " is still wrapped or unavailable: getTextContent is " + typeof page?.getTextContent);
+				const content = this.unwrapReadingValue(await this.unwrapReadingValue(page.getTextContent()));
 				return content.items.filter(item => typeof item.str === "string").map(item => item.str + (item.hasEOL ? "\n" : " ")).join("").trim();
 			})();
 			pages.set(pageIndex, request);
 			request.catch(() => { if (pages.get(pageIndex) === request) pages.delete(pageIndex); });
 		}
-		return { pageIndex, pageLabel: app.pdfViewer?.getPageView(pageIndex)?.pageLabel || "", text: await pages.get(pageIndex) };
+		const text = await pages.get(pageIndex);
+		this.log("Native PDF page ready: " + JSON.stringify({ attachmentKey: ctx.attachmentItem.key, pageIndex, characters: text.length }));
+		let pageLabel = "";
+		try { pageLabel = app.pdfViewer?.getPageView?.(pageIndex)?.pageLabel || ""; } catch (_) {}
+		return { pageIndex, pageLabel, text };
 	},
 
 	_pageMappingRepairs: new WeakMap(),
@@ -537,10 +557,23 @@ Object.assign(AbstractIn, {
 	},
 
 	currentReadingLocation(ctx) {
-		let viewer = this.readingPDFApplication(ctx)?.pdfViewer;
-		let index = viewer?.currentPageNumber - 1;
-		if (!Number.isInteger(index) || index < 0) return null;
-		return { pageIndex: index, pageLabel: viewer.getPageView(index)?.pageLabel || "" };
+		try {
+			const viewer = this.readingPDFApplication(ctx, { activeOnly: true })?.pdfViewer;
+			const index = viewer?.currentPageNumber - 1;
+			if (Number.isInteger(index) && index >= 0) {
+				let pageLabel = "";
+				try { pageLabel = viewer.getPageView?.(index)?.pageLabel || ""; } catch (_) {}
+				return { pageIndex: index, pageLabel };
+			}
+		} catch (e) { this.logError("current reader page", e); }
+		// Zotero retains live view stats even while the PDF.js iframe is unavailable.
+		try {
+			const internal = this.unwrapReadingValue(this.exactReadingReader(ctx)?._internalReader);
+			const primary = internal?._lastViewPrimary !== false;
+			const stats = internal?._state?.[primary ? "primaryViewStats" : "secondaryViewStats"];
+			if (Number.isInteger(stats?.pageIndex) && stats.pageIndex >= 0) return { pageIndex: stats.pageIndex, pageLabel: stats.pageLabel || "" };
+		} catch (e) { this.logError("current reader view stats", e); }
+		return null;
 	},
 
 	async rememberReadingPosition(ctx) {

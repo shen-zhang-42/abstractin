@@ -260,7 +260,7 @@ test("unmapped full text still verifies the selected theorem through native read
  assert.match(request.question, /Theorem A.78\. An index family/);
  assert.match(request.question, /only countably many coefficients/);
  assert.match(request.question, /PDF page 7; pageIndex 6/);
- assert.deepEqual(calls, [5, 6, 7, 8]);
+ assert.deepEqual(calls, [6, 5, 7, 8, 4, 3, 9, 2, 10]);
  assert.equal(await window.OS.File.exists(join(view.ctx.dir, "source.pdf")), false);
 });
 
@@ -458,7 +458,7 @@ test("back from history preserves the draft and scroll position without sending 
  const id = view.ctx.discussion.id, count = requests.length; view.input.value = "Unsent follow-up"; view.logEl.scrollTop = 120;
  await p.openHistoryMenu(view.root); await p.startRequest(view, view.input.value); assert.equal(requests.length, count);
  const back = [...view.logEl.querySelectorAll("button")].find(b => b.textContent === "Back to discussion"); assert.ok(back); back.click();
- await new Promise(r => setTimeout(r, 20));
+ for (let i = 0; i < 50 && view.historyBrowser; i++) await new Promise(r => setTimeout(r, 10));
  assert.equal(view.ctx.discussion.id, id); assert.equal(view.input.value, "Unsent follow-up"); assert.equal(view.logEl.scrollTop, 120);
  assert.equal(view.root.dataset.historyBrowser, undefined); assert.equal(requests.length, count);
 });
@@ -700,4 +700,157 @@ test("turn deletion rejects pending answers and stale indices without changing t
  assert.equal((await p.loadHistory(view.ctx.dir)).length, 4);
  assert.equal(p._chatTransitions.has(view.ctx.dir), false);
  assert.equal(p._discussionLocks.has(p.discussionRoot(view.ctx)), false);
+});
+
+test("source lookup ranks the late theorem statement above more than three early citations", async () => {
+ const { p, view, send, requests, window } = await setup();
+ const pages = Array.from({ length: 15 }, (_, i) => i < 6 ? 'Lemma 2.' + i + ' uses Theorem A.78 to obtain a mixture.' : i === 11 ? 'Theorem A.78. Actual appendix statement.\nProof. Actual countability argument.' : 'OTHER-' + i);
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: pages.join('\f') }) };
+ await send('帮我看一下 Theorem A.78，为什么指标集的可数与否影响证明');
+ let request = requests.at(-1);
+ assert.match(request.question, /Actual appendix statement/);
+ assert.match(request.question, /Actual countability argument/);
+ let text = await readFile(join(view.ctx.dir, 'source-text.md'), 'utf8');
+ assert.ok(text.indexOf('Actual appendix statement') < text.indexOf('Lemma 2.0'));
+ await send('你去查看一下原文，在600页');
+ await send('再查看原文，还是刚才的证明');
+ request = requests.at(-1); assert.match(request.question, /Actual appendix statement/);
+});
+
+test("unmapped lookup prioritizes the actual heading instead of the first three citations", async () => {
+ const { p, view, send, requests, window } = await setup();
+ const references = Array.from({ length: 6 }, (_, i) => 'Lemma 2.' + i + ' uses Theorem A.78 for mixtures. ' + ' filler '.repeat(2200)).join('\n');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: references + '\nTheorem A.78. Actual statement.\nProof. Verified support argument.' }) };
+ p.readNativeReadingPage = async () => { throw new Error('No native reader'); };
+ await send('查看 Theorem A.78 的原文证明');
+ const text = await readFile(join(view.ctx.dir, 'source-text.md'), 'utf8');
+ assert.match(text, /Actual statement/); assert.match(requests.at(-1).question, /Verified support argument/);
+ assert.ok(text.indexOf('Actual statement') < text.indexOf('Lemma 2.0'));
+ assert.ok(text.length < 40000);
+});
+
+test("lookup reads the send-time Zotero page and nearby proof before matching remote citations", async () => {
+ const { p, send, requests, window, setLocation } = await setup();
+ setLocation({ pageIndex: 11 });
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array.from({ length: 15 }, (_, i) => i === 1 ? 'Theorem A.78. Remote distracting statement.' : 'CACHE-' + i).join('\f') }) };
+ const pagesRead = [], pdf = { numPages: 15, getPage: async number => {
+  pagesRead.push(number - 1);
+  return { getTextContent: async () => ({ items: [{ str: number === 12 ? 'Theorem A.78. Current reader statement.' : number === 13 ? 'Proof. Current reader proof.' : 'LOCAL-' + number }] }) };
+ } };
+ p.readingPDFApplication = () => ({ pdfDocument: pdf });
+ await send('帮我看一下这个定理 Theorem A.78 的证明');
+ const request = requests.at(-1);
+ assert.match(request.question, /Current reader statement/); assert.match(request.question, /Current reader proof/);
+ assert.doesNotMatch(request.question, /Remote distracting statement/);
+ assert.equal(pagesRead[0], 11);
+ assert.deepEqual(pagesRead, [11, 10, 12, 13]);
+});
+
+test("a proof in progress expands to preceding nearby pages before global lookup", async () => {
+ const { p, send, requests, window, setLocation } = await setup(); setLocation({ pageIndex: 11 });
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array.from({ length: 15 }, (_, i) => i === 1 ? 'Theorem A.78. Wrong remote heading.' : 'CACHE-' + i).join('\f') }) };
+ const pdf = { numPages: 15, getPage: async number => ({ getTextContent: async () => ({ items: [{ str: number === 10 ? 'Theorem A.78. Nearby statement.\nProof. Start of actual proof.' : number === 12 ? 'Actual continuation on the visible page.' : 'LOCAL-' + number }] }) }) };
+ p.readingPDFApplication = () => ({ pdfDocument: pdf });
+ await send('查看 Theorem A.78 的证明');
+ assert.match(requests.at(-1).question, /Nearby statement/);
+ assert.match(requests.at(-1).question, /Actual continuation on the visible page/);
+ assert.doesNotMatch(requests.at(-1).question, /Wrong remote heading/);
+});
+
+test("source lookup searches the current chapter before matching headings elsewhere in the book", async () => {
+ const { p, send, requests, window, setLocation, toc } = await setup();
+ toc.entries = [{ id: 'ch-01', title: '1 Set function', pageIndex: 0 }, { id: 'ch-02', title: '2 Continuity', pageIndex: 12 }];
+ setLocation({ pageIndex: 1 });
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array.from({ length: 15 }, (_, i) => i === 9 ? 'Theorem 1.7. Current chapter statement.\nProof. Right chapter proof.' : i === 13 ? 'Theorem 1.7. Remote unrelated heading.' : 'PAGE-' + i).join('\f') }) };
+ await send('查看 Theorem 1.7 的证明');
+ assert.match(requests.at(-1).question, /Current chapter statement/);
+ assert.doesNotMatch(requests.at(-1).question, /Remote unrelated heading/);
+});
+
+
+test("Chats lists turns and preserves drafts and agent sessions across discussions", async () => {
+ const { p, view, send, requests } = await setup();
+ await send("Chapter 1: sets");
+ const source = { ...view.ctx.discussion }, sourceDir = view.ctx.dir;
+ await p.saveHistory(sourceDir, [{ role: "user", text: "Original question" }, { role: "assistant", text: "\\begin{theorem}[Set result]\nA selected result.\n\\end{theorem}" }]);
+ const sourceSession = (await p.loadSessions(sourceDir)).codex.id;
+ await send("Chapter 2: continuity");
+ const destination = { ...view.ctx.discussion }, destinationDir = view.ctx.dir, count = requests.length;
+ view.input.value = "Unfinished draft";
+ p.updateReadingControls(view);
+ const chats = view.root.querySelector(".abstractin-chats");
+ assert.equal(chats.title, "Chats"); assert.ok(chats.querySelector('[data-icon="chatManager"]'));
+ assert.equal(view.root.querySelector(".abstractin-header .abstractin-search"), null);
+ assert.equal(view.root.querySelector(".abstractin-header .abstractin-jump-to"), null);
+ await p.openHistoryMenu(view.root);
+ const turns = view.root.querySelector('.abstractin-history-row-turns[data-discussion-id="' + source.id + '"]');
+ turns.click();
+ for (let i = 0; i < 50 && !view.root.querySelector(".abstractin-chat-turn"); i++) await new Promise(r => setTimeout(r, 10));
+ assert.match(view.root.querySelector(".abstractin-chat-turn").textContent, /Turn 1.*Original question/);
+ view.root.querySelector(".abstractin-chat-turn").click();
+ for (let i = 0; i < 50 && !view.logEl.querySelector(".abstractin-user.abstractin-flash"); i++) await new Promise(r => setTimeout(r, 10));
+ assert.equal(view.ctx.discussion.id, source.id);
+ assert.match(view.logEl.querySelector(".abstractin-user.abstractin-flash").textContent, /Original question/);
+ assert.equal(view.input.value, ""); assert.equal(requests.length, count);
+ assert.equal((await p.loadSessions(sourceDir)).codex.id, sourceSession);
+ const history = await p.loadHistory(sourceDir), result = history[1].results[0];
+ await p.jumpToDiscussionContent(view, source, 1, result);
+ assert.ok(view.logEl.querySelector('[data-result-reference="result:' + result.id + '"].abstractin-flash'));
+ const otherHistory = await p.loadHistory(destinationDir);
+ await p.jumpToDiscussionContent(view, destination, 0, { kind: "Question", id: otherHistory[0].referenceID });
+ assert.equal(view.input.value, "Unfinished draft"); assert.equal(requests.length, count);
+ await assert.rejects(p.jumpToDiscussionContent(view, destination, 0, { kind: "Question", id: "deleted-question" }), /no longer available/);
+});
+
+test("Chats searches names and messages and jumps to the matched answer without losing drafts", async () => {
+ const { p, view, send, requests, window } = await setup();
+ await send("Chapter 1: unique-search-marker");
+ const source = { ...view.ctx.discussion }, sourceDir = view.ctx.dir;
+ const session = (await p.loadSessions(sourceDir)).codex.id;
+ await send("Chapter 2: another topic"); const destination = { ...view.ctx.discussion }, count = requests.length;
+ view.input.value = "Keep this draft";
+ await p.openHistoryMenu(view.root);
+ const sourceRow = view.root.querySelector('.abstractin-history-card[data-discussion-id="' + source.id + '"]').parentElement;
+ sourceRow.querySelector('.abstractin-history-row-rename').click();
+ sourceRow.nextElementSibling.querySelector('input').value = "Only-in-chat-title";
+ [...sourceRow.nextElementSibling.querySelectorAll('button')].find(button => button.textContent === "Save").click();
+ for (let i = 0; i < 50 && !view.root.querySelector('.abstractin-history-topic')?.closest('section')?.textContent.includes("Only-in-chat-title"); i++) await new Promise(r => setTimeout(r, 10));
+ assert.equal(view.ctx.discussion.id, destination.id, "renaming another chat must not activate it");
+ let field = view.root.querySelector('.abstractin-search-input');
+ field.value = "Only-in-chat-title"; field.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+ for (let i = 0; i < 50 && !view.root.querySelector('.abstractin-chat-search-result'); i++) await new Promise(r => setTimeout(r, 10));
+ assert.match(view.root.querySelector('.abstractin-chat-search-result').textContent, /only-in-chat-title/i);
+ field.value = "unique-search-marker"; field.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+ for (let i = 0; i < 50 && ![...view.root.querySelectorAll('.abstractin-chat-search-result')].some(button => button.textContent.includes('Answer:')); i++) await new Promise(r => setTimeout(r, 10));
+ const answer = [...view.root.querySelectorAll('.abstractin-chat-search-result')].find(button => button.textContent.includes('Answer:'));
+ assert.match(answer.textContent, /Turn 1/); answer.click();
+ for (let i = 0; i < 50 && !view.root.querySelector('.abstractin-turn.abstractin-flash'); i++) await new Promise(r => setTimeout(r, 10));
+ assert.equal(view.ctx.discussion.id, source.id); assert.ok(view.root.querySelector('.abstractin-turn.abstractin-flash'));
+ assert.equal((await p.loadSessions(sourceDir)).codex.id, session);
+ await p.openManagedDiscussion(view, destination); assert.equal(view.input.value, "Keep this draft");
+ assert.equal(requests.length, count);
+});
+
+test("Chats scopes search explicitly and discards results from cleared or closed searches", async () => {
+ const { p, view, send, window } = await setup(); await send("Chapter 1: local content");
+ const foreign = { dir: '/other/chat', documentDir: '/other', title: 'Other chat', documentTitle: 'Other book', discussionID: 'foreign', history: [{ role: 'user', text: 'foreign-only marker' }] };
+ let reads = 0, resolveLoad, opened;
+ p.loadAllChats = () => { reads++; return new Promise(resolve => { resolveLoad = resolve; }); };
+ p.openSearchResult = async (_, result) => { opened = result; };
+ await p.openHistoryMenu(view.root);
+ const field = view.root.querySelector('.abstractin-search-input'), scope = view.root.querySelector('[aria-label="Search scope"]');
+ field.value = 'foreign-only'; field.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+ await new Promise(r => setTimeout(r, 30));
+ assert.match(view.root.querySelector('.abstractin-chat-search-results').textContent, /No chats or messages match/); assert.equal(reads, 0);
+ scope.value = 'all'; scope.dispatchEvent(new window.Event('change', { bubbles: true }));
+ assert.equal(reads, 1);
+ field.value = ''; field.dispatchEvent(new window.Event('input', { bubbles: true })); resolveLoad([foreign]);
+ await new Promise(r => setTimeout(r, 20));
+ assert.equal(view.root.querySelector('.abstractin-history-browser-body').hidden, false);
+ assert.equal(view.root.querySelectorAll('.abstractin-chat-search-result').length, 0);
+ field.value = 'foreign-only'; field.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+ await new Promise(r => setTimeout(r, 20));
+ const result = view.root.querySelector('.abstractin-chat-search-result'); assert.match(result.textContent, /Other book/); result.click();
+ await new Promise(r => setTimeout(r, 20));
+ assert.equal(opened.chat, foreign); assert.equal(view.historyBrowser, undefined);
 });

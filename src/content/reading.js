@@ -17,7 +17,7 @@ Object.assign(AbstractIn, {
 	requestsReadingSource(question) {
 		// Mentioning a numbered theorem is not permission to read another chapter.
 		return /\b(?:read|search|look up|look at|consult|check|verify)\b[^.!?;]{0,80}\b(?:pdf|document|source|paper|book|section|chapter|theorem|lemma|proof|passage)\b/i.test(question) ||
-			/(?:阅读|读取|读一下|搜索|检索|查阅|查看|查找|查一下|找一下|核对|对照|看一下|去看|看看)[^，。；]{0,40}(?:pdf|文档|原文|书|论文|章节|节|定理|引理|证明|页)/i.test(question) ||
+			/(?:阅读|读取|读一下|搜索|检索|查阅|查看|查找|查一下|找一下|核对|对照|看一下|去看|看看)[^，。；]{0,40}(?:pdf|文档|原文|书|论文|章节|节|定理|引理|证明|页|theorem|lemma|proof|definition)/i.test(question) ||
 			/(?:原文|pdf|文档|书|论文)[^，。；]{0,20}(?:搜索|检索|查找|查一下|核对)/i.test(question);
 	},
 
@@ -246,7 +246,7 @@ Object.assign(AbstractIn, {
 		this.updateControls(root);
 		this.appendReadingSetupQuestion(view);
 		this.setBusy(view, false);
-		view.input.focus();
+		view.logEl.querySelector(".abstractin-reading-setup-input")?.focus();
 	},
 
 	appendReadingSetupQuestion(view, error = "") {
@@ -286,10 +286,23 @@ Object.assign(AbstractIn, {
 			buttons.appendChild(button);
 		}
 		card.appendChild(buttons);
+		view.logEl.querySelectorAll(".abstractin-reading-setup-input, .abstractin-reading-setup-submit").forEach(control => { control.disabled = true; });
+		if (state.attachments.length && state.step !== "ready" && !error) {
+			const field = this.el(view.doc, "input", "abstractin-reading-setup-input");
+			field.type = "text"; field.setAttribute("aria-label", "Reading setup response");
+			field.placeholder = state.step === "title" ? "Book or paper title…" : state.step === "goal" ? "Where shall we begin?" : "Your answer…";
+			const submit = this.el(view.doc, "button", "abstractin-reading-choice abstractin-reading-setup-submit", "Continue");
+			submit.type = "button";
+			const respond = () => this.answerReadingSetup(view, field.value);
+			submit.addEventListener("click", respond);
+			field.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); respond(); } });
+			const form = this.el(view.doc, "div", "abstractin-reading-setup-response"); form.append(field, submit); card.append(form);
+		}
 		card.setAttribute("aria-live", "polite");
 		view.logEl.appendChild(card);
 		view.input.placeholder = state.step === "title" ? "Tell me the book or paper title…" : state.step === "type" ? "Book or scientific paper…" : state.step === "attachment" ? "Choose a PDF above, or enter its name…" : "Where shall we begin?";
 		this.scrollToEnd(view.logEl);
+		card.querySelector(".abstractin-reading-setup-input")?.focus();
 	},
 
 	async answerReadingSetup(view, answer, label = answer) {
@@ -349,7 +362,7 @@ Object.assign(AbstractIn, {
 		}
 		finally {
 			state.busy = false;
-			if (this._views.get(view.root) === view) { this.setBusy(view, this._pending.has(view.ctx.dir)); view.input.focus(); }
+			if (this._views.get(view.root) === view) { this.setBusy(view, this._pending.has(view.ctx.dir)); if (!view.readingSetup) view.input.focus(); }
 		}
 	},
 
@@ -412,7 +425,22 @@ Object.assign(AbstractIn, {
 		return text;
 	},
 
+	updateReadingGate(view) {
+		if (!view.ctx.paperItem && !view.ctx.attachmentItem) {
+			view.root.querySelector(".abstractin-composer").hidden = false;
+			return;
+		}
+		const ready = !!view.ctx.reading && !view.readingSetup;
+		view.root.dataset.readingReady = String(ready);
+		view.root.dataset.readingIntro = String(!ready);
+		view.root.querySelector(".abstractin-composer").hidden = !ready;
+		for (const button of view.root.querySelectorAll(".abstractin-history, .abstractin-new-chat")) {
+			button.disabled = !ready || this._pending.has(view.ctx.dir);
+		}
+	},
+
 	updateReadingControls(view) {
+		this.updateReadingGate(view);
 		this.updateComposerPlaceholder(view.root);
 		let reading = view.ctx.reading;
 		let evidence = view.root.querySelector(".abstractin-reading-evidence-mode");
@@ -431,8 +459,10 @@ Object.assign(AbstractIn, {
 		if (label) { label.textContent = ""; label.hidden = true; }
 		let button = view.root.querySelector(".abstractin-start-reading");
 		if (button) {
-			button.setLabel("Start Reading");
-			button.title = "Start Reading";
+			const label = button.classList.contains("abstractin-empty-title") ? "let's start reading" : "Start Reading";
+			button.setLabel(label);
+			button.title = label;
+			button.setAttribute("aria-label", label);
 			button.hidden = !!reading || !!view.readingSetup || view.root.dataset.chatting === "true";
 		}
 		let tools = view.root.querySelector(".abstractin-reading-tools");

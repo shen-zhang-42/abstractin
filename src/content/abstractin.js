@@ -110,6 +110,7 @@ AbstractIn = {
 		settings: "gear-six.svg",
 		newChat: "chat-circle-dots.svg",
 		history: "clock-counter-clockwise.svg",
+		chatManager: "chat-centered-text.svg",
 		send: "arrow-up.svg",
 		sparkle: "sparkle.svg",
 		copy: "copy.svg",
@@ -166,6 +167,7 @@ AbstractIn = {
 		previous: "arrow-left.svg",
 		done: "check-circle.svg",
 		clarifications: "highlighter.svg",
+		jumpTo: "arrow-square-out.svg",
 		quote: "quotes.svg",
 		prompt: "chat-centered-text.svg",
 		answer: "book-open-text.svg",
@@ -1090,10 +1092,7 @@ AbstractIn = {
 		header.append(
 			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "abstractin-header-icon"),
 			identity,
-			this.iconButton(doc, "abstractin-clarifications", "Clarifications of highlighted text", "clarifications",
-				() => this.openClarifications(root).catch(e => this.logError("openClarifications", e))),
-			this.iconButton(doc, "abstractin-search", "Search all chats", "search", () => this.openSearchMenu(root)),
-			this.iconButton(doc, "abstractin-history", "Previous chats", "history", () => this.openHistoryMenu(root)),
+			this.iconButton(doc, "abstractin-history abstractin-chats", "Chats", "chatManager", () => this.openHistoryMenu(root)),
 			this.iconButton(doc, "abstractin-new-chat", "New chat", "newChat", () => this.newChat(root)),
 			this.iconButton(doc, "abstractin-open-settings", "Settings", "settings", () => this.openSettings()),
 		);
@@ -2000,8 +1999,9 @@ AbstractIn = {
 		if (!view.ctx?.reading) {
 			empty.classList.add("abstractin-reading-welcome");
 			empty.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"));
-			empty.appendChild(this.el(doc, "div", "abstractin-empty-title", "let's start reading"));
-			empty.appendChild(this.readingButton(doc, "abstractin-start-reading", () => this.openReadingSetup(view.root).catch(e => this.appendError(view, e.message || String(e)))));
+			const start = this.readingButton(doc, "abstractin-start-reading abstractin-empty-title", () => this.openReadingSetup(view.root).catch(e => this.appendError(view, e.message || String(e))));
+			start.setLabel("let's start reading");
+			empty.appendChild(start);
 		}
 		if (view.ctx?.reading) empty.appendChild(this.el(doc, "div", "abstractin-empty-title", "Ask about this passage"));
 		let title = view.ctx && view.ctx.paperItem ? this.safeField(view.ctx.paperItem, "title") : "";
@@ -2116,6 +2116,7 @@ AbstractIn = {
 		root.querySelectorAll(".abstractin-prompt-menu, .abstractin-retry, .abstractin-new-chat, .abstractin-start-reading").forEach((button) => {
 			button.disabled = busy;
 		});
+		this.updateReadingGate(view);
 	},
 
 	autoGrow(input) {
@@ -2144,6 +2145,9 @@ AbstractIn = {
 		if (!logEl) {
 			return;
 		}
+
+		root.querySelector(".abstractin-composer").hidden = true;
+		root.querySelectorAll(".abstractin-history, .abstractin-new-chat").forEach(button => { button.disabled = true; });
 
 		let notice = (text) => {
 			logEl.textContent = "";
@@ -2187,8 +2191,8 @@ AbstractIn = {
 		this.updateReadingControls(view);
 		this.renderPaperChip(root, this.paperInfo(ctx));
 		this.renderAttachments(view);
-		this.renderMessages(view, history);
-		this.applyJump(view);
+		this.renderMessages(view, ctx.reading || (!ctx.paperItem && !ctx.attachmentItem) ? history : []);
+		if (ctx.reading) this.applyJump(view);
 
 		input.addEventListener("input", () => {
 			this.autoGrow(input);
@@ -3531,6 +3535,7 @@ AbstractIn = {
 				ctx.reading.selectedPageIndex = pending.selection?.position?.pageIndex ?? pending.selection?.pageIndex;
 				ctx.reading.action = pending.readingAction || "discuss";
 				ctx.reading.currentPage = pending.currentPage !== undefined ? pending.currentPage : this.currentReadingLocation(ctx);
+				this.log("Reading lookup request: " + JSON.stringify({ diagnostics: "native-xray-v1", attachmentKey: ctx.attachmentItem.key, evidenceMode, sourceLookup, selectedPageIndex: ctx.reading.selectedPageIndex, currentPage: ctx.reading.currentPage, references: this.readingSourceReferences(question + "\n" + ctx.reading.sourceSelection) }));
 				try { await this.rememberReadingPosition(ctx); }
 				catch (e) { this.logError("rememberReadingPosition", e); }
 			}

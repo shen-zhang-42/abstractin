@@ -292,7 +292,7 @@
    add.onclick = () => { if (!field.value.trim()) return; view.input.value += (view.input.value ? "\n\n" : "") + "[" + reference + (label !== "Answer" ? "|" + label : "") + "]\n" + field.value.trim().split("\n").map(line => "> " + line).join("\n") + "\n\n"; this.autoGrow(view.input); panel.remove(); this.setBusy(view, this._pending.has(view.ctx.dir)); view.input.focus(); };
    cancel.onclick = () => panel.remove(); panel.append(field, add, cancel); view.root.querySelector(".abstractin-log-wrap").append(panel); field.focus();
   },
-  openDiscussionReferences(view, anchor = view.root.querySelector(".abstractin-result-picker"), answer = null) {
+  openDiscussionReferences(view, anchor = view.root.querySelector(".abstractin-result-picker"), answer = null, { mode = "quote" } = {}) {
    const state = { index: null, chapter: undefined, chat: null, rows: null, error: "" };
    const focus = menu => menu.querySelector(".abstractin-menu-item:not(:disabled)")?.focus();
    const menu = this.openMenu(view.root, anchor, menu => {
@@ -305,9 +305,9 @@
      if (!state.rows) { menu.append(this.el(view.doc, "p", "abstractin-menu-note", "Loading results…")); return; }
      if (!state.rows.length) menu.append(this.el(view.doc, "p", "abstractin-menu-note", "No saved results in this discussion yet."));
      for (const { message, at, result } of state.rows) {
-      const label = this.discussionResultLabel(result);
+      const label = result.kind === "Question" ? "Question " + result.number : this.discussionResultLabel(result);
       const excerpt = result.text.replace(/\\(?:begin|end|label)\{[^}]*\}/g, "").replace(/\s+/g, " ").trim();
-      const item = this.menuItem(view.doc, menu, { label, onSelect: () => { this.closeMenu(view.root); this.quoteDiscussionResult(view, state.chat, message, at, "", result); } });
+      const item = this.menuItem(view.doc, menu, { label, onSelect: () => { this.closeMenu(view.root); if (mode === "jump") this.jumpToDiscussionContent(view, state.chat, at, result).catch(e => this.appendError(view, e.message || String(e))); else this.quoteDiscussionResult(view, state.chat, message, at, "", result); } });
       item.classList.add("abstractin-result-option"); item.title = label + "\n" + excerpt;
       const entry = this.el(view.doc, "span", "abstractin-result-entry");
       entry.append(this.el(view.doc, "span", "abstractin-result-number", label));
@@ -323,7 +323,7 @@
       item.dataset.discussionId = chat.id;
      }
     } else {
-     this.menuSection(view.doc, menu, "Quote · Choose chapter");
+     this.menuSection(view.doc, menu, mode === "jump" ? "Jump to · Choose chapter" : "Quote · Choose chapter");
      for (const chapter of [...state.index.chapters.slice().sort((a, b) => a.order - b.order), { id: null, title: view.ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned" }]) {
       if (!this.visibleDiscussions(state.index).some(c => c.chapterID === chapter.id)) continue;
       this.menuItem(view.doc, menu, { label: (chapter.prefix ? chapter.prefix + " · " : "") + chapter.title, onSelect: () => { state.chapter = chapter.id; menu.refresh(); focus(menu); } });
@@ -337,7 +337,11 @@
     try {
      const history = await this.loadHistory(this.discussionContext(view.ctx, chat).dir);
      const rows = [];
-     history.forEach((message, at) => { if (message.role === "assistant" && (!onlyAnswer || message.referenceID === onlyAnswer.referenceID)) for (const result of message.results || []) rows.push({ message, at, result }); });
+     let turn = 0;
+     history.forEach((message, at) => {
+      if (message.role === "user") { turn++; if (mode === "jump") rows.push({ message, at, result: { kind: "Question", id: message.referenceID, number: turn, text: message.text } }); }
+      if (message.role === "assistant" && (!onlyAnswer || message.referenceID === onlyAnswer.referenceID)) for (const result of message.results || []) rows.push({ message, at, result });
+     });
      if (!menu.isConnected || state.chat?.id !== chat.id || state.request !== request) return;
      state.rows = rows; menu.refresh(); focus(menu);
     } catch (e) { if (menu.isConnected) { state.error = e.message || String(e); menu.refresh(); } }
@@ -349,6 +353,22 @@
     menu.refresh(); focus(menu);
    }).catch(e => { if (menu.isConnected) { state.error = e.message || String(e); menu.refresh(); } });
    return menu;
+  },
+  async jumpToDiscussionContent(view, chat, at, result) {
+   if (this._pending.has(view.ctx.dir)) throw new Error("Wait for the current answer before jumping to another discussion.");
+   await this.openManagedDiscussion(view, chat);
+   const history = await this.loadHistory(view.ctx.dir);
+   at = history.findIndex(message => ["Question", "Answer"].includes(result.kind) ? message.referenceID === result.id : message.results?.some(item => item.id === result.id));
+   if (at < 0) throw new Error("This discussion content is no longer available.");
+   let target;
+   if (result.kind === "Question") target = [...view.logEl.querySelectorAll(".abstractin-user")][history.slice(0, at + 1).filter(message => message.role === "user").length - 1];
+   else {
+    target = result.kind === "Answer" ? null : [...view.logEl.querySelectorAll("[data-result-reference]")].find(node => node.dataset.resultReference === "result:" + result.id);
+    target ||= [...view.logEl.querySelectorAll(".abstractin-turn")][history.slice(0, at + 1).filter(message => message.role === "assistant").length - 1];
+   }
+   if (!target) throw new Error("This discussion content is no longer available.");
+   target.scrollIntoView?.({ block: "center", behavior: "smooth" }); target.classList.add("abstractin-flash");
+   view.doc.defaultView.setTimeout(() => target.classList.remove("abstractin-flash"), 1800);
   },
   updateReadingControls(view) {
    previous.updateReadingControls.call(this, view);

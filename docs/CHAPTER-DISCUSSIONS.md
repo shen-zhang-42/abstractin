@@ -58,8 +58,14 @@ bounded lookup before answering. Explicit requests to check the source perform
 that lookup immediately. Both preserve the discussion's chapter and evidence
 preference; an explicit prohibition on document access prevents lookup.
 Appendix references such as Theorem A.78 and Definition A.1 are supported.
-A follow-up source request can reuse the last question's selected theorem as its
-lookup target. Older agent threads with blanket no-source instructions restart
+Source lookup starts from the send-time Zotero page and nearby reader pages,
+then widens to four pages in each direction when the statement is absent.
+It next searches the verified current-chapter range, then the complete cached
+book text only if the chapter has no statement heading. It ranks actual headings
+and nearby proof above inline citations. It scans all matches before choosing
+bounded excerpts, so early chapter citations cannot hide a late appendix theorem.
+Repeated follow-up requests inherit the most recent earlier question with a
+source reference, even if intervening follow-ups contain no theorem number. Older agent threads with blanket no-source instructions restart
 with the transcript preserved.
 The full PDF cache stays outside discussion workspaces. Scoped workspaces expose
 only authorized source excerpts. Scoped exports first repair recoverable blank-page
@@ -139,3 +145,10 @@ or unverified page links, and disappears when there is no status to show.
 
 The reading companion animates only while an answer is being generated. Its
 animations pause while idle; reduced-motion preferences remain respected.
+
+Current-page capture uses the bound reader and active split pane at send time.
+It reads the PDF.js page number without requiring a rendered page view; active
+Zotero view stats provide a fallback while the iframe is unavailable. Printed
+labels remain separate from zero-based physical indices.
+
+Chats is the single header entry for history, management, turn navigation and local search. Each discussion has a Turns button showing paired question/answer previews; selecting a turn opens and highlights its question. Search defaults to the current document, can include all documents, matches message text and discussion names, and jumps to the matching question or answer. Each row supports renaming without switching the active discussion. Switching preserves unfinished drafts and agent sessions; it does not insert a quotation or send a message. New documents keep the composer hidden and discussion navigation disabled until the Start Reading setup succeeds. Confirmed documents resume normally on later visits.

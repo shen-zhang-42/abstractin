@@ -251,7 +251,7 @@ test("reader UI uses HTML controls inside Zotero's XUL document and retains head
  const body = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div'); doc.body.append(body);
  p.renderSkeleton(doc, body);
  const root = body.querySelector('.abstractin-root');
- for (const cls of ['abstractin-open-settings', 'abstractin-search', 'abstractin-history', 'abstractin-new-chat', 'abstractin-clarifications', 'abstractin-attach', 'abstractin-model-btn', 'abstractin-effort-btn', 'abstractin-send']) {
+ for (const cls of ['abstractin-open-settings', 'abstractin-history', 'abstractin-new-chat', 'abstractin-attach', 'abstractin-model-btn', 'abstractin-effort-btn', 'abstractin-send']) {
   const button = root.querySelector('.' + cls); assert.ok(button); assert.equal(button.namespaceURI, 'http://www.w3.org/1999/xhtml');
  }
  assert.equal(root.querySelector('.abstractin-input').localName, 'textarea'); assert.equal(root.querySelector('.abstractin-input').namespaceURI, 'http://www.w3.org/1999/xhtml');

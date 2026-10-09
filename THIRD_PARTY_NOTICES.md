@@ -1,5 +1,7 @@
 # Third-party notices
 
+AbstractIn is derived from [Zusia](https://github.com/firekern/zusia), created by Andrea Porcelli (firekern). The upstream MIT License and `Copyright (c) 2026 Andrea Porcelli` notice are preserved in the repository root `LICENSE`, which is also included in every `abstractin.xpi` package.
+
 AbstractIn bundles the following third-party files. Each licence ships next to the files it covers.
 
 | Component | Version | Licence | Files | Licence file |

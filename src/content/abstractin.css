@@ -2978,3 +2978,29 @@
 .abstractin-root .abstractin-composer-shortcuts .abstractin-label { flex: 0 0 auto; display: inline; overflow: visible; text-overflow: clip; white-space: nowrap; }
 .abstractin-root .abstractin-mascot, .abstractin-root .abstractin-mascot * { animation-play-state: paused; }
 .abstractin-root[data-answering="true"] .abstractin-mascot, .abstractin-root[data-answering="true"] .abstractin-mascot * { animation-play-state: running; }
+
+.abstractin-root .abstractin-reading-welcome .abstractin-start-reading.abstractin-empty-title {
+	align-self: center;
+	font-size: 1.25em;
+	font-weight: 600;
+	min-height: 42px;
+	padding: 9px 16px;
+}
+
+.abstractin-reading-setup-response { display: flex; gap: 8px; margin-top: 10px; }
+.abstractin-reading-setup-input { flex: 1; min-width: 0; padding: 8px; font: inherit; color: var(--abstractin-text); background: var(--abstractin-ground); border: 1px solid var(--abstractin-border); border-radius: var(--abstractin-radius-control); }
+
+.abstractin-root .abstractin-composer[hidden] { display: none !important; }
+
+.abstractin-chat-search { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.abstractin-chat-search .abstractin-search-input { flex: 1 1 180px; min-width: 0; width: auto; margin: 0; }
+.abstractin-chat-search select { max-width: 100%; font: inherit; color: var(--abstractin-text); background: var(--abstractin-raised); border: 1px solid var(--abstractin-border); border-radius: 6px; padding: 6px; }
+.abstractin-history-row { flex-wrap: wrap; }
+.abstractin-history-browser .abstractin-history-card { flex-basis: 160px; }
+.abstractin-history-row-turns, .abstractin-history-row-rename { font-size: 11px; flex: 0 0 auto; }
+.abstractin-chat-turns { padding: 4px 12px 14px 34px; }
+.abstractin-chat-turns[hidden], .abstractin-chat-search-results[hidden], .abstractin-history-browser-body[hidden] { display: none !important; }
+.abstractin-history-browser .abstractin-chat-turn, .abstractin-history-browser .abstractin-chat-search-result { display: flex; flex-direction: column; gap: 6px; width: 100%; margin: 0 0 8px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.abstractin-chat-turn > span, .abstractin-chat-search-result > span { line-height: 1.5; font-size: 12px; }
+.abstractin-chat-search-result > strong { font-size: 13px; }
+.abstractin-chat-turns > .abstractin-field { width: 100%; box-sizing: border-box; margin-bottom: 8px; }

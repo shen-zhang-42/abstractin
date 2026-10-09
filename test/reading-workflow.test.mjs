@@ -642,3 +642,44 @@ test("restored selected passages use the new computer's attachment ID", async ()
  p.registerChatContext({ ...ctx, dir: remoteDir, attachmentItem: { ...ctx.attachmentItem, id: 200 } });
  assert.equal((await p.loadHistory(remoteDir))[0].selection.attachmentID, 200);
 });
+
+test("current page does not require a rendered page view or a getPageView method", async () => {
+ const { plugin: p, ctx, window } = await setup();
+ ctx.reader = { itemID: 7, type: 'pdf', _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfViewer: { currentPageNumber: 600 } } } } } };
+ assert.equal(p.currentReadingLocation(ctx).pageIndex, 599);
+ ctx.reader._internalReader._primaryView._iframeWindow.PDFViewerApplication.pdfViewer.getPageView = () => { throw new Error('View not rendered'); };
+ assert.equal(p.currentReadingLocation(ctx).pageIndex, 599);
+});
+
+test("active split-view stats preserve current location when its iframe is unavailable", async () => {
+ const { plugin: p, ctx } = await setup();
+ ctx.reader = { itemID: 7, type: 'pdf', _internalReader: {
+  _lastViewPrimary: false, _lastView: { _iframeWindow: null },
+  _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfViewer: { currentPageNumber: 2 } } } },
+  _state: { primaryViewStats: { pageIndex: 1 }, secondaryViewStats: { pageIndex: 599, pageLabel: '600' } },
+ } };
+ const location = p.currentReadingLocation(ctx);
+ assert.equal(location.pageIndex, 599); assert.equal(location.pageLabel, '600');
+});
+
+test("reader document access falls back to a live iframe after a destroyed view", async () => {
+ const { plugin: p, ctx } = await setup();
+ const dead = new Proxy({}, { get() { throw new Error("can't access dead object"); } });
+ const pdf = {};
+ ctx.reader = { itemID: 7, type: 'pdf', _internalReader: { _lastView: dead, _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfDocument: pdf } } } } };
+ assert.equal(p.readingPDFApplication(ctx).pdfDocument, pdf);
+});
+
+test("native PDF extraction unwraps cross-window promises, page methods and text content", async () => {
+ const { plugin: p, ctx, window } = await setup();
+ const pageWrapper = {}, pagePromiseWrapper = {}, contentWrapper = {}, contentPromiseWrapper = {};
+ const page = { getTextContent: () => contentPromiseWrapper };
+ const content = { items: [{ str: 'Theorem A.78.', hasEOL: true }, { str: 'Actual proof text.' }] };
+ const unwrapped = new Map([[pagePromiseWrapper, Promise.resolve(pageWrapper)], [pageWrapper, page], [contentPromiseWrapper, Promise.resolve(contentWrapper)], [contentWrapper, content]]);
+ window.Components = { utils: { waiveXrays: value => unwrapped.get(value) || value } };
+ const pdf = { numPages: 601, getPage: number => { assert.equal(number, 600); return pagePromiseWrapper; } };
+ p.readingPDFApplication = () => ({ pdfDocument: pdf });
+ const result = await p.readNativeReadingPage(ctx, 599);
+ assert.equal(result.pageIndex, 599);
+ assert.match(result.text, /Theorem A.78/); assert.match(result.text, /Actual proof text/);
+});

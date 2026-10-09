@@ -256,12 +256,18 @@ test("the companion collects reading information inline, validates it and starts
 	p.activateReading = async (view, item, options) => { chosen = { item, options }; view.ctx.reading = options; p.renderMessages(view, []); };
 	p.beginReadingWorkflow = async (view, options) => { workflow = options; };
 	p.renderMessages(view, []);
+	const composer = root.querySelector(".abstractin-composer");
+	const navigation = [...root.querySelectorAll(".abstractin-history, .abstractin-new-chat")];
+	assert.equal(composer.hidden, true);
+	assert.ok(navigation.every(button => button.disabled));
 	await p.openReadingSetup(root);
 	assert.equal(root.querySelector("[role=dialog]"), null);
 	assert.ok(root.querySelector(".abstractin-reading-welcome .abstractin-mascot"));
 	assert.match(view.logEl.textContent, /Reading fixture/);
 	assert.equal(root.querySelector("select"), null);
-	await p.sendText(view, "A different title");
+	const titleInput = root.querySelector(".abstractin-reading-setup-input:not(:disabled)");
+	titleInput.value = "A different title";
+	titleInput.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 	assert.equal(view.readingSetup.step, "type");
 	await p.answerReadingSetup(view, "unknown");
 	assert.equal(view.readingSetup.step, "type");
@@ -276,6 +282,8 @@ test("the companion collects reading information inline, validates it and starts
 	await p.sendText(view, "Understand the proof in chapter 2");
 	assert.match(view.logEl.textContent, /Agent unavailable/);
 	assert.equal(chosen, undefined);
+	assert.equal(composer.hidden, true, "failed setup must keep the chat gated");
+	assert.ok(navigation.every(button => button.disabled));
 	fail = false;
 	await p.answerReadingSetup(view, "retry");
 	assert.equal(chosen.item.id, 8);
@@ -284,6 +292,8 @@ test("the companion collects reading information inline, validates it and starts
 	assert.equal(chosen.options.language, undefined);
 	assert.equal(view.readingSetup, undefined);
 	assert.equal(root.dataset.readingIntro, "false");
+	assert.equal(composer.hidden, false);
+	assert.ok(navigation.every(button => !button.disabled));
 	assert.equal(workflow.showWorkspace, false);
 	assert.equal(root.querySelector("[role=dialog]"), null);
 	assert.match(p.readingPrompt(view.ctx), /Understand the proof in chapter 2/);
