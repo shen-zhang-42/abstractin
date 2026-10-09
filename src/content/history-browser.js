@@ -253,11 +253,16 @@
     });
     const merge = action(toolbar, "Merge selected", () => confirmChange("merge"), "abstractin-history-merge");
     const remove = action(toolbar, "Delete selected", () => confirmChange("delete"), "abstractin-history-delete");
+    for (const [button, icon] of [[selectAll, "check"], [merge, "mergeChats"], [remove, "trash"]]) {
+     const content = this.el(view.doc, "span", "abstractin-history-action-content");
+     content.append(this.svgIcon(view.doc, icon), this.el(view.doc, "span", "abstractin-history-action-label", button.textContent));
+     button.replaceChildren(content);
+    }
     toolbar.prepend(selectionCount); body.append(toolbar);
     const updateSelection = () => {
      selectionCount.textContent = selected.size ? selected.size + " selected" : "Select discussions to manage";
      merge.disabled = selected.size < 2; remove.disabled = !selected.size;
-     selectAll.textContent = checks.length && selected.size === checks.length ? "Clear selection" : "Select all";
+     selectAll.querySelector(".abstractin-history-action-label").textContent = checks.length && selected.size === checks.length ? "Clear selection" : "Select all";
     };
     const confirmChange = (kind, ids = [...selected], anchor = toolbar, trigger = null) => {
      screen.querySelector(".abstractin-history-confirm")?.remove();

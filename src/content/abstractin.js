@@ -172,6 +172,7 @@ AbstractIn = {
 		prompt: "chat-centered-text.svg",
 		answer: "book-open-text.svg",
 		trash: "trash.svg",
+		mergeChats: "chat-merge.svg",
 		openPdf: "arrow-square-out.svg",
 		styleGlass: "drop.svg",
 		styleFlat: "squares-four.svg",
