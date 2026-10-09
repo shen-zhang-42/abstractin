@@ -144,7 +144,7 @@
     }
     if (!Number.isInteger(record.number) || record.number < 1) continue;
     if (data.chapter && !index.chapters.some(c => c.id === data.chapter.id)) index.chapters.push(data.chapter);
-    index.chats.push({ id: record.id, chapterID: record.chapterID || null, number: record.number, topic: String(record.topic || "discussion"), createdAt: record.createdAt || data.updatedAt, updatedAt: data.updatedAt, ...(record.numberingRevision ? { numberingRevision: record.numberingRevision } : {}), ...(record.numberHistory ? { numberHistory: record.numberHistory } : {}), ...(record.mergedFrom ? { mergedFrom: record.mergedFrom } : {}), ...(record.deletedAt ? { deletedAt: record.deletedAt } : {}), ...(record.supersededBy ? { supersededBy: record.supersededBy } : {}) });
+    index.chats.push({ id: record.id, chapterID: record.chapterID || null, number: record.number, topic: String(record.topic || "discussion"), ...(record.topicManual ? { topicManual: true } : {}), ...(record.topicQuestions ? { topicQuestions: record.topicQuestions } : {}), createdAt: record.createdAt || data.updatedAt, updatedAt: data.updatedAt, ...(record.numberingRevision ? { numberingRevision: record.numberingRevision } : {}), ...(record.numberHistory ? { numberHistory: record.numberHistory } : {}), ...(record.mergedFrom ? { mergedFrom: record.mergedFrom } : {}), ...(record.deletedAt ? { deletedAt: record.deletedAt } : {}), ...(record.supersededBy ? { supersededBy: record.supersededBy } : {}) });
     const container = OS.Path.join(this.discussionRoot(ctx), "discussions"); await Zotero.File.createDirectoryIfMissingAsync(container);
     await Zotero.File.createDirectoryIfMissingAsync(OS.Path.join(container, record.id));
    }
@@ -295,7 +295,7 @@
    if (!title.trim() || this._pending.has(view.ctx.dir) || this._discussionLocks.has(this.discussionRoot(view.ctx))) return;
    const index = await this.discussionIndex(view.ctx), chat = this.visibleDiscussions(index).find(c => c.id === chatID);
    if (!chat) throw new Error("This discussion is unavailable.");
-   chat.topic = title.trim().slice(0, 200); await this.writeDiscussionIndex(view.ctx, index);
+   chat.topic = title.trim().slice(0, 200); chat.topicManual = true; await this.writeDiscussionIndex(view.ctx, index);
    if (chat.id === view.ctx.discussion.id) view.ctx.discussion = { ...chat }; this.updateReadingControls(view);
   },
   async assignDiscussionChapter(view, chapterID) {
@@ -338,7 +338,7 @@
       if (topic !== "discussion" && !topics.includes(topic)) topics.push(topic);
      }
      const chapterID = chats.every(c => c.chapterID === chats[0].chapterID) ? chats[0].chapterID : null;
-     const topic = topics.length ? topics.slice(0, 3).join(" + ") : "Merged discussion";
+     const topic = topics[0] || "discussion";
      next = await this.createDiscussion(view.ctx, index, chapterID, topic, seed, { mergedFrom: chats.map(c => c.id) }, { persist: false });
      for (const chat of chats) chat.supersededBy = [next.id];
     } else {

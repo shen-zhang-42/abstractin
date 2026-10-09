@@ -498,9 +498,9 @@ test("merging retains complete transcript blocks and reference IDs, automaticall
  await p.newChat(view.root); await send("measures"); const second = { ...view.ctx.discussion }, secondDir = view.ctx.dir;
  const secondHistory = await p.loadHistory(secondDir);
  const merged = await p.mergeDiscussions(view, [second.id, first.id]);
- assert.equal(merged.chapterID, "ch-01"); assert.equal(merged.topic, "sets + measures");
+ assert.equal(merged.chapterID, "ch-01"); assert.equal(merged.topic, "sets");
  assert.equal(view.ctx.discussion.id, merged.id);
- assert.equal(p.discussionName(view.ctx, merged, await p.discussionIndex(view.ctx)), "chap-01_chat-01_sets+measures");
+ assert.equal(p.discussionName(view.ctx, merged, await p.discussionIndex(view.ctx)), "chap-01_chat-01_sets");
  const history = await p.loadHistory(view.ctx.dir);
  assert.deepEqual(Array.from(history, m => m.text), [...firstHistory, ...secondHistory].map(m => m.text));
  assert.equal(history[1].referenceID, firstHistory[1].referenceID);
@@ -867,4 +867,47 @@ test("Chats scopes search explicitly and discards results from cleared or closed
  const result = view.root.querySelector('.abstractin-chat-search-result'); assert.match(result.textContent, /Other book/); result.click();
  await new Promise(r => setTimeout(r, 20));
  assert.equal(opened.chat, foreign); assert.equal(view.historyBrowser, undefined);
+});
+
+test("chapter groups toggle and Codex summaries cover all questions without overwriting manual titles", async () => {
+ const { p, view, send, notes } = await setup();
+ await send("Chapter 1: Why is countability needed?");
+ await send("How does the proof select the measures?");
+ const calls = [];
+ view.root._installed = { codex: "/bin/codex" };
+ p.summarizeDiscussionQuestions = async (_, questions) => { calls.push(Array.from(questions)); return "Explain how countability permits the measure-selection proof."; };
+ await p.openHistoryMenu(view.root); await p._discussionTitleQueue;
+ const heading = view.root.querySelector('.abstractin-history-chapter-head');
+ const group = heading.nextElementSibling;
+ assert.equal(heading.getAttribute('aria-expanded'), 'true');
+ heading.click(); assert.ok(group.hidden); assert.equal(heading.getAttribute('aria-expanded'), 'false');
+ heading.click(); assert.equal(group.hidden, false);
+ const index = await p.discussionIndex(view.ctx), chat = index.chats.find(c => c.id === view.ctx.discussion.id);
+ assert.equal(chat.topic, "Explain how countability permits the measure-selection proof.");
+ assert.equal(calls.length, 1); assert.equal(calls[0].length, 2);
+ const card = view.root.querySelector('.abstractin-history-card[data-discussion-id="' + chat.id + '"]');
+ assert.ok(card.firstElementChild.classList.contains('abstractin-history-meta'));
+ assert.match(card.firstElementChild.textContent, /Discussion-01/);
+ assert.equal(card.querySelector('.abstractin-history-topic').textContent, chat.topic);
+ assert.ok(card.parentElement.querySelector('.abstractin-history-row-actions'));
+ await p.refreshDiscussionTitles(view, index, view.root.querySelector('.abstractin-history-browser'));
+ assert.equal(calls.length, 1, 'unchanged questions use cached summaries');
+ await p.renameDiscussion(view, 'My deliberate title');
+ await p.refreshDiscussionTitles(view, await p.discussionIndex(view.ctx), view.root.querySelector('.abstractin-history-browser'));
+ assert.equal(calls.length, 1, 'manual titles are preserved');
+});
+
+test("discussion naming uses a separate Codex process without conversation sessions or tools", async () => {
+ const { p, view } = await setup(); let request;
+ p.findBinary = async () => '/bin/codex';
+ p.runProcess = async (command, args, dir, events, spawn, prompt) => {
+  request = { command, args, dir, prompt };
+  return { exitCode: 0, stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: '{"title":"Explain the role of countability in selecting measures."}' } }) };
+ };
+ const title = await p.summarizeDiscussionQuestions(view, ['Why countable?', 'How to select measures?']);
+ assert.match(title, /countability/);
+ assert.equal(request.command, '/bin/codex'); assert.ok(!request.args.includes('resume'));
+ assert.ok(request.args.includes('features.shell_tool=false'));
+ assert.match(request.prompt, /ALL the user questions/);
+ assert.match(request.prompt, /Why countable/); assert.match(request.prompt, /How to select measures/);
 });

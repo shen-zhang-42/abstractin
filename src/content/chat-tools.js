@@ -25,7 +25,7 @@
   },
   discussionName(ctx, chat, index) {
    const chapter = index.chapters.find(c => c.id === chat.chapterID);
-   return (ctx.reading.type === "paper" ? "paper" : chapter?.prefix || "unassigned") + "_chat-" + String(chat.number).padStart(2, "0") + "_" + (chat.mergedFrom ? chat.topic.split(" + ").map(t => this.shortDiscussionTopic(t)).join("+") : this.shortDiscussionTopic(chat.topic));
+   return (ctx.reading.type === "paper" ? "paper" : chapter?.prefix || "unassigned") + "_chat-" + String(chat.number).padStart(2, "0") + "_" + this.shortDiscussionTopic(chat.topic);
   },
   async legacyDiscussions(ctx, index, { includeImported = false } = {}) {
    if (!includeImported) return previous.legacyDiscussions.call(this, ctx, index);

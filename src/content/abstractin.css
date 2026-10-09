@@ -3032,3 +3032,20 @@
 .abstractin-root .abstractin-reading-welcome .abstractin-mascot *,
 .abstractin-root .abstractin-wizard .abstractin-mascot,
 .abstractin-root .abstractin-wizard .abstractin-mascot * { animation-play-state: running; }
+
+/* Compact chat rows, with the discussion identity above its summary. */
+.abstractin-history-row { grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; padding: 10px; }
+.abstractin-history-row-actions { grid-column: auto; grid-template-columns: repeat(3, auto); gap: 3px; padding: 0; border: 0; align-self: center; }
+.abstractin-root .abstractin-history-browser .abstractin-history-row-actions .abstractin-btn { min-height: 26px; padding: 4px 5px; font-size: 10px; border-color: transparent; border-radius: 5px; }
+.abstractin-history-row-actions .abstractin-history-action-content { gap: 0; }
+.abstractin-history-row-actions .abstractin-i { display: none; }
+.abstractin-history-meta { margin: 0 0 4px; font-size: 12px; font-weight: 700; color: var(--abstractin-accent-ink); }
+.abstractin-history-topic { font-size: 12px; font-weight: 400; color: var(--abstractin-text); }
+.abstractin-history-current { font-size: 10px; font-weight: 500; }
+.abstractin-root .abstractin-history-chapter-head { appearance: none; display: flex; width: 100%; gap: 8px; padding: 10px 8px; margin: 0 0 8px; border: 0; border-radius: 7px; background: var(--abstractin-raised); text-align: start; }
+.abstractin-history-chapter h3 { font-size: 14px; font-weight: 700; color: var(--abstractin-text); }
+.abstractin-history-chapter-head .abstractin-history-chapter-chevron { width: 14px; height: 14px; transform: rotate(-90deg); }
+.abstractin-history-chapter-head[aria-expanded="true"] .abstractin-history-chapter-chevron { transform: rotate(0deg); }
+.abstractin-history-chapter-body[hidden] { display: none !important; }
+.abstractin-root .abstractin-history-chapter-head { display: block; }
+.abstractin-history-chapter-label { display: flex; gap: 8px; align-items: center; }
