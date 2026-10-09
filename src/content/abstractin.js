@@ -1093,7 +1093,6 @@ AbstractIn = {
 			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "abstractin-header-icon"),
 			identity,
 			this.iconButton(doc, "abstractin-history abstractin-chats", "Chats", "chatManager", () => this.openHistoryMenu(root)),
-			this.iconButton(doc, "abstractin-new-chat", "New chat", "newChat", () => this.newChat(root)),
 			this.iconButton(doc, "abstractin-open-settings", "Settings", "settings", () => this.openSettings()),
 		);
 
@@ -1161,7 +1160,8 @@ AbstractIn = {
 		let send = this.iconButton(doc, "abstractin-send", "Send (" + this.sendKeyLabel() + ")", "send", () => this.sendOrStop(root));
 		send.className = "abstractin-send";
 		send.disabled = true;
-		controls.append(evidence, attachButton, modelButton, effortButton, this.el(doc, "span", "abstractin-spacer"), send);
+		const newDiscussion = this.iconButton(doc, "abstractin-new-chat", "New chat", "newChat", () => this.newChat(root));
+		controls.append(evidence, attachButton, modelButton, effortButton, this.el(doc, "span", "abstractin-spacer"), newDiscussion, send);
 
 		let context = this.el(doc, "div", "abstractin-context");
 		context.hidden = true;
