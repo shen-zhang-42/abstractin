@@ -14,7 +14,7 @@ catalog = json.loads((src / 'content/reading-skill-assets.json').read_text())
 # Original illustration sources are retained in the workspace, not shipped.
 source_only = {
     'ChatGPT Image Oct 10, 2026, 02_49_20 PM.png',
-    'marmoset-front-detailed.svg', 'marmoset-vector-clean.svg', 'image.png',
+    'watercolor-marmoset-reference.svg', 'marmoset-front-detailed.svg', 'marmoset-vector-clean.svg', 'image.png',
     'content/puffin-cartoon.svg', 'content/icons/marmoset-reference.svg',
 }
 assets = [(src / path, str(path)) for path in sorted(p.relative_to(src) for p in src.rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(src).parts)) if path.as_posix() not in source_only]

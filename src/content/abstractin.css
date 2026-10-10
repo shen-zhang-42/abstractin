@@ -3030,7 +3030,7 @@
 .abstractin-chat-search-result > strong { font-size: 13px; }
 .abstractin-chat-turns > .abstractin-field { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
 
-/* Marmoset artwork is static in every reading state. */
+/* Marmoset tail uses SVG-native animation controlled by syncMascotAnimations. */
 /* The start screen welcomes the reader continuously, independent of requests. */
 .abstractin-root .abstractin-reading-welcome .abstractin-mascot,
 .abstractin-root .abstractin-reading-welcome .abstractin-mascot *,
