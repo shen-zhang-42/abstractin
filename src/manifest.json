@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "AbstractIn",
-	"version": "0.2.36",
+	"version": "0.2.37",
 	"description": "Read books and scientific papers in Zotero with local Codex and specialized reading skills.",
 	"applications": {
 		"zotero": {

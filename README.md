@@ -21,7 +21,7 @@ AbstractIn is an independently maintained Zotero reading assistant developed fro
 
 Zusia is released under the [MIT License](https://github.com/firekern/zusia/blob/main/LICENSE), which permits modification, publication and redistribution provided its copyright notice and permission text are retained. AbstractIn preserves Andrea Porcelli's original copyright and the complete MIT license in [LICENSE](LICENSE), including in every packaged `abstractin.xpi`. Bundled third-party notices are retained in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Version 0.2.36 supports **Start Reading → companion-led questions in the chat → confirm the title, material type, exact PDF and reading goal → rendered answers → editable Zotero child notes**. Answers follow the shared plugin language setting. Codex remains the default; checked custom agents can be selected in Settings → Assistants.
+Version 0.2.37 supports **Start Reading → companion-led questions in the chat → confirm the title, material type, exact PDF and reading goal → rendered answers → editable Zotero child notes**. Answers follow the shared plugin language setting. Codex remains the default; checked custom agents can be selected in Settings → Assistants.
 
 The original `book-reading`, `scientific-paper-reading` and the paper skill's local extraction dependency are bundled without modification. Local skills may be used from your `.codex/skills` directory; `scientific-book-reading` is recognized as the folder alias for `book-reading`.
 
@@ -114,7 +114,7 @@ Settings → Assistants supports custom ACP v1 agents and imported JSONL adapter
 3. **In Zotero:** Tools → Plugins → ⚙ → *Install Plugin From File…* → pick the `.xpi`. Restart if asked.
 4. **Open a book or paper PDF.** Click the AbstractIn book icon in the reader toolbar to open its dedicated panel, then click **Start Reading**, confirm the attachment and material type, then initialize the book contents or choose a paper summary or immediate questions.
 
-The plugin update feed points at this AbstractIn repository. Releases include `abstractin.xpi` and `updates.json`, which Zotero uses for in-place updates. Previously installed AbstractIn builds with plugin ID `abstractin@shen-zhang-42.github.io` and this repository's update URL can upgrade to a higher released version, including from 0.2.35 to 0.2.36. Use Zotero's plugin manager to check for updates, or let Zotero check automatically when plugin auto-updates are enabled. A locally installed 0.2.36 build will not receive another 0.2.36 update; it can update when a higher version is released. Original Zusia installations use a different plugin ID and update feed, so install AbstractIn manually once to receive AbstractIn updates.
+The plugin update feed points at this AbstractIn repository. Releases include `abstractin.xpi` and `updates.json`, which Zotero uses for in-place updates. Previously installed AbstractIn builds with plugin ID `abstractin@shen-zhang-42.github.io` and this repository's update URL can upgrade to a higher released version, including from 0.2.36 to 0.2.37. Use Zotero's plugin manager to check for updates, or let Zotero check automatically when plugin auto-updates are enabled. A locally installed 0.2.37 build will not receive another 0.2.37 update; it can update when a higher version is released. Original Zusia installations use a different plugin ID and update feed, so install AbstractIn manually once to receive AbstractIn updates.
 
 ## Sync across computers
 
@@ -162,8 +162,8 @@ The videos are recorded in a real Zotero with its own demo profile and library, 
 After choosing to publish a release, keep `version` consistent in `package.json`, the root entries in `package-lock.json`, and `src/manifest.json`, then tag the tested commit:
 
 ```sh
-git tag v0.2.36
-git push origin v0.2.36
+git tag v0.2.37
+git push origin v0.2.37
 ```
 
 The tag is what releases. `.github/workflows/release.yml` refuses to run if the tag and the two versions disagree, then runs the tests, builds the `.xpi`, writes `updates.json` and attaches both to a GitHub release. Pushing to `main` never publishes anything. Zotero can offer an automatic update only after the release and its `updates.json` asset are publicly available, and the released version must be higher than the installed version. All packages use the single filename `abstractin.xpi`.

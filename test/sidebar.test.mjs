@@ -57,7 +57,7 @@ test("first entry welcomes the reader with a companion and one Start Reading but
 	const { plugin, view } = sidebar();
 	plugin.renderEmptyState(view);
 	assert.equal(view.logEl.querySelectorAll(".abstractin-start-reading").length, 1);
-	assert.equal(view.logEl.querySelector(".abstractin-empty-title").textContent, "let's start reading");
+	assert.equal(view.logEl.querySelector(".abstractin-empty-title").textContent, "Let's start reading!");
 	assert.equal(view.logEl.querySelector(".abstractin-empty-title").tagName, "BUTTON");
 	assert.ok(view.logEl.querySelector(".abstractin-mascot"));
 });
@@ -75,10 +75,10 @@ test("Start Reading appears only before entering a reading chat", () => {
 	plugin.updateReadingControls(view);
 	const button = root.querySelector(".abstractin-start-reading");
 	assert.equal(button.hidden, true);
-	assert.equal(button.textContent, "let's start reading");
+	assert.equal(button.textContent, "Let's start reading!");
 	assert.ok(button.classList.contains("abstractin-reading-primary"));
 	assert.ok(!button.classList.contains("abstractin-ghost"));
-	assert.equal(button.getAttribute("aria-label"), "let's start reading");
+	assert.equal(button.getAttribute("aria-label"), "Let's start reading!");
 	assert.equal(root.querySelector(".abstractin-reading-status").textContent, "");
 	assert.ok(root.querySelector(".abstractin-reading-statusbar").hidden);
 	assert.equal(root.querySelector(".abstractin-reading-statusbar").previousElementSibling, root.querySelector(".abstractin-composer"));
@@ -371,7 +371,7 @@ test("every icon shown anywhere maps to a bundled icon file", async () => {
 		// Icon coordinate systems include the original raster mascot canvas.
 		let svg = new document.defaultView.DOMParser().parseFromString(readFileSync(url, "utf8"), "image/svg+xml").documentElement;
 		assert.equal(svg.namespaceURI, "http://www.w3.org/2000/svg");
-		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24", "0 0 590 546", "-12 -12 614 570", "-24 50 1330 1190", "150 0 1120 1210"].includes(svg.getAttribute("viewBox")));
+		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24", "0 0 590 546", "-12 -12 614 570", "-24 50 1390 1190", "150 0 1120 1210"].includes(svg.getAttribute("viewBox")));
 	}
 });
 

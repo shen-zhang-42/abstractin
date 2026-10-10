@@ -2861,6 +2861,11 @@
 .abstractin-root[data-reading-intro="true"] .abstractin-reading-bar { display: none; }
 .abstractin-reading-welcome .abstractin-start-reading { width: auto; align-self: center; }
 .abstractin-reading-welcome .abstractin-mascot { flex: none; width: 96px; height: 96px; }
+.abstractin-root[data-mascot="marmoset"] .abstractin-reading-welcome .abstractin-mascot {
+	width: 176px;
+	height: 160px;
+	max-width: 100%;
+}
 .abstractin-reading-setup-question p { margin: 0 0 8px; }
 .abstractin-reading-choices { display: flex; flex-wrap: wrap; gap: 6px; }
 .abstractin-reading-choice {

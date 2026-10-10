@@ -2022,7 +2022,7 @@ AbstractIn = {
 			empty.classList.add("abstractin-reading-welcome");
 			empty.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"));
 			const start = this.readingButton(doc, "abstractin-start-reading abstractin-empty-title", () => this.openReadingSetup(view.root).catch(e => this.appendError(view, e.message || String(e))));
-			start.setLabel("let's start reading");
+			start.setLabel("Let's start reading!");
 			empty.appendChild(start);
 		}
 		if (view.ctx?.reading) empty.appendChild(this.el(doc, "div", "abstractin-empty-title", "Ask about this passage"));

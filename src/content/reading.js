@@ -240,7 +240,7 @@ Object.assign(AbstractIn, {
 		else {
 			welcome = this.el(view.doc, "div", "abstractin-empty abstractin-reading-welcome");
 			welcome.append(this.svgIcon(view.doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"),
-				this.el(view.doc, "div", "abstractin-empty-title", "let's start reading"));
+				this.el(view.doc, "div", "abstractin-empty-title", "Let's start reading!"));
 			view.logEl.appendChild(welcome);
 		}
 		this.updateControls(root);
@@ -459,7 +459,7 @@ Object.assign(AbstractIn, {
 		if (label) { label.textContent = ""; label.hidden = true; }
 		let button = view.root.querySelector(".abstractin-start-reading");
 		if (button) {
-			const label = button.classList.contains("abstractin-empty-title") ? "let's start reading" : "Start Reading";
+			const label = button.classList.contains("abstractin-empty-title") ? "Let's start reading!" : "Start Reading";
 			button.setLabel(label);
 			button.title = label;
 			button.setAttribute("aria-label", label);
