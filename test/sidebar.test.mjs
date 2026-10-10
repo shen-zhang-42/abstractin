@@ -949,3 +949,17 @@ test("vector marmoset tail starts on welcome and follows answer state in the com
 	plugin.syncMascotAnimations(root);
 	assert.deepEqual(calls, ['welcome:stop', 'welcome:stop', 'welcome:stop']);
 });
+
+test("refresh replaces a same-name companion from an earlier plugin version", () => {
+ const { plugin, root } = sidebar();
+ const original = root.querySelector('.abstractin-discussion-companion .abstractin-mascot');
+ plugin.refreshRoot(root);
+ assert.equal(root.querySelector('.abstractin-discussion-companion .abstractin-mascot'), original);
+ plugin.version = '0.2.35';
+ plugin.refreshRoot(root);
+ const refreshed = root.querySelector('.abstractin-discussion-companion .abstractin-mascot');
+ assert.notEqual(refreshed, original);
+ assert.equal(refreshed.dataset.assetVersion, '0.2.35');
+ assert.equal(refreshed.querySelector('svg').dataset.artwork, 'marmoset-front-detailed');
+ assert.equal(refreshed.querySelectorAll('animateTransform').length, 3);
+});

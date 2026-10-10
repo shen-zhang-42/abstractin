@@ -518,7 +518,7 @@ AbstractIn = {
 			headerIcon.replaceWith(this.svgIcon(root.ownerDocument, wanted, "abstractin-header-icon"));
 		}
 		for (let companion of root.querySelectorAll(".abstractin-mascot")) {
-			if (companion.dataset.icon !== mascot.icon) {
+			if (companion.dataset.icon !== mascot.icon || companion.dataset.assetVersion !== (this.version || "dev")) {
 				companion.replaceWith(this.svgIcon(root.ownerDocument, mascot.icon, companion.getAttribute("class")));
 			}
 		}
@@ -831,6 +831,7 @@ AbstractIn = {
 	svgIcon(doc, name, className) {
 		let icon = this.el(doc, "span", "abstractin-i" + (className ? " " + className : ""));
 		icon.dataset.icon = name;
+		icon.dataset.assetVersion = this.version || "dev";
 		icon.setAttribute("aria-hidden", "true");
 		let source = this.BUNDLED_ICONS[this.ICON_FILES[name]];
 		// Inline mascot copies need their own clip/image IDs in the same document.
