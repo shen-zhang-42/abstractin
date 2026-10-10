@@ -13,6 +13,7 @@ src = root / 'src'
 catalog = json.loads((src / 'content/reading-skill-assets.json').read_text())
 # Original illustration sources are retained in the workspace, not shipped.
 source_only = {
+    'ChatGPT Image Oct 10, 2026, 02_49_20 PM.png',
     'marmoset-front-detailed.svg', 'marmoset-vector-clean.svg', 'image.png',
     'content/puffin-cartoon.svg', 'content/icons/marmoset-reference.svg',
 }

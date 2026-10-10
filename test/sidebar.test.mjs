@@ -371,7 +371,7 @@ test("every icon shown anywhere maps to a bundled icon file", async () => {
 		// Icon coordinate systems include the original raster mascot canvas.
 		let svg = new document.defaultView.DOMParser().parseFromString(readFileSync(url, "utf8"), "image/svg+xml").documentElement;
 		assert.equal(svg.namespaceURI, "http://www.w3.org/2000/svg");
-		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24", "0 0 590 546", "-12 -12 614 570", "150 0 1120 1210"].includes(svg.getAttribute("viewBox")));
+		assert.ok(["0 0 256 256", "0 0 64 64", "0 0 32 32", "0 0 24 24", "0 0 590 546", "-12 -12 614 570", "-24 50 1330 1190", "150 0 1120 1210"].includes(svg.getAttribute("viewBox")));
 	}
 });
 
@@ -919,7 +919,7 @@ test("reading mode menu wraps check, symbol and text in an inner layout and swit
  assert.equal(root.querySelector(".abstractin-menu"), null);
 });
 
-test("vector marmoset tail starts on welcome and follows answer state in the composer", () => {
+test("marmoset tail starts on welcome and follows answer state in the composer", () => {
 	const { root, view, plugin } = sidebar();
 	plugin.renderMessages(view, []);
 	const welcome = root.querySelector('.abstractin-reading-welcome .abstractin-mascot');
@@ -927,8 +927,8 @@ test("vector marmoset tail starts on welcome and follows answer state in the com
 	assert.ok(welcome && companion);
 	const calls = [];
 	for (const [location, icon] of [['welcome', welcome], ['companion', companion]]) {
-		assert.equal(icon.querySelector('image'), null, 'artwork contains vector paths');
-		assert.equal(icon.querySelectorAll('animateTransform').length, 3);
+		assert.match(icon.querySelector('image').getAttributeNS('http://www.w3.org/1999/xlink', 'href'), /^data:image\/png;base64,/, 'supplied artwork is embedded');
+		assert.equal(icon.querySelectorAll('animateTransform').length, 2);
 		for (const animation of icon.querySelectorAll('animateTransform')) {
 			animation._abstractinRunning = undefined;
 			animation.beginElement = () => calls.push(location + ':start');
@@ -937,17 +937,17 @@ test("vector marmoset tail starts on welcome and follows answer state in the com
 	}
 	root.dataset.answering = 'false';
 	plugin.syncMascotAnimations(root);
-	assert.deepEqual(calls, ['welcome:start', 'welcome:start', 'welcome:start']);
+	assert.deepEqual(calls, ['welcome:start', 'welcome:start']);
 	calls.length = 0;
 	plugin.setBusy(view, true);
-	assert.deepEqual(calls, ['companion:start', 'companion:start', 'companion:start']);
+	assert.deepEqual(calls, ['companion:start', 'companion:start']);
 	calls.length = 0;
 	plugin.setBusy(view, false);
-	assert.deepEqual(calls, ['companion:stop', 'companion:stop', 'companion:stop']);
+	assert.deepEqual(calls, ['companion:stop', 'companion:stop']);
 	calls.length = 0;
 	view.doc.defaultView.matchMedia = () => ({ matches: true });
 	plugin.syncMascotAnimations(root);
-	assert.deepEqual(calls, ['welcome:stop', 'welcome:stop', 'welcome:stop']);
+	assert.deepEqual(calls, ['welcome:stop', 'welcome:stop']);
 });
 
 test("refresh replaces a same-name companion from an earlier plugin version", () => {
@@ -960,6 +960,6 @@ test("refresh replaces a same-name companion from an earlier plugin version", ()
  const refreshed = root.querySelector('.abstractin-discussion-companion .abstractin-mascot');
  assert.notEqual(refreshed, original);
  assert.equal(refreshed.dataset.assetVersion, '0.2.35');
- assert.equal(refreshed.querySelector('svg').dataset.artwork, 'marmoset-front-detailed');
- assert.equal(refreshed.querySelectorAll('animateTransform').length, 3);
+ assert.equal(refreshed.querySelector('svg').dataset.artwork, 'marmoset-curled-tail');
+ assert.equal(refreshed.querySelectorAll('animateTransform').length, 2);
 });

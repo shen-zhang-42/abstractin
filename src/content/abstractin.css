@@ -2843,6 +2843,13 @@
 	aspect-ratio: 1;
 	pointer-events: none;
 }
+.abstractin-root[data-mascot="marmoset"] .abstractin-discussion-companion {
+	flex-basis: 88px;
+	width: 88px;
+}
+.abstractin-root[data-mascot="marmoset"] .abstractin-reading-assistant {
+	gap: 12px;
+}
 .abstractin-root .abstractin-discussion-companion .abstractin-mascot {
 	width: 100%;
 	height: 100%;
