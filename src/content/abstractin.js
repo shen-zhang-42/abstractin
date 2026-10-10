@@ -519,6 +519,7 @@ AbstractIn = {
 		}
 		for (let companion of root.querySelectorAll(".abstractin-mascot")) {
 			if (companion.dataset.icon !== mascot.icon || companion.dataset.assetVersion !== (this.version || "dev")) {
+				companion.querySelector("video")?.pause();
 				companion.replaceWith(this.svgIcon(root.ownerDocument, mascot.icon, companion.getAttribute("class")));
 			}
 		}
@@ -833,6 +834,33 @@ AbstractIn = {
 		icon.dataset.icon = name;
 		icon.dataset.assetVersion = this.version || "dev";
 		icon.setAttribute("aria-hidden", "true");
+		if (name === "mascot-marmoset" && icon.classList.contains("abstractin-mascot")) {
+			let base = (this.resourceURI || this.rootURI || "") + "content/companions/";
+			let still = this.el(doc, "img", "abstractin-companion-still");
+			still.src = base + "marmoset-idle.png";
+			still.alt = "";
+			let video = this.el(doc, "video", "abstractin-companion-video");
+			video.muted = true;
+			video.defaultMuted = true;
+			video.loop = true;
+			video.playsInline = true;
+			video.preload = "none";
+			video.poster = still.src;
+			video.dataset.source = base + "marmoset-motion.webm";
+			video.hidden = true;
+			video.addEventListener("playing", () => {
+				if (!video._abstractinRunning || !icon.isConnected) { video.pause(); return; }
+				video.hidden = false;
+				still.hidden = true;
+			});
+			video.addEventListener("error", () => {
+				video._abstractinFailed = true;
+				video.hidden = true;
+				still.hidden = false;
+			});
+			icon.append(still, video);
+			return icon;
+		}
 		let source = this.BUNDLED_ICONS[this.ICON_FILES[name]];
 		// Inline mascot copies need their own clip/image IDs in the same document.
 		let mount = (svg) => {
@@ -2128,6 +2156,22 @@ AbstractIn = {
 		let reduced = root.ownerDocument.defaultView.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 		for (let icon of root.querySelectorAll(".abstractin-mascot")) {
 			let running = !reduced && (!!icon.closest(".abstractin-reading-welcome, .abstractin-wizard") || root.dataset.answering === "true");
+			let video = icon.querySelector("video");
+			if (video && video._abstractinRunning !== running) {
+				video._abstractinRunning = running;
+				let still = icon.querySelector(".abstractin-companion-still");
+				if (running && !video._abstractinFailed) {
+					if (!video.getAttribute("src")) video.src = video.dataset.source;
+					try {
+						video.play()?.catch(() => { video.hidden = true; still.hidden = false; });
+					} catch { video.hidden = true; still.hidden = false; }
+				} else {
+					video.pause();
+					try { video.currentTime = 0; } catch {}
+					video.hidden = true;
+					still.hidden = false;
+				}
+			}
 			for (let animation of icon.querySelectorAll("animateTransform")) {
 				if (animation._abstractinRunning === running) continue;
 				if (running) animation.beginElement?.();

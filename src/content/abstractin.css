@@ -2857,6 +2857,16 @@
 	animation: none;
 }
 .abstractin-root .abstractin-discussion-companion .abstractin-mascot > svg { animation: none; }
+.abstractin-mascot .abstractin-companion-still,
+.abstractin-mascot .abstractin-companion-video {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	background: transparent;
+}
+.abstractin-mascot .abstractin-companion-still[hidden],
+.abstractin-mascot .abstractin-companion-video[hidden] { display: none; }
 
 .abstractin-root[data-reading-intro="true"] .abstractin-reading-bar { display: none; }
 .abstractin-reading-welcome .abstractin-start-reading { width: auto; align-self: center; }
@@ -3030,7 +3040,7 @@
 .abstractin-chat-search-result > strong { font-size: 13px; }
 .abstractin-chat-turns > .abstractin-field { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
 
-/* Marmoset tail uses SVG-native animation controlled by syncMascotAnimations. */
+/* Marmoset video playback is controlled by syncMascotAnimations. */
 /* The start screen welcomes the reader continuously, independent of requests. */
 .abstractin-root .abstractin-reading-welcome .abstractin-mascot,
 .abstractin-root .abstractin-reading-welcome .abstractin-mascot *,

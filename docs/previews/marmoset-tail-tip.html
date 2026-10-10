@@ -1,21 +1,11 @@
-<!doctype html>
-<html lang="zh-CN">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>水彩狨猴尾尖动画预览</title>
-<style>
-body{font:16px/1.6 system-ui,sans-serif;margin:24px;color:#292929;background:#eee}main{max-width:640px;margin:auto}object{display:block;width:100%;max-width:420px;margin:auto}button{font:inherit;margin:12px 8px 0 0;padding:6px 16px}h1{font-size:22px}
-</style>
-<main><h1>水彩狨猴尾尖动画</h1><p>身体与树枝固定，尾巴下半段向外轻摆再收回。</p>
-<object id="preview" type="image/svg+xml" data="../../src/content/icons/mascot-marmoset.svg" aria-label="水彩狨猴动画"></object>
-<button id="play">播放</button><button id="stop">停止</button>
-</main>
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>狨猴视频动画预览</title>
+<style>body{font:16px/1.6 system-ui,sans-serif;margin:24px;background:#eee;color:#292929}main{max-width:640px;margin:auto}video,img{display:block;width:100%;max-width:420px;margin:auto}[hidden]{display:none}button{font:inherit;margin:12px 8px 0 0;padding:6px 16px}</style>
+<main><h1>狨猴视频动画</h1><video id="motion" muted loop playsinline poster="../../src/content/companions/marmoset-idle.png" src="../../src/content/companions/marmoset-motion.webm"></video><img id="still" hidden src="../../src/content/companions/marmoset-idle.png" alt="静止的狨猴"><button id="play">播放</button><button id="stop">静止</button></main>
 <script>
-const preview=document.getElementById('preview');
-function play(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;preview.contentDocument?.querySelectorAll('animateTransform').forEach(node=>node.beginElement());}
-function stop(){preview.contentDocument?.querySelectorAll('animateTransform').forEach(node=>node.endElement());}
-preview.addEventListener('load',play);
-document.getElementById('play').addEventListener('click',play);
-document.getElementById('stop').addEventListener('click',stop);
-</script>
-</html>
+const motion=document.getElementById('motion'),still=document.getElementById('still');
+function play(){motion.muted=true;motion.play().then(()=>{motion.hidden=false;still.hidden=true;}).catch(stop);}
+function stop(){motion.pause();motion.currentTime=0;motion.hidden=true;still.hidden=false;}
+document.getElementById('play').addEventListener('click',play);document.getElementById('stop').addEventListener('click',stop);
+if(matchMedia('(prefers-reduced-motion: reduce)').matches)stop();else play();
+</script></html>
