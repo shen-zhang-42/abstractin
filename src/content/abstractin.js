@@ -519,7 +519,6 @@ AbstractIn = {
 		}
 		for (let companion of root.querySelectorAll(".abstractin-mascot")) {
 			if (companion.dataset.icon !== mascot.icon || companion.dataset.assetVersion !== (this.version || "dev")) {
-				companion.querySelector("video")?.pause();
 				companion.replaceWith(this.svgIcon(root.ownerDocument, mascot.icon, companion.getAttribute("class")));
 			}
 		}
@@ -839,26 +838,24 @@ AbstractIn = {
 			let still = this.el(doc, "img", "abstractin-companion-still");
 			still.src = base + "marmoset-idle.png";
 			still.alt = "";
-			let video = this.el(doc, "video", "abstractin-companion-video");
-			video.muted = true;
-			video.defaultMuted = true;
-			video.loop = true;
-			video.playsInline = true;
-			video.preload = "none";
-			video.poster = still.src;
-			video.dataset.source = base + "marmoset-motion.webm";
-			video.hidden = true;
-			video.addEventListener("playing", () => {
-				if (!video._abstractinRunning || !icon.isConnected) { video.pause(); return; }
-				video.hidden = false;
+			let motion = this.el(doc, "img", "abstractin-companion-motion");
+			motion.alt = "";
+			motion.dataset.source = base + "marmoset-motion.webp";
+			motion.hidden = true;
+			motion.addEventListener("load", () => {
+				if (!motion._abstractinRunning || motion._abstractinFailed || !icon.isConnected) return;
+				motion.hidden = false;
 				still.hidden = true;
 			});
-			video.addEventListener("error", () => {
-				video._abstractinFailed = true;
-				video.hidden = true;
+			motion.addEventListener("error", () => {
+				if (motion._abstractinFailed) return;
+				motion._abstractinFailed = true;
+				motion.hidden = true;
 				still.hidden = false;
+				motion.removeAttribute("src");
+				this.log("Marmoset animation image could not load: " + motion.dataset.source);
 			});
-			icon.append(still, video);
+			icon.append(still, motion);
 			return icon;
 		}
 		let source = this.BUNDLED_ICONS[this.ICON_FILES[name]];
@@ -2156,20 +2153,18 @@ AbstractIn = {
 		let reduced = root.ownerDocument.defaultView.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 		for (let icon of root.querySelectorAll(".abstractin-mascot")) {
 			let running = !reduced && (!!icon.closest(".abstractin-reading-welcome, .abstractin-wizard") || root.dataset.answering === "true");
-			let video = icon.querySelector("video");
-			if (video && video._abstractinRunning !== running) {
-				video._abstractinRunning = running;
+			let motion = icon.querySelector(".abstractin-companion-motion");
+			if (motion && motion._abstractinRunning !== running) {
+				motion._abstractinRunning = running;
 				let still = icon.querySelector(".abstractin-companion-still");
-				if (running && !video._abstractinFailed) {
-					if (!video.getAttribute("src")) video.src = video.dataset.source;
-					try {
-						video.play()?.catch(() => { video.hidden = true; still.hidden = false; });
-					} catch { video.hidden = true; still.hidden = false; }
+				motion.hidden = true;
+				still.hidden = false;
+				if (running && !motion._abstractinFailed) {
+					// Separate image requests restart each playback and avoid shared animation clocks.
+					let playback = this._companionPlayback = (this._companionPlayback || 0) + 1;
+					motion.src = motion.dataset.source + "?play=" + encodeURIComponent((this.version || "dev") + "-" + playback);
 				} else {
-					video.pause();
-					try { video.currentTime = 0; } catch {}
-					video.hidden = true;
-					still.hidden = false;
+					motion.removeAttribute("src");
 				}
 			}
 			for (let animation of icon.querySelectorAll("animateTransform")) {

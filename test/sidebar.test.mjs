@@ -694,7 +694,7 @@ test("changing reading companions refreshes the composer companion", () => {
 			const icon = root.querySelector(location + " .abstractin-mascot");
 			assert.equal(icon.dataset.icon, "mascot-" + mascot);
 			if (mascot === "marmoset") {
-				assert.ok(icon.querySelector("video"), "video companion loads immediately");
+				assert.ok(icon.querySelector(".abstractin-companion-motion"), "animated image companion loads immediately");
 			} else {
 				const animatedPart = mascot === "puffin" ? ".abstractin-mascot-puffin-wing" : ".abstractin-mascot-tail";
 				assert.ok(icon.querySelector("svg " + animatedPart), "animated artwork loads immediately");
@@ -923,62 +923,55 @@ test("reading mode menu wraps check, symbol and text in an inner layout and swit
  assert.equal(root.querySelector(".abstractin-menu"), null);
 });
 
-test("marmoset video plays on welcome and only while answering in the composer", () => {
+test("marmoset animated image loops on welcome and only while answering in the composer", () => {
  const { root, view, plugin } = sidebar();
  plugin.renderMessages(view, []);
  const welcome = root.querySelector('.abstractin-reading-welcome .abstractin-mascot');
  const companion = root.querySelector('.abstractin-discussion-companion .abstractin-mascot');
- const calls = [];
- for (const [location, icon] of [['welcome', welcome], ['companion', companion]]) {
-  const video = icon.querySelector('video');
-  assert.ok(video.muted && video.loop);
-  assert.equal(video.preload, 'none');
-  assert.match(icon.querySelector('img').src, /marmoset-idle\.png$/);
-  video._abstractinRunning = false;
-  video.play = () => { calls.push(location + ':start'); return Promise.resolve(); };
-  video.pause = () => calls.push(location + ':stop');
- }
- root.dataset.answering = 'false';
- plugin.syncMascotAnimations(root);
- assert.deepEqual(calls, ['welcome:start']);
- const shown = icon => { icon.querySelector('video').dispatchEvent(new view.doc.defaultView.Event('playing')); };
- shown(welcome);
- assert.equal(welcome.querySelector('img').hidden, true);
- assert.equal(companion.querySelector('img').hidden, false);
- calls.length = 0;
+ const wm = welcome.querySelector('.abstractin-companion-motion');
+ const cm = companion.querySelector('.abstractin-companion-motion');
+ assert.match(wm.src, /marmoset-motion\.webp\?play=/);
+ assert.equal(cm.getAttribute('src'), null, 'idle companion does not load the animation');
+ const loaded = motion => motion.dispatchEvent(new view.doc.defaultView.Event('load'));
+ loaded(wm);
+ assert.equal(welcome.querySelector('.abstractin-companion-still').hidden, true);
  plugin.setBusy(view, true);
- assert.deepEqual(calls, ['companion:start']);
- shown(companion);
- assert.equal(companion.querySelector('video').hidden, false);
- calls.length = 0;
+ const firstPlayback = cm.src;
+ assert.match(firstPlayback, /marmoset-motion\.webp\?play=/);
+ assert.notEqual(firstPlayback, wm.src, 'instances have independent playback clocks');
+ loaded(cm);
+ assert.equal(cm.hidden, false);
  plugin.setBusy(view, false);
- assert.deepEqual(calls, ['companion:stop']);
- assert.equal(companion.querySelector('video').hidden, true);
- assert.equal(companion.querySelector('img').hidden, false);
- assert.equal(companion.querySelector('video').currentTime, 0);
- shown(companion);
- assert.equal(companion.querySelector('img').hidden, false, 'late playback event cannot restart an idle companion');
- calls.length = 0;
+ assert.equal(cm.hidden, true);
+ assert.equal(cm.getAttribute('src'), null, 'stopping unloads the animation');
+ assert.equal(companion.querySelector('.abstractin-companion-still').hidden, false);
+ loaded(cm);
+ assert.equal(cm.hidden, true, 'late load cannot restart an idle companion');
+ plugin.setBusy(view, true);
+ assert.notEqual(cm.src, firstPlayback, 'next answer restarts playback');
  view.doc.defaultView.matchMedia = () => ({ matches: true });
  plugin.syncMascotAnimations(root);
- assert.deepEqual(calls, ['welcome:stop']);
- assert.equal(welcome.querySelector('img').hidden, false);
+ for (const icon of [welcome, companion]) {
+  assert.equal(icon.querySelector('.abstractin-companion-motion').getAttribute('src'), null);
+  assert.equal(icon.querySelector('.abstractin-companion-still').hidden, false);
+ }
 });
 
-test("marmoset keeps its still image when video playback fails", async () => {
+test("marmoset keeps its still image if animated image loading fails", () => {
  const { root, view, plugin } = sidebar();
  const icon = root.querySelector('.abstractin-discussion-companion .abstractin-mascot');
- const video = icon.querySelector('video');
- video.play = () => Promise.reject(new Error('Playback unavailable'));
+ const motion = icon.querySelector('.abstractin-companion-motion');
+ plugin.log = () => {};
  plugin.setBusy(view, true);
- await Promise.resolve();
- assert.equal(icon.querySelector('img').hidden, false);
- assert.equal(video.hidden, true);
- video.dispatchEvent(new view.doc.defaultView.Event('error'));
- assert.equal(video._abstractinFailed, true);
+ motion.dispatchEvent(new view.doc.defaultView.Event('error'));
+ assert.equal(motion._abstractinFailed, true);
+ assert.equal(motion.getAttribute('src'), null);
+ assert.equal(icon.querySelector('.abstractin-companion-still').hidden, false);
+ motion.dispatchEvent(new view.doc.defaultView.Event('load'));
+ assert.equal(motion.hidden, true, 'failed request cannot replace the still image');
  plugin.setBusy(view, false);
  plugin.setBusy(view, true);
- assert.equal(icon.querySelector('img').hidden, false);
+ assert.equal(motion.getAttribute('src'), null, 'failed asset is not repeatedly requested');
 });
 
 test("refresh replaces a same-name companion from an earlier plugin version", () => {
@@ -991,6 +984,6 @@ test("refresh replaces a same-name companion from an earlier plugin version", ()
  const refreshed = root.querySelector('.abstractin-discussion-companion .abstractin-mascot');
  assert.notEqual(refreshed, original);
  assert.equal(refreshed.dataset.assetVersion, '0.2.35');
- assert.match(refreshed.querySelector('video').dataset.source, /marmoset-motion\.webm$/);
+ assert.match(refreshed.querySelector('.abstractin-companion-motion').dataset.source, /marmoset-motion\.webp$/);
  assert.equal(refreshed.querySelectorAll('animateTransform').length, 0);
 });

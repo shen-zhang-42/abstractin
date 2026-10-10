@@ -10,9 +10,6 @@ const read = path => readFileSync(new URL(path, root), "utf8");
 export function loadPlugin({ prefs = {} } = {}) {
 	const dom = new JSDOM("<!doctype html><html><body></body></html>", { runScripts: "outside-only" });
 	const { window } = dom;
-	// jsdom does not implement media decoding/playback; individual tests spy on these.
-	window.HTMLMediaElement.prototype.play = () => Promise.resolve();
-	window.HTMLMediaElement.prototype.pause = () => {};
 	window.TextEncoder = TextEncoder;
 	window.ChromeUtils = { importESModule: () => ({ OS: { Path: { join: (...p) => p.join("/") } }, Subprocess: {} }) };
 	window.Zotero = {
