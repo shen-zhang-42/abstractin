@@ -525,7 +525,7 @@ test("search result jump scrolls to the message and flashes it", () => {
 
 test("reader selection: prompt quotes the passage with its page; Explain sends, Ask fills the box", () => {
 	const { root, view, plugin, sent } = sidebar();
-	assert.equal(plugin.selectionPrompt("A  metric\nspace", "12", true), "Explain this passage (p. 12):\n\n> A metric space");
+	assert.equal(plugin.selectionPrompt("A  metric\nspace", "12", true), "Explain the English meaning, vocabulary and grammar of this selection (p. 12):\n\n> A metric space");
 	assert.equal(plugin.selectionPrompt("x", "", false), "About this passage:\n\n> x\n\n");
 	plugin._drafts.set("/tmp/x", { text: "About this passage:\n\n> x\n\n", send: false });
 	view.input.value = "why?";
@@ -545,7 +545,7 @@ test("reader selection popup gets two buttons; empty selections get none", () =>
 	const appended = [];
 	const event = { reader: { itemID: 1 }, doc: document, params: { annotation: { text: "Lemma 3", pageLabel: "4" } }, append: n => appended.push(n) };
 	plugin.renderSelectionButtons(event);
-	assert.deepEqual([...appended[0].querySelectorAll("button")].map(b => b.textContent), ["Ask Claude about this", "Explain this"]);
+	assert.deepEqual([...appended[0].querySelectorAll("button")].map(b => b.textContent), ["Ask Claude about this", "Explain language"]);
 	plugin.renderSelectionButtons({ ...event, params: { annotation: { text: "  " } } });
 	assert.equal(appended.length, 1);
 });
@@ -986,4 +986,23 @@ test("refresh replaces a same-name companion from an earlier plugin version", ()
  assert.equal(refreshed.dataset.assetVersion, '0.2.35');
  assert.match(refreshed.querySelector('.abstractin-companion-motion').dataset.source, /marmoset-motion\.webp$/);
  assert.equal(refreshed.querySelectorAll('animateTransform').length, 0);
+});
+
+test("selection language action carries an explicit tutor flag while Ask stays ordinary", () => {
+ const { view, plugin, window } = sidebar();
+ const attachment = { id: 7, key: 'PDF', libraryID: 1, isAttachment: () => true };
+ window.Zotero.Items = { get: () => attachment };
+ plugin.contextDirFor = () => '/tmp/x';
+ plugin.openReaderPanel = async () => {};
+ const calls = [];
+ plugin.startRequest = (v, text, images, modes, options) => calls.push({ text, options });
+ const reader = { itemID: 7, _window: window }, selection = { text: 'A complete English sentence.', pageLabel: '3' };
+ plugin.askAboutSelection(reader, selection, true);
+ assert.equal(calls[0].options.vocabularyTutor, true);
+ assert.equal(calls[0].options.selection.text, selection.text);
+ assert.match(calls[0].text, /English meaning, vocabulary and grammar/);
+ plugin.askAboutSelection(reader, selection, false);
+ assert.equal(calls.length, 1);
+ plugin.sendText(view, view.input.value + 'Why does the theorem follow?', []);
+ assert.equal(calls[1].options.vocabularyTutor, false);
 });

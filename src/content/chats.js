@@ -9,6 +9,57 @@
   _discussionLocks: new Set(),
   _discussionInitializations: new Map(),
   _activeDiscussionDirs: new Map(),
+  INITIALIZATION_CHAPTER: "initialization",
+  discussionGroups(ctx, index) {
+   return [{ id: this.INITIALIZATION_CHAPTER, title: "Initialization", order: -1 }, ...index.chapters.slice().sort((a, b) => a.order - b.order), { id: null, title: ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned" }];
+  },
+  async initializationDiscussion(ctx, index) {
+   let chat = this.visibleDiscussions(index).find(c => c.chapterID === this.INITIALIZATION_CHAPTER);
+   if (!chat) {
+    const candidate = index.chats.find(c => c.id === ctx.discussion?.id && c.chapterID === null && c.topic === "discussion");
+    if (candidate && !(await this.loadHistory(this.discussionContext(ctx, candidate).dir)).length) {
+     chat = candidate; chat.chapterID = this.INITIALIZATION_CHAPTER; chat.number = 1; chat.topic = "Initialization";
+    } else chat = await this.createDiscussion(ctx, index, this.INITIALIZATION_CHAPTER, "Initialization", [], { initialization: true }, { persist: false });
+   }
+   chat.initialization = true; index.active = chat.id;
+   await this.writeDiscussionIndex(ctx, index);
+   return chat;
+  },
+  async migrateInitializationDiscussions(ctx, index) {
+   // Only explicit initialization actions are moved; ordinary unassigned chats stay intact.
+   const moved = [], updates = []; let changed = false;
+   let target = this.visibleDiscussions(index).find(c => c.chapterID === this.INITIALIZATION_CHAPTER);
+   for (const chat of this.visibleDiscussions(index)) {
+    if (chat.chapterID === this.INITIALIZATION_CHAPTER) continue;
+    const history = await this.loadHistory(this.discussionContext(ctx, chat).dir), kept = [], initial = [];
+    for (let at = 0; at < history.length;) {
+     let end = at + 1; while (end < history.length && history[end].role !== "user") end++;
+     const first = history[at], initialization = first.role === "user" && !first.carriedFrom && (["contents", "summary"].includes(first.readingAction) || /^(?:Initialize the actual book contents without chapter summaries\.|Generate or update the paper summary using scientific-paper-reading\.)$/.test(first.text));
+     (initialization ? initial : kept).push(...history.slice(at, end)); at = end;
+    }
+    if (!initial.length) continue;
+    changed = true;
+    await Zotero.File.putContentsAsync(OS.Path.join(this.discussionContext(ctx, chat).dir, "initialization-migration-backup.json"), JSON.stringify(history));
+    if (!target && !kept.length) { target = chat; chat.chapterID = this.INITIALIZATION_CHAPTER; chat.number = 1; chat.topic = "Initialization"; chat.initialization = true; }
+    else { moved.push(...initial); updates.push({ chat, kept }); }
+   }
+   if (!target && moved.length) target = await this.createDiscussion(ctx, index, this.INITIALIZATION_CHAPTER, "Initialization", [], { initialization: true }, { persist: false });
+   if (!target || !changed) return;
+   for (const { chat, kept } of updates) if (!kept.length) { chat.supersededBy = [target.id]; if (index.active === chat.id) index.active = target.id; }
+   const revision = this.chatSyncID();
+   for (const chapterID of new Set(this.visibleDiscussions(index).map(c => c.chapterID))) this.visibleDiscussions(index).filter(c => c.chapterID === chapterID).sort((a, b) => a.number - b.number).forEach((chat, at) => { chat.number = at + 1; chat.numberHistory = []; chat.numberingRevision = revision; });
+   const targetDir = this.discussionContext(ctx, target).dir;
+   const history = await this.loadHistory(targetDir), ids = new Set(history.map(m => m.referenceID).filter(Boolean));
+   const combined = [...history, ...moved.filter(m => !m.referenceID || !ids.has(m.referenceID))];
+   // Write the destination before hiding or removing any original transcript.
+   await Zotero.File.putContentsAsync(OS.Path.join(targetDir, "chat.json"), JSON.stringify(combined));
+   await this.writeDiscussionIndex(ctx, index);
+   await this.saveSessions(targetDir, {}); await this.saveHistory(targetDir, combined);
+   for (const { chat, kept } of updates) {
+    const dir = this.discussionContext(ctx, chat).dir; await this.saveSessions(dir, {}); await this.saveHistory(dir, kept);
+   }
+   await this.refreshRenumberedDiscussions({ ctx, root: null }, index);
+  },
   async listDiscussionChildren(dir) {
    if (!(await OS.File.exists(dir))) return [];
    if (Zotero.File.iterateDirectory) return this.listChildren(dir);
@@ -109,7 +160,7 @@
    const dir = OS.Path.join(container, chat.id); await Zotero.File.createDirectoryIfMissingAsync(dir);
    await Zotero.File.putContentsAsync(OS.Path.join(dir, "chat.json"), JSON.stringify(seed));
    index.chats.push(chat); if (!metadata.migrated) index.active = chat.id;
-   if (chapterID) index.chapters.find(c => c.id === chapterID).activeChat = chat.id;
+   if (chapterID && index.chapters.some(c => c.id === chapterID)) index.chapters.find(c => c.id === chapterID).activeChat = chat.id;
    if (persist) await this.writeDiscussionIndex(ctx, index);
    return chat;
   },
@@ -148,6 +199,7 @@
     const container = OS.Path.join(this.discussionRoot(ctx), "discussions"); await Zotero.File.createDirectoryIfMissingAsync(container);
     await Zotero.File.createDirectoryIfMissingAsync(OS.Path.join(container, record.id));
    }
+   await this.migrateInitializationDiscussions(ctx, index);
    let chat = this.visibleDiscussions(index).find(c => c.id === index.active) || this.visibleDiscussions(index).slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
    if (!chat) chat = await this.createDiscussion(ctx, index);
    else { index.active = chat.id; await this.writeDiscussionIndex(ctx, index); }
@@ -184,7 +236,7 @@
    const page = selection?.position?.pageIndex ?? selection?.pageIndex;
    if (Number.isInteger(page)) return { chapterID: this.chapterAtPage(index, page), ambiguous: !this.chapterAtPage(index, page) };
    // The question's subject wins over the location of supporting evidence.
-   if (this.requestsReadingSource(question) && /(?:这里|此处|这一步|上述|\bhere\b|\bthis\b)/i.test(question)) return { chapterID: ctx.discussion.chapterID };
+   if (this.requestsReadingSource(question) && /(?:这里|此处|这一步|上述|\bhere\b|\bthis\b)/i.test(question)) return { chapterID: ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? null : ctx.discussion.chapterID };
    const explicit = question.match(/\bchapter\s+(\d+)\b|第\s*(\d+)\s*章|\bappendix\s+([A-Z]|\d+)\b|附录\s*([A-Z]|\d+)/i);
    if (explicit) {
     const app = explicit[3] || explicit[4], number = explicit[1] || explicit[2];
@@ -196,7 +248,7 @@
    if (named.length === 1) return { chapterID: named[0].id };
    const local = /(?:这里|此处|这页|这一页|当前页|当前章节|这一步|\bhere\b|\bthis\s+(?:page|chapter|step|proof|equation)\b)/i.test(question);
    if (local && !ctx.reading.referenceNavigation) return { chapterID: this.chapterAtPage(index, location?.pageIndex), ambiguous: !this.chapterAtPage(index, location?.pageIndex) };
-   return { chapterID: ctx.discussion.chapterID };
+   return { chapterID: ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? null : ctx.discussion.chapterID };
   },
   chooseDiscussionChapter(view, index) {
    return new Promise(resolve => {
@@ -208,7 +260,7 @@
      const button = this.el(view.doc, "button", "abstractin-btn", chapter.prefix + " · " + chapter.title);
      button.addEventListener("click", () => finish(chapter.id)); panel.append(button);
     }
-    for (const [label, value] of [["Keep in current discussion", view.ctx.discussion.chapterID], ["Unassigned", null], ["Cancel", undefined]]) {
+    for (const [label, value] of [["Keep in current discussion", view.ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? null : view.ctx.discussion.chapterID], ["Unassigned", null], ["Cancel", undefined]]) {
      const button = this.el(view.doc, "button", "abstractin-btn", label); button.addEventListener("click", () => finish(value)); panel.append(button);
     }
     view.root.querySelector(".abstractin-log-wrap").append(panel);
@@ -246,6 +298,7 @@
    } finally { if (!locked) this._discussionLocks.delete(documentDir); }
   },
   async startRequest(view, text, images = [], modes = [], options = {}) {
+   if (!view.ctx.discussion && view.ctx.reading && options.readingAction) view.ctx = await this.ensureDiscussion(view.ctx);
    if (!view.ctx.discussion) return original.startRequest.call(this, view, text, images, modes, options);
    const documentDir = this.discussionRoot(view.ctx), question = (text || "").trim();
    const sendTimeLocation = this.currentReadingLocation(view.ctx);
@@ -256,13 +309,17 @@
     const location = sendTimeLocation;
     const selection = options.selection || (view.pageImageSource && images.includes(view.pageImageSource.path) ? view.pageImageSource.selection : null);
     if (selection && selection.attachmentID !== view.ctx.attachmentItem.id) throw new Error("The selection belongs to a different PDF.");
-    let route = options.readingAction ? { chapterID: view.ctx.discussion.chapterID } : this.resolveDiscussionChapter(view.ctx, index, question, selection, location);
+    let route = options.readingAction ? { chapterID: this.INITIALIZATION_CHAPTER } : this.resolveDiscussionChapter(view.ctx, index, question, selection, location);
     if (route.ambiguous) {
      const chapterID = await this.chooseDiscussionChapter(view, index);
      if (chapterID === undefined) return;
      route = { chapterID };
     }
     let chat = index.chats.find(c => c.id === view.ctx.discussion.id);
+    if (options.readingAction) {
+     chat = await this.initializationDiscussion(view.ctx, index);
+     if (chat.id !== view.ctx.discussion.id) await this.switchDiscussion(view, chat, index, { locked: true });
+    }
     if (chat.chapterID !== route.chapterID) {
      const chapter = index.chapters.find(c => c.id === route.chapterID);
      chat = this.visibleDiscussions(index).find(c => c.id === chapter?.activeChat && c.chapterID === route.chapterID) || this.visibleDiscussions(index).filter(c => c.chapterID === route.chapterID).sort((a, b) => b.updatedAt - a.updatedAt)[0];
@@ -287,7 +344,7 @@
    this._discussionLocks.add(dir);
    try {
     const index = await this.discussionIndex(view.ctx);
-    const chat = await this.createDiscussion(view.ctx, index, view.ctx.discussion.chapterID, "discussion", seed);
+    const chat = await this.createDiscussion(view.ctx, index, view.ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? this.chapterAtPage(index, this.currentReadingLocation(view.ctx)?.pageIndex) : view.ctx.discussion.chapterID, "discussion", seed);
     await this.switchDiscussion(view, chat, index, { locked: true }); view.input.value = ""; view.input.focus();
    } finally { this._discussionLocks.delete(dir); }
   },
@@ -301,6 +358,7 @@
   async assignDiscussionChapter(view, chapterID) {
    if (this._pending.has(view.ctx.dir) || this._discussionLocks.has(this.discussionRoot(view.ctx))) throw new Error("Wait for the current answer before moving this discussion.");
    const index = await this.discussionIndex(view.ctx);
+   if (view.ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER || chapterID === this.INITIALIZATION_CHAPTER) throw new Error("Initialization is reserved for initialization output.");
    if (chapterID !== null && !index.chapters.some(c => c.id === chapterID)) throw new Error("Unknown chapter");
    const chat = index.chats.find(c => c.id === view.ctx.discussion.id);
    if (chat.chapterID === chapterID) return;
@@ -324,6 +382,7 @@
     if (operation !== "delete" && operation !== "merge") throw new Error("Unknown discussion action.");
     let next;
     if (operation === "merge") {
+     if (chats.some(c => c.chapterID === this.INITIALIZATION_CHAPTER)) throw new Error("Initialization cannot be merged with reading discussions.");
      if (chats.length < 2) throw new Error("Select at least two discussions to merge.");
      // Keep each complete transcript together, ordered by chapter and number.
      chats.sort((a, b) => (index.chapters.find(c => c.id === a.chapterID)?.order ?? 20000) - (index.chapters.find(c => c.id === b.chapterID)?.order ?? 20000) || a.number - b.number || a.id.localeCompare(b.id));
@@ -344,7 +403,7 @@
     } else {
      for (const chat of chats) chat.deletedAt = Date.now();
      next = this.visibleDiscussions(index).find(c => c.id === index.active) || this.visibleDiscussions(index).slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
-     if (!next) next = await this.createDiscussion(view.ctx, index, view.ctx.discussion.chapterID, "discussion", [], {}, { persist: false });
+     if (!next) next = await this.createDiscussion(view.ctx, index, view.ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? null : view.ctx.discussion.chapterID, "discussion", [], {}, { persist: false });
     }
     index.active = next.id;
     for (const chapter of index.chapters) {
@@ -420,7 +479,7 @@
    const menu = this.openMenu(root, root.querySelector(".abstractin-history"), menu => {
     this.menuSection(view.doc, menu, "Chapters & discussions");
     if (!index) { menu.append(this.el(view.doc, "div", "abstractin-menu-note", "Loading…")); return; }
-    for (const chapter of [...index.chapters.slice().sort((a, b) => a.order - b.order), { id: null, title: view.ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned" }]) {
+    for (const chapter of this.discussionGroups(view.ctx, index)) {
      const chats = index.chats.filter(c => c.chapterID === chapter.id && !c.supersededBy && !c.deletedAt).sort((a, b) => a.number - b.number);
      if (!chats.length) continue;
      this.menuSection(view.doc, menu, chapter.title);

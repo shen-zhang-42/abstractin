@@ -167,7 +167,7 @@
      const current = (await this.discussionIndex(ctx)).chats.find(c => c.id === entry.id);
      if (!current) continue;
      ctx.discussion = { ...current }; this.registerChatContext(ctx);
-     if (current.topicManual || current.topicQuestions === signature || current.deletedAt || current.supersededBy) continue;
+     if (current.chapterID === this.INITIALIZATION_CHAPTER || current.topicManual || current.topicQuestions === signature || current.deletedAt || current.supersededBy) continue;
      try {
       const title = await this.summarizeDiscussionQuestions(view, questions);
       const key = this.discussionRoot(ctx);
@@ -241,7 +241,7 @@
     const legacy = await this.legacyDiscussions(view.ctx, index, { includeImported: true });
     if (view.historyBrowser !== browser || !screen.isConnected) return;
     body.textContent = ""; this.installChatSearch(view, screen, body, index);
-    const chapters = [...index.chapters.slice().sort((a, b) => a.order - b.order), { id: null, title: view.ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned" }];
+    const chapters = this.discussionGroups(view.ctx, index);
     const selected = new Set(), checks = [];
     const toolbar = this.el(view.doc, "div", "abstractin-history-selection");
     const selectionCount = this.el(view.doc, "span", "abstractin-menu-note", "Select discussions to manage");

@@ -911,3 +911,64 @@ test("discussion naming uses a separate Codex process without conversation sessi
  assert.match(request.prompt, /ALL the user questions/);
  assert.match(request.prompt, /Why countable/); assert.match(request.prompt, /How to select measures/);
 });
+
+test("initialization actions reuse one dedicated chat and ordinary questions leave it", async () => {
+ const { p, view, send, requests } = await setup();
+ const errors = [], ask = p.ask.bind(p); p.ask = async (...args) => { const result = await ask(...args); errors.push(result.error); return result; };
+ p.exportReadingSource = async () => ({ status: 'ready', signature: 'test-pdf', pageMapping: true, totalPages: 15 });
+ p.prepareCurrentReadingPage = p.prepareContentsSource = async () => {};
+ p.exportReadingWorkspace = p.exportReadingRecords = async () => '';
+ p.agentReadingContext = async () => '';
+ await send('Initialize the actual book contents without chapter summaries.', { readingAction: 'contents' });
+ assert.deepEqual(errors, [undefined]);
+ const initialization = { ...view.ctx.discussion }, initDir = view.ctx.dir;
+ assert.equal(initialization.chapterID, 'initialization');
+ assert.equal(initialization.topic, 'Initialization');
+ assert.equal(p.visibleDiscussions(await p.discussionIndex(view.ctx)).length, 1, 'empty starter is reused');
+ await send('Chapter 1: explain the argument');
+ assert.equal(view.ctx.discussion.chapterID, 'ch-01');
+ assert.notEqual(view.ctx.dir, initDir);
+ assert.equal((await p.loadHistory(initDir)).length, 2);
+ await send('Initialize the actual book contents without chapter summaries.', { readingAction: 'contents' });
+ assert.equal(view.ctx.discussion.id, initialization.id);
+ const index = await p.discussionIndex(view.ctx);
+ assert.equal(p.visibleDiscussions(index).filter(c => c.chapterID === 'initialization').length, 1);
+ assert.equal((await p.loadHistory(initDir)).length, 4);
+ assert.match(p.discussionName(view.ctx, view.ctx.discussion, index), /^initialization_chat-01_/);
+ await p.openHistoryMenu(view.root);
+ assert.ok([...view.root.querySelectorAll('h3')].some(h => h.textContent === 'Initialization'));
+ await p.returnFromHistoryBrowser(view);
+ await p.newChat(view.root);
+ assert.notEqual(view.ctx.discussion.chapterID, 'initialization');
+ assert.ok(requests.length >= 3);
+});
+
+test("old mixed unassigned chats migrate initialization pairs without losing normal messages or IDs", async () => {
+ const { p, ctx, view, dir } = await setup();
+ const oldDir = view.ctx.dir;
+ await p.saveHistory(oldDir, [
+  { role: 'user', text: 'Initialize the actual book contents without chapter summaries.', readingAction: 'contents' },
+  { role: 'assistant', text: 'Verified contents output' },
+  { role: 'user', text: 'An ordinary question about the introduction' },
+  { role: 'assistant', text: 'Ordinary explanation' },
+ ]);
+ const original = await p.loadHistory(oldDir), resultID = original[1].results[0].id;
+ const document = { ...ctx, dir, documentDir: dir, discussion: undefined };
+ await p.initializeDiscussion(document);
+ let index = await p.discussionIndex(document);
+ const initialization = p.visibleDiscussions(index).find(c => c.chapterID === 'initialization');
+ assert.ok(initialization);
+ const initHistory = await p.loadHistory(p.discussionContext(document, initialization).dir);
+ assert.equal(initHistory.length, 2);
+ assert.equal(initHistory[1].text, 'Verified contents output');
+ assert.equal(initHistory[1].results[0].id, resultID);
+ assert.match(initHistory[1].results[0].number, /^I\.1\.1\./);
+ const normal = await p.loadHistory(oldDir);
+ assert.equal(normal.length, 2); assert.equal(normal[1].text, 'Ordinary explanation');
+ assert.equal(normal[0].referenceID, original[2].referenceID);
+ assert.equal(JSON.parse(await readFile(join(oldDir, 'initialization-migration-backup.json'), 'utf8')).length, 4);
+ await p.initializeDiscussion(document);
+ index = await p.discussionIndex(document);
+ assert.equal(p.visibleDiscussions(index).filter(c => c.chapterID === 'initialization').length, 1);
+ assert.equal((await p.loadHistory(p.discussionContext(document, initialization).dir)).length, 2);
+});

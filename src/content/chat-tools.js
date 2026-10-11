@@ -25,7 +25,7 @@
   },
   discussionName(ctx, chat, index) {
    const chapter = index.chapters.find(c => c.id === chat.chapterID);
-   return (ctx.reading.type === "paper" ? "paper" : chapter?.prefix || "unassigned") + "_chat-" + String(chat.number).padStart(2, "0") + "_" + this.shortDiscussionTopic(chat.topic);
+   return (chat.chapterID === this.INITIALIZATION_CHAPTER ? "initialization" : ctx.reading.type === "paper" ? "paper" : chapter?.prefix || "unassigned") + "_chat-" + String(chat.number).padStart(2, "0") + "_" + this.shortDiscussionTopic(chat.topic);
   },
   async legacyDiscussions(ctx, index, { includeImported = false } = {}) {
    if (!includeImported) return previous.legacyDiscussions.call(this, ctx, index);
@@ -215,7 +215,7 @@
    const chat = index.chats.find(c => c.id === ctx.discussion.id) || ctx.discussion;
    const chapter = index.chapters.find(c => c.id === chat.chapterID);
    const chapterLabel = chapter?.prefix?.replace(/^chap-(?:app-)?/, "").replace(/^0+(?=\d)/, "");
-   const prefix = ctx.reading.type === "paper" ? "P" : chapterLabel ? (/^chap-app-\d/.test(chapter.prefix) ? "App" : "") + chapterLabel : "U";
+   const prefix = chat.chapterID === this.INITIALIZATION_CHAPTER ? "I" : ctx.reading.type === "paper" ? "P" : chapterLabel ? (/^chap-app-\d/.test(chapter.prefix) ? "App" : "") + chapterLabel : "U";
    let turn = 0, ordinal = 0, changed = false;
    for (const message of history) {
     if (!message.referenceID) { message.referenceID = this.chatSyncID(); changed = true; }
@@ -317,14 +317,14 @@
      }
     } else if (state.chapter !== undefined) {
      this.menuItem(view.doc, menu, { label: "← Chapters", onSelect: () => { state.chapter = undefined; menu.refresh(); focus(menu); } });
-     this.menuSection(view.doc, menu, state.index.chapters.find(c => c.id === state.chapter)?.title || (view.ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned"));
+     this.menuSection(view.doc, menu, this.discussionGroups(view.ctx, state.index).find(c => c.id === state.chapter)?.title || (view.ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned"));
      for (const chat of this.visibleDiscussions(state.index).filter(c => c.chapterID === state.chapter).sort((a, b) => a.number - b.number)) {
       const item = this.menuItem(view.doc, menu, { label: "Discussion " + chat.number + " · " + (chat.topic === "discussion" ? "Untitled" : chat.topic), onSelect: () => chooseChat(chat) });
       item.dataset.discussionId = chat.id;
      }
     } else {
      this.menuSection(view.doc, menu, mode === "jump" ? "Jump to · Choose chapter" : "Quote · Choose chapter");
-     for (const chapter of [...state.index.chapters.slice().sort((a, b) => a.order - b.order), { id: null, title: view.ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned" }]) {
+     for (const chapter of this.discussionGroups(view.ctx, state.index)) {
       if (!this.visibleDiscussions(state.index).some(c => c.chapterID === chapter.id)) continue;
       this.menuItem(view.doc, menu, { label: (chapter.prefix ? chapter.prefix + " · " : "") + chapter.title, onSelect: () => { state.chapter = chapter.id; menu.refresh(); focus(menu); } });
      }

@@ -2324,7 +2324,7 @@ AbstractIn = {
 		}
 	},
 
-	startRequest(view, text, images = [], modes = [], { selection = null, readingAction = null, currentPage = undefined } = {}) {
+	startRequest(view, text, images = [], modes = [], { selection = null, readingAction = null, currentPage = undefined, vocabularyTutor = false } = {}) {
 		// Retired mode flags from old chats cannot change a new answer.
 		modes = [];
 		let question = (text || "").trim();
@@ -2353,6 +2353,7 @@ AbstractIn = {
 			modes,
 			selection,
 			readingAction,
+			vocabularyTutor,
 			evidenceMode: this.getReadingEvidenceMode(),
 			currentPage: currentPage !== undefined ? currentPage : this.currentReadingLocation(view.ctx),
 			backend,
@@ -2556,7 +2557,7 @@ AbstractIn = {
 			});
 			return el;
 		};
-		container.append(button("Ask " + label + " about this", false), button("Explain this", true));
+		container.append(button("Ask " + label + " about this", false), button("Explain language", true));
 		append(container);
 	},
 
@@ -2565,7 +2566,7 @@ AbstractIn = {
 		let quote = "> " + String(text).trim().replace(/\s+/g, " ");
 		let where = pageLabel ? " (p. " + pageLabel + ")" : "";
 		return explain
-			? "Explain this passage" + where + ":\n\n" + quote
+			? "Explain the English meaning, vocabulary and grammar of this selection" + where + ":\n\n" + quote
 			: "About this passage" + where + ":\n\n" + quote + "\n\n";
 	},
 
@@ -2584,6 +2585,7 @@ AbstractIn = {
 		this._drafts.set(dir, {
 			text: this.selectionPrompt(annotation.text, annotation.pageLabel, send),
 			send,
+			vocabularyTutor: send,
 			selection: {
 				text: String(annotation.text).trim(),
 				pageLabel: annotation.pageLabel || "",
@@ -2614,11 +2616,11 @@ AbstractIn = {
 		}
 		this._drafts.delete(view.ctx.dir);
 		if (draft.send && !this._pending.has(view.ctx.dir)) {
-			this.startRequest(view, draft.text, [], undefined, { selection: draft.selection });
+			this.startRequest(view, draft.text, [], undefined, { selection: draft.selection, vocabularyTutor: !!draft.vocabularyTutor });
 			return;
 		}
 		// Ask: the selection is attached when the message is sent with its quote still in it.
-		view.draftSelection = draft.selection ? { selection: draft.selection, quote: draft.text.trim() } : null;
+		view.draftSelection = draft.selection ? { selection: draft.selection, quote: draft.text.trim(), vocabularyTutor: !!draft.vocabularyTutor } : null;
 		let existing = view.input.value.trim();
 		view.input.value = draft.text + (existing ? existing : "");
 		this.autoGrow(view.input);
@@ -3453,7 +3455,7 @@ AbstractIn = {
 		}
 		await this.saveSessions(view.ctx.dir, sessions);
 		this.renderMessages(view, kept);
-		this.startRequest(view, question, images, asked.modes || [], { selection: asked.selection || null, readingAction: asked.readingAction || null });
+		this.startRequest(view, question, images, asked.modes || [], { selection: asked.selection || null, readingAction: asked.readingAction || null, vocabularyTutor: !!asked.vocabularyTutor });
 	},
 
 	async showPending(view, pending) {
@@ -3576,7 +3578,7 @@ AbstractIn = {
 				retry: () => {
 					logEl.querySelectorAll(".abstractin-error").forEach(n => n.remove());
 					this.renderMessages(view, history);
-					this.startRequest(view, pending.question, pending.images, pending.modes, { selection: pending.selection || null, readingAction: pending.readingAction || null });
+					this.startRequest(view, pending.question, pending.images, pending.modes, { selection: pending.selection || null, readingAction: pending.readingAction || null, vocabularyTutor: !!pending.vocabularyTutor });
 				},
 			});
 		}
@@ -3604,7 +3606,7 @@ AbstractIn = {
 				await this.assertAgentReadingReady(backend, evidenceMode);
 				ctx = { ...ctx, reading: evidenceMode === "knowledge" ? { ...ctx.reading } : await this.prepareReadingSkills(ctx) };
 				ctx.reading.evidenceMode = evidenceMode;
-				ctx.reading.vocabularyTutor = !pending.readingAction && this.isVocabularyQuestion(question, pending.selection);
+				ctx.reading.vocabularyTutor = !pending.readingAction && (pending.vocabularyTutor || this.isVocabularyQuestion(question, pending.selection));
 				ctx.reading.vocabularySkill = ctx.reading.vocabularyTutor ? await this.loadVocabularyTutorSkill() : "";
 				ctx.reading.tutorSourceContext = "";
 				ctx.reading.answerMode = pending.readingAction ? "source" : answerMode;
@@ -3774,7 +3776,8 @@ AbstractIn = {
 				Object.assign({ role: "user", text: question, ts: Date.now() },
 					pending.selection ? { selection: pending.selection } : {},
 					images.length ? { images: images.map(p => p.startsWith(ctx.dir) ? p.slice(ctx.dir.length).replace(/^[\/\\]+/, "") : p) } : {},
-					pending.readingAction ? { readingAction: pending.readingAction } : {}),
+					pending.readingAction ? { readingAction: pending.readingAction } : {},
+					pending.vocabularyTutor ? { vocabularyTutor: true } : {}),
 				Object.assign({ role: "assistant", text: result.text, ts: Date.now() }, meta, result.stopped ? { stopped: true } : {}),
 			]);
 			if (pending.selection) {
@@ -4534,7 +4537,7 @@ AbstractIn = {
 		let draft = view.draftSelection;
 		view.draftSelection = null;
 		let quoteLine = draft && draft.quote.split("\n").find(line => line.startsWith("> "));
-		let extra = draft && quoteLine && String(text).includes(quoteLine) ? { selection: draft.selection } : {};
+		let extra = draft && quoteLine && String(text).includes(quoteLine) ? { selection: draft.selection, vocabularyTutor: !!draft.vocabularyTutor } : {};
 		this.startRequest(view, text, images, undefined, extra);
 	},
 
