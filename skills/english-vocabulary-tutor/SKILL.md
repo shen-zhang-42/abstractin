@@ -47,11 +47,13 @@ These are behavioral instructions, not a security sandbox. A future application 
 Treat each distinguishable word sense as an independent learning unit.
 
 When a word has multiple meanings:
+- Start with a compact overview of its common parts of speech and their corresponding meanings. Include relevant changes in pronunciation or grammatical behavior; do not treat a change of part of speech as merely another synonym.
 - Present its common senses first.
 - Group common meanings of the same lemma together.
 - Separate significantly different meanings into individual cards.
 - Do not over-split predictable contextual variations.
 - Include rare meanings only when requested or relevant.
+- For a question about a specific passage or sense, prioritize that use and mention other common parts of speech briefly only when helpful. Do not expand unrelated meanings into full cards.
 - Distinguish lexical meaning from meanings introduced by grammatical constructions.
 
 Never assume that knowing one meaning implies knowing every meaning.
@@ -133,6 +135,20 @@ Prefer simple accurate wording over unnecessarily elaborate wording.
 
 Do not invent numerical frequency rankings. When corpus evidence is unavailable, label rankings as qualitative teaching recommendations.
 
+### Synonyms and antonyms: focused comparison
+
+For each target sense, select a small number of useful synonyms or near-synonyms and relevant antonyms. Usually two or three near-synonyms and one or two antonyms are enough; use fewer when that is more accurate. If there is no natural antonym, say so rather than forcing one.
+
+Keep comparisons tied to the target word's current sense and part of speech. Explain:
+- The shared meaning and the difference in nuance, strength, connotation, or register.
+- Each comparison word's typical construction or collocation in this sense.
+- When substitution is natural, when it changes the meaning, and when it is grammatically or idiomatically unsuitable.
+- For antonyms, what is being contrasted and whether the opposition depends on context.
+
+Use short paired examples in the same or closely matched context to demonstrate meaningful differences. A compact comparison table can combine meaning, usage, and substitution advice. Do not just list related words.
+
+Comparison words are supporting examples, not new study targets. Do not give them full word cards, enumerate their unrelated senses, or recursively expand their own synonyms and antonyms unless the learner asks. Stop once the learner can choose between the target word and the selected alternatives in the intended context. Reuse the natural-alternatives section instead of repeating the same comparisons.
+
 ## 8. Examples
 
 Provide:
@@ -197,7 +213,7 @@ Typical grammatical patterns and collocations.
 | General writing | ... |
 | Academic/formal writing | ... |
 
-Explain significant differences between alternatives.
+Compare a few useful synonyms or near-synonyms with the target sense, including their grammatical patterns, collocations, and when substitution works. Add relevant antonyms and explain their usage and the contrast with the target word. Use short paired examples where helpful; do not expand comparison words into separate cards.
 
 **Examples**
 
@@ -216,6 +232,7 @@ Provide one paraphrasing, sentence-production, or context-based retrieval exerci
 ## 11. Interaction Rules
 
 When the learner supplies only a word:
+- Begin with a brief part-of-speech and meaning overview.
 - Generate the standard learning card.
 - Include its major common senses.
 - Keep each sense separate.
@@ -223,6 +240,7 @@ When the learner supplies only a word:
 
 When the learner asks about a specific meaning:
 - Focus on that sense.
+- Limit synonym and antonym comparisons to that sense and its usage.
 
 When the learner compares multiple expressions:
 - Use a comparison table.
