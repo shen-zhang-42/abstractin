@@ -16,7 +16,7 @@ source_only = {
     'ChatGPT Image Oct 10, 2026, 02_49_20 PM.png',
     'ChatGPT Image Oct 10, 2026, 06_03_53 PM.png',
     'ChatGPT Image Oct 10, 2026, 06_11_20 PM.png',
-    'ChatGPT Image Oct 10, 2026, 06_19_57 PM.png', 'marmoset-transparent.webm',
+    'ChatGPT Image Oct 10, 2026, 06_19_57 PM.png', 'marmoset-transparent.webm', 'marmoset-last-frame-loop-final.webm',
     'watercolor-marmoset-reference.svg', 'marmoset-front-detailed.svg', 'marmoset-vector-clean.svg', 'image.png',
     'content/puffin-cartoon.svg', 'content/icons/marmoset-reference.svg',
 }
