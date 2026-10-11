@@ -1,5 +1,7 @@
 <h1 align="center">AbstractIn</h1>
 
+<p align="center">中文 | <a href="README.en.md">English</a></p>
+
 <p align="center"><b>在 Zotero 中阅读、提问、查证和整理讨论。</b><br>面向书籍与科学论文的 AI 阅读助手。</p>
 
 <p align="center"><img src="src/content/companions/marmoset-idle.png" alt="AbstractIn 狨猴阅读伴侣" width="176"></p>
@@ -152,7 +154,7 @@ Context only 即使问题要求查原文也不会访问 PDF，需要查证时请
 
 XPI 可以直接发送给其他人，通过 Zotero 的“从文件安装插件”安装。使用本仓库插件 ID 和更新地址的 AbstractIn 安装可在插件管理中检查更新，也可按 Zotero 自动更新设置升级。
 
-当前版本为 **0.2.46**。原始 Zusia 使用不同的插件 ID；其用户需要先手动安装一次 AbstractIn，之后再通过本项目更新。
+当前版本为 **0.2.47**。原始 Zusia 使用不同的插件 ID；其用户需要先手动安装一次 AbstractIn，之后再通过本项目更新。
 
 ## 数据与隐私
 
