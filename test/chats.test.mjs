@@ -495,7 +495,7 @@ test("merging retains complete transcript blocks and reference IDs, automaticall
  const { p, view, send } = await setup();
  await send("Chapter 1: sets"); const first = { ...view.ctx.discussion }, firstDir = view.ctx.dir;
  const firstHistory = await p.loadHistory(firstDir), firstSessions = await p.loadSessions(firstDir);
- await p.newChat(view.root); await send("measures"); const second = { ...view.ctx.discussion }, secondDir = view.ctx.dir;
+ await p.newChat(view.root); await send("Explain measures"); const second = { ...view.ctx.discussion }, secondDir = view.ctx.dir;
  const secondHistory = await p.loadHistory(secondDir);
  const merged = await p.mergeDiscussions(view, [second.id, first.id]);
  assert.equal(merged.chapterID, "ch-01"); assert.equal(merged.topic, "sets");
@@ -535,7 +535,7 @@ test("cross-chapter merges go to Unassigned, sync as merged records, and reject 
 
 test("failed merge index writes leave source discussions usable", async () => {
  const { p, view, send } = await setup(); await send("Chapter 1: sets"); const first = view.ctx.discussion.id;
- await p.newChat(view.root); await send("measures"); const second = view.ctx.discussion.id;
+ await p.newChat(view.root); await send("Explain measures"); const second = view.ctx.discussion.id;
  const write = p.writeDiscussionIndex; p.writeDiscussionIndex = async () => { throw new Error("disk full"); };
  await assert.rejects(p.mergeDiscussions(view, [first, second]), /disk full/); p.writeDiscussionIndex = write;
  const index = await p.discussionIndex(view.ctx);
@@ -545,7 +545,7 @@ test("failed merge index writes leave source discussions usable", async () => {
 
 test("history selection enables merge and deletion only after an explicit review", async () => {
  const { p, view, send } = await setup(); await send("Chapter 1: sets"); const first = view.ctx.discussion.id;
- await p.newChat(view.root); await send("measures"); await p.openHistoryMenu(view.root);
+ await p.newChat(view.root); await send("Explain measures"); await p.openHistoryMenu(view.root);
  const merge = view.logEl.querySelector(".abstractin-history-merge"), remove = view.logEl.querySelector(".abstractin-history-delete");
  assert.ok(merge.disabled); assert.ok(remove.disabled);
  const checks = view.logEl.querySelectorAll(".abstractin-history-check"); checks[0].click();
@@ -655,9 +655,9 @@ test("result extraction ignores code and proof numbering while preserving Markdo
 
 test("deleting compacts surviving chats and results and refreshes citation labels without changing IDs", async () => {
  const { p, view, send } = await setup(); await send("Chapter 1: first"); const first = view.ctx.discussion.id;
- await p.newChat(view.root); await send("second"); const second = view.ctx.discussion.id;
+ await p.newChat(view.root); await send("Second question"); const second = view.ctx.discussion.id;
  const result = (await p.loadHistory(view.ctx.dir))[1].results[0];
- await p.newChat(view.root); await send("third"); const third = view.ctx.discussion.id;
+ await p.newChat(view.root); await send("Third question"); const third = view.ctx.discussion.id;
  await p.saveHistory(view.ctx.dir, [{ role: "user", text: "Use [result:" + result.id + "|Chat Result 1.2.1.1]\n> selected text" }, { role: "assistant", text: "Third result" }]);
  await p.deleteDiscussions(view, [first]); const index = await p.discussionIndex(view.ctx);
  assert.equal(index.chats.find(c => c.id === second).number, 1); assert.equal(index.chats.find(c => c.id === third).number, 2);
@@ -694,7 +694,7 @@ test("deleting a middle turn removes its pair, compacts result numbers and reset
 });
 
 test("turn deletion handles the last pair and the final empty conversation", async () => {
- const { p, view, send } = await setup(); await send('First'); await send('Second');
+ const { p, view, send } = await setup(); await send('First question'); await send('Second question');
  let history = await p.loadHistory(view.ctx.dir);
  await p.deleteConversationTurn(view, 3, history[3]);
  history = await p.loadHistory(view.ctx.dir); assert.equal(history.length, 2);
@@ -705,7 +705,7 @@ test("turn deletion handles the last pair and the final empty conversation", asy
 });
 
 test("turn deletion rejects pending answers and stale indices without changing the transcript", async () => {
- const { p, view, send } = await setup(); await send('First'); await send('Second');
+ const { p, view, send } = await setup(); await send('First question'); await send('Second question');
  const history = await p.loadHistory(view.ctx.dir);
  p._pending.set(view.ctx.dir, {});
  await assert.rejects(p.deleteConversationTurn(view, 1, history[1]), /Wait for the current answer/);

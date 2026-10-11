@@ -11,6 +11,57 @@ Object.assign(AbstractIn, {
 		source: { label: "Source only", icon: "readingSource", description: "Base every document claim on inspected original text, without outside facts." },
 	},
 
+	isVocabularyQuestion(question, selection) {
+		let text = this.discussionQuestionSubject ? this.discussionQuestionSubject(question) : String(question || "");
+		text = text.trim();
+		if (/^[A-Za-z][A-Za-z\' -]{0,70}$/.test((selection?.text || "").trim()) && !/^(?:theorem|lemma|definition)\b/i.test(selection.text) && /(?:什么意思|怎么用|用法|怎么读)/.test(text)) return true;
+		if (/^(?:yes|no|ok|okay|continue|thanks|hello|why|what|how|when|where|who|which|explain)[?？!！.]?$/i.test(text)) return false;
+		return /^[A-Za-z][A-Za-z'-]{1,35}[?？]?$/.test(text) ||
+			/(?:单词|词义|词汇|短语|搭配|语法|发音|音标|英文表达|英语用法|时态|介词)/.test(text) ||
+			/(?:用英语|用英文|英语|英文)[^。！？\n]{0,8}(?:怎么说|怎么写|如何表达)/.test(text) ||
+			/(?:[A-Za-z][A-Za-z'-]*|这个词|这句话|这个表达|这个词组)[^。！？\n]{0,25}(?:什么意思|是什么意思|的意思|含义|怎么用|用法|怎么读)/i.test(text) ||
+			/\b(?:what does .{1,80} mean|meaning of|pronounce|pronunciation|collocations?|grammar|word usage|phrasal verb|idiom|past tense|preposition|part of speech|word stress|gerund)\b/i.test(text) ||
+			/\b[A-Za-z][A-Za-z'-]*\s*(?:和|与|vs\.?|versus|and)\s*[A-Za-z][A-Za-z'-]*[^。！？\n]{0,12}(?:区别|差别|不同)/i.test(text) ||
+			/\b(?:difference between|how (?:do (?:I|you)|to|should I) (?:say|phrase|use)|can I say|is (?:this|my) sentence (?:correct|natural))\b/i.test(text) && !/(?:theorem|lemma|proof|equation|measure|spaces?|convergence|integrals?|derivative|probability|norm|topology|function|定理|引理|证明|公式|测度)/i.test(text);
+	},
+
+	async loadVocabularyTutorSkill() {
+		let key = (this.getPref("readingSkillsDir") || "") + ":" + (this.version || "");
+		if (this._vocabularyTutorSkillKey !== key) { this._vocabularyTutorSkill = null; this._vocabularyTutorSkillKey = key; }
+		if (!this._vocabularyTutorSkill) this._vocabularyTutorSkill = (async () => {
+			let configured = (this.getPref("readingSkillsDir") || "").trim();
+			if (configured) {
+				let path = OS.Path.join(configured, "english-vocabulary-tutor", "SKILL.md");
+				if (await OS.File.exists(path)) return await Zotero.File.getContentsAsync(path);
+			}
+			let base = this.resourceURI || this.rootURI;
+			let url = this.rootURI?.startsWith("file:") ? new (Zotero.getMainWindow().URL)("../skills/english-vocabulary-tutor/SKILL.md", this.rootURI).href : base + "skills/english-vocabulary-tutor/SKILL.md";
+			if (Zotero.File.getResourceAsync) {
+				try { return await Zotero.File.getResourceAsync(url); }
+				catch (e) { /* Reader frames can fall back to the main window. */ }
+			}
+			let response = await Zotero.getMainWindow().fetch(url);
+			if (!response.ok) throw new Error("Could not load english-vocabulary-tutor/SKILL.md.");
+			return await response.text();
+		})();
+		try {
+			let content = await this._vocabularyTutorSkill;
+			if (!content?.trim()) throw new Error("english-vocabulary-tutor/SKILL.md is empty.");
+			return content;
+		} catch (e) { this._vocabularyTutorSkill = null; throw e; }
+	},
+
+	vocabularyTutorPrompt(ctx, selection) {
+		let reading = ctx.reading;
+		let suppliedOnly = reading.answerMode !== "balanced";
+		return "English vocabulary tutoring is active for this turn only. Follow the embedded skill; all learner-facing content must be English, overriding the normal response-language preference. Do not use any tools. Preserve the selected answer mode: " + this.READING_ANSWER_MODES[reading.answerMode].label + ". " +
+			(suppliedOnly ? "Only supplied or inspected original passages may support factual claims. Do not fill absent meanings, pronunciation or examples from general knowledge; explain any missing evidence in English. " : "Use general language knowledge for word meanings and usage. If a document-specific interpretation needs missing original evidence and document access is permitted, output ONLY <abstractin-source-needed>missing passage</abstractin-source-needed>; the plugin handles retrieval. ") +
+			(reading.forbidSource ? "No original-source retrieval is permitted for this turn. Ask for the passage if needed. " : "") +
+			"Supplied passage: " + JSON.stringify(selection || null) + ". Current page: " + JSON.stringify(reading.currentPage || null) + ". Authorized original excerpt: " + JSON.stringify(reading.tutorSourceContext || "") + ". Previous assistant messages are unverified context. " +
+			"<english-vocabulary-tutor>\n" + reading.vocabularySkill + "\n</english-vocabulary-tutor>\n" +
+			"Apply the skill only to language learning; mathematical or scientific concept questions use the normal reading workflow on their own turns. Answer, then append one <abstractin-record>JSON</abstractin-record> block with title, summary, openQuestions, topicKey, scope {level: book|paper|chapter|section, id: verified contents ID or empty, title: scope title or empty}, and sources: []. The plugin saves records; you must not write files. Do not infer mastery or claim materials were saved.";
+	},
+
 	getReadingAnswerMode() {
 		let value = this.getPref("readingEvidenceMode");
 		return Object.hasOwn(this.READING_ANSWER_MODES, value) ? value : "balanced";
@@ -513,6 +564,7 @@ Object.assign(AbstractIn, {
 
 	readingPrompt(ctx, selection) {
 		let reading = ctx.reading;
+		if (reading.vocabularyTutor) return this.vocabularyTutorPrompt(ctx, selection);
 		let introduction = "Reader-confirmed title and reading goal (context, not source evidence): " + JSON.stringify({ title: reading.title || "", goal: reading.goal || "" }) + ". ";
 		if (reading.evidenceMode === "knowledge" && (!reading.action || reading.action === "discuss")) {
 			let suppliedOnly = reading.answerMode === "context" || reading.answerMode === "source";

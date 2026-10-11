@@ -97,7 +97,7 @@ test("Stop during PDF extraction prevents agent execution", async () => {
 	let pending = { backend: "codex", progress() {} };
 	window.Zotero.PDFWorker = { getFullText: async () => { pending.cancelled = true; return { text: "Text", extractedPages: 1, totalPages: 1 }; } };
 	p.runBackend = async () => { throw new Error("Must not launch after Stop"); };
-	assert.equal((await p.ask(ctx, "Question", pending)).cancelled, true);
+	assert.equal((await p.ask(ctx, "Explain the argument", pending)).cancelled, true);
 });
 
 test("live page extraction preserves physical indices despite unverified full-text boundaries and caches per PDF", async () => {

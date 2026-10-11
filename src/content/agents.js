@@ -287,7 +287,7 @@
 
 Object.assign(AbstractIn, {
  async agentReadFile(ctx, path, line = 1, limit = undefined) {
-  if (ctx.reading?.evidenceMode === "knowledge") throw new Error("File access is unavailable during Knowledge discussion.");
+  if (ctx.reading?.evidenceMode === "knowledge" || ctx.reading?.vocabularyTutor) throw new Error("File access is unavailable during Knowledge discussion.");
   if (typeof path !== "string" || path.includes("\0")) throw new Error("Invalid source path.");
   const root = OS.Path.normalize(ctx.dir);
   const absolute = OS.Path.normalize(/^(?:[A-Za-z]:[\\/]|[\\/])/.test(path) ? path : OS.Path.join(root, path));
@@ -389,7 +389,7 @@ Object.assign(AbstractIn, {
    else proc.kill();
   } });
   try {
-   const init = await call("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: ctx.reading?.evidenceMode !== "knowledge", writeTextFile: false }, terminal: false },
+   const init = await call("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: ctx.reading?.evidenceMode !== "knowledge" && !ctx.reading?.vocabularyTutor, writeTextFile: false }, terminal: false },
     clientInfo: { name: "abstractin", version: this.version || "development" } }, 30000);
    if (init.protocolVersion !== 1) throw new Error("This client supports ACP protocol version 1. Use a compatible adapter.");
    const capabilities = this.normalizeAgentCapabilities({ version: init.agentInfo?.version, images: init.agentCapabilities?.promptCapabilities?.image });

@@ -774,3 +774,67 @@ test("Source only forbids outside facts even when document access is prohibited 
  assert.doesNotMatch(p.readingPrompt(ctx), /supplemented by your existing knowledge/);
  assert.match(p.systemPrompt(ctx), /Do not add outside facts/);
 });
+
+test("vocabulary tutoring loads the supplied skill, forces English and returns to ordinary reading", async () => {
+ const { plugin: p, prefs, ctx, window } = await setup();
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'balanced';
+ prefs['extensions.abstractin.language'] = '中文';
+ const skill = await readFile(new URL('../skills/english-vocabulary-tutor/SKILL.md', import.meta.url), 'utf8');
+ let loads = 0;
+ window.Zotero.File.getResourceAsync = async url => { loads++; assert.match(url, /english-vocabulary-tutor\/SKILL.md$/); return skill; };
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  calls++;
+  if (calls === 1) {
+   assert.equal(request.ctx.reading.vocabularyTutor, true);
+   assert.ok(request.question.includes(skill));
+   assert.match(request.question, /IPA \(US\)/);
+   const prompt = p.codexPrompt(request);
+   assert.doesNotMatch(prompt, /Always reply in 中文/);
+   assert.match(prompt, /Always reply in English/);
+   const args = p.codexArgs({ ...request, stdin: true });
+   assert.ok(args.includes('features.shell_tool=false'));
+   const claude = p.claudeArgs(request);
+   assert.equal(claude[claude.indexOf('--tools') + 1], '');
+   return { text: 'Despite means without being prevented by something.', sessionId: 'tutor-thread' };
+  }
+  assert.equal(request.ctx.reading.vocabularyTutor, false);
+  assert.equal(request.session, null);
+  assert.doesNotMatch(request.question, /English Vocabulary Tutor/);
+  assert.match(p.codexPrompt(request), /Always reply in 中文/);
+  return { text: '普通阅读回答' };
+ };
+ let result = await p.ask(ctx, 'despite 是什么意思，怎么用？', { backend: 'codex', progress() {} });
+ assert.equal(result.error, undefined); assert.equal(loads, 1);
+ result = await p.ask(ctx, 'Explain the proof argument', { backend: 'codex', progress() {} });
+ assert.equal(result.error, undefined); assert.equal(calls, 2);
+ assert.equal(p.getReadingAnswerMode(), 'balanced'); assert.equal(p.getLanguage(), '中文');
+});
+
+test("vocabulary routing recognizes language requests without capturing theorem comparisons", () => {
+ const { plugin: p } = loadPlugin();
+ assert.equal(p.isVocabularyQuestion("这是什么意思？", { text: "nonetheless" }), true);
+ assert.equal(p.isVocabularyQuestion("这是什么意思？", { text: "Theorem A.78" }), false);
+ for (const question of ['despite', '这个短语怎么用？', 'How do I use despite?', 'What does nonetheless mean?', 'affect 和 effect 的区别', 'Is this sentence natural?', 'How do I pronounce thorough?', '这个表达用英语怎么说？']) {
+  assert.equal(p.isVocabularyQuestion(question), true, question);
+ }
+ for (const question of ['Why?', 'Chapter 1: sets', 'What is the difference between Theorem 1.1 and Lemma 2.3?', 'Explain the proof', 'What is the difference between Hilbert spaces and Banach spaces?']) {
+  assert.equal(p.isVocabularyQuestion(question), false, question);
+ }
+});
+
+test("Context only vocabulary tutoring does not access the PDF or saved notes", async () => {
+ const { plugin: p, prefs, ctx } = await setup();
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'context';
+ p.loadVocabularyTutorSkill = async () => await readFile(new URL('../skills/english-vocabulary-tutor/SKILL.md', import.meta.url), 'utf8');
+ for (const name of ['exportReadingSource', 'prepareCurrentReadingPage', 'exportContext', 'exportReadingRecords', 'exportReadingWorkspace']) {
+  p[name] = async () => { throw new Error('No retrieval allowed'); };
+ }
+ p.runBackend = async (_, request) => {
+  assert.equal(request.ctx.reading.answerMode, 'context');
+  assert.match(request.question, /Do not fill absent meanings/);
+  return { text: 'Please provide the sentence containing this word.' };
+ };
+ const result = await p.ask(ctx, '解释这个单词的意思', { backend: 'codex', progress() {} });
+ assert.equal(result.error, undefined);
+});
