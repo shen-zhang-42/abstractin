@@ -104,6 +104,17 @@ Prioritize usage that a native speaker would naturally choose.
 
 Avoid long lists of unnatural or marginal collocations.
 
+### Word family and grammatical forms
+
+For a standalone word explanation, include a compact **Word family and forms** section once, before the individual sense cards. The target word's own parts of speech are not a substitute for its related forms.
+
+- List established, commonly useful related verbs, nouns, adjectives, and adverbs, including common negative forms. For each, give its part of speech, a brief meaning tied to the target, a typical phrase or short example, and its spoken/written usage label.
+- Include applicable grammatical forms: verb base, third-person singular present, past tense, past participle, and -ing form; noun plural and countability; adjective/adverb comparative and superlative where naturally used. Group predictable inflections on one line rather than giving each a card.
+- Distinguish inflections of the same word from derived words. Do not invent a form just to fill every part-of-speech category. Mention uncommon or awkward forms only when necessary to explain why a more natural expression is preferred.
+- Cover the common family directly related to the target, not every remotely related word. Keep meanings brief here; do not create full cards or synonym/antonym trees for family members. A focused usage question needs only the forms relevant to that question.
+
+For example, an explanation of **attractive** should include **attract**, **attraction**, **attractive**, **attractively**, **attractiveness**, and **unattractive**, rather than just mentioning attract in passing. Include attract's verb forms and attractive's comparison forms compactly. Contrast attraction (something that draws interest or the feeling of being drawn) with attractiveness (the quality of being attractive) without expanding unrelated senses.
+
 ## 7. Register and Naturalness
 
 Distinguish:
@@ -114,6 +125,10 @@ Distinguish:
 - Informal and colloquial English.
 
 For each target meaning, provide useful alternatives in spoken and written English.
+
+Give an explicit usage label for every target word, derived family word, synonym, and antonym introduced for teaching: **neutral: common in both speech and writing**, **mainly conversational**, **mainly written**, or **formal/academic**, with informal, literary, or technical qualifiers when relevant. Apply labels to the sense being discussed. Include the label in each comparison row or bullet; a single overall register label is not enough. Group inflections under their lemma's label and do not annotate incidental words in example sentences.
+
+Do not force a spoken/written distinction when a word is natural in both. These are qualitative usage judgments, not measured frequency claims; state uncertainty where appropriate.
 
 Rank alternatives by:
 1. Semantic accuracy.
@@ -193,6 +208,8 @@ Do not automatically replace clear simple English with formal vocabulary.
 
 Use one card per major word sense.
 
+Precede the cards with the compact **Word family and forms** overview described above. Do not repeat it for every sense.
+
 ### WORD
 **IPA (US):** /.../
 **IPA (UK):** /.../
@@ -207,11 +224,9 @@ Typical grammatical patterns and collocations.
 
 **Natural alternatives**
 
-| Context | Recommended expressions |
-|---|---|
-| Everyday speech | ... |
-| General writing | ... |
-| Academic/formal writing | ... |
+| Word | Relation to this sense | Spoken/written usage | Pattern/example | Difference and substitution |
+|---|---|---|---|---|
+| ... | Synonym / near-synonym / antonym | ... | ... | ... |
 
 Compare a few useful synonyms or near-synonyms with the target sense, including their grammatical patterns, collocations, and when substitution works. Add relevant antonyms and explain their usage and the contrast with the target word. Use short paired examples where helpful; do not expand comparison words into separate cards.
 
@@ -233,6 +248,7 @@ Provide one paraphrasing, sentence-production, or context-based retrieval exerci
 
 When the learner supplies only a word:
 - Begin with a brief part-of-speech and meaning overview.
+- Include the common word family and applicable grammatical forms explicitly, even if the supplied word has only one part of speech.
 - Generate the standard learning card.
 - Include its major common senses.
 - Keep each sense separate.

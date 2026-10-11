@@ -67,7 +67,7 @@ After selecting PDF text, **Ask Codex about this** remains the regular question 
 
 Questions about English word meanings, pronunciation, IPA, collocations, grammar, differences between expressions, or sentence naturalness automatically activate [`english-vocabulary-tutor`](skills/english-vocabulary-tutor/SKILL.md). No additional mode switch is needed. Sending a single English word can also generate a learning card.
 
-The skill starts with an overview of common parts of speech and their meanings, then explains the major senses separately, with American and British IPA, natural expressions, spoken and written examples, and short exercises. Synonym and antonym comparisons focus on nuance, collocations, grammar, and whether substitution works in the target sense, illustrated with short paired examples. They do not expand unrelated senses of comparison words or recursively introduce more vocabulary. Questions about a specific passage prioritize its actual usage. As required by the skill, these answers are in English regardless of the ordinary answer-language setting. Scientific concepts and proof questions continue to use the regular reading workflow.
+The skill starts with an overview of common parts of speech and their meanings, lists common derived words and applicable grammatical forms (such as verb forms, noun plurals, and adjective comparisons), then explains the major senses separately, with American and British IPA, natural expressions, spoken and written examples, and short exercises. The target word, derived words, and each synonym and antonym receive explicit spoken/written usage labels, including when they are natural in both. Synonym and antonym comparisons focus on nuance, collocations, grammar, and whether substitution works in the target sense, illustrated with short paired examples. They do not expand unrelated senses of comparison words or recursively introduce more vocabulary. Questions about a specific passage prioritize its actual usage. As required by the skill, these answers are in English regardless of the ordinary answer-language setting. Scientific concepts and proof questions continue to use the regular reading workflow.
 
 Vocabulary tutoring respects all three answer modes: Balanced can use language knowledge, while Context only and Source only do not add missing facts from external knowledge. When a textbook's specific usage requires source evidence, the plugin supplies the material; the vocabulary assistant itself does not execute tools or write files. The skill ships with the installation package and can be overridden by a folder with the same name in a custom skill directory.
 
@@ -154,7 +154,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.48**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.49**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 
