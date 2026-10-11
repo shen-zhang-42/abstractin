@@ -972,3 +972,42 @@ test("old mixed unassigned chats migrate initialization pairs without losing nor
  assert.equal(p.visibleDiscussions(index).filter(c => c.chapterID === 'initialization').length, 1);
  assert.equal((await p.loadHistory(p.discussionContext(document, initialization).dir)).length, 2);
 });
+
+test("Move discussion offers Initialization without exposing it in automatic chapter routing", async () => {
+ const { p, view } = await setup();
+ const index = await p.discussionIndex(view.ctx);
+ let choice = p.chooseDiscussionChapter(view, index, { forMove: true });
+ let panel = view.root.querySelector('.abstractin-chapter-choice');
+ const initialization = [...panel.querySelectorAll('button')].find(b => b.textContent === 'Initialization');
+ assert.ok(initialization); initialization.click(); assert.equal(await choice, 'initialization');
+ choice = p.chooseDiscussionChapter(view, index);
+ panel = view.root.querySelector('.abstractin-chapter-choice');
+ assert.ok(![...panel.querySelectorAll('button')].some(b => b.textContent === 'Initialization'));
+ [...panel.querySelectorAll('button')].find(b => b.textContent === 'Cancel').click();
+ assert.equal(await choice, undefined);
+});
+
+test("manual moves into and out of Initialization preserve independent transcripts and survive reopening", async () => {
+ const { p, view, ctx, dir, send } = await setup();
+ await send('Chapter 1: ordinary question');
+ const moving = view.ctx.discussion.id, movingDir = view.ctx.dir;
+ const before = await p.loadHistory(movingDir);
+ const index = await p.discussionIndex(view.ctx);
+ const existing = await p.createDiscussion(view.ctx, index, 'initialization', 'Initialization', [
+  { role: 'user', text: 'Initialize the actual book contents without chapter summaries.', readingAction: 'contents' },
+  { role: 'assistant', text: 'Existing initialization output' },
+ ], { initialization: true });
+ const existingDir = p.discussionContext(view.ctx, existing).dir;
+ await p.assignDiscussionChapter(view, 'initialization');
+ assert.equal(view.ctx.discussion.id, moving);
+ assert.equal(p.visibleDiscussions(await p.discussionIndex(view.ctx)).filter(c => c.chapterID === 'initialization').length, 2);
+ assert.equal((await p.loadHistory(movingDir))[1].text, before[1].text);
+ assert.equal((await p.loadHistory(existingDir))[1].text, 'Existing initialization output');
+ await p.switchDiscussion(view, existing, await p.discussionIndex(view.ctx));
+ await p.assignDiscussionChapter(view, 'ch-02');
+ await p.initializeDiscussion({ ...ctx, dir, documentDir: dir, discussion: undefined });
+ const reopened = await p.discussionIndex(view.ctx);
+ assert.equal(reopened.chats.find(c => c.id === existing.id).chapterID, 'ch-02');
+ assert.equal(reopened.chats.find(c => c.id === moving).chapterID, 'initialization');
+ assert.equal((await p.loadHistory(existingDir))[1].text, 'Existing initialization output');
+});

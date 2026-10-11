@@ -14,7 +14,7 @@
    return [{ id: this.INITIALIZATION_CHAPTER, title: "Initialization", order: -1 }, ...index.chapters.slice().sort((a, b) => a.order - b.order), { id: null, title: ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned" }];
   },
   async initializationDiscussion(ctx, index) {
-   let chat = this.visibleDiscussions(index).find(c => c.chapterID === this.INITIALIZATION_CHAPTER);
+   let chat = this.visibleDiscussions(index).find(c => c.chapterID === this.INITIALIZATION_CHAPTER && (c.initialization || c.topic === "Initialization"));
    if (!chat) {
     const candidate = index.chats.find(c => c.id === ctx.discussion?.id && c.chapterID === null && c.topic === "discussion");
     if (candidate && !(await this.loadHistory(this.discussionContext(ctx, candidate).dir)).length) {
@@ -28,9 +28,9 @@
   async migrateInitializationDiscussions(ctx, index) {
    // Only explicit initialization actions are moved; ordinary unassigned chats stay intact.
    const moved = [], updates = []; let changed = false;
-   let target = this.visibleDiscussions(index).find(c => c.chapterID === this.INITIALIZATION_CHAPTER);
+   let target = this.visibleDiscussions(index).find(c => c.chapterID === this.INITIALIZATION_CHAPTER && (c.initialization || c.topic === "Initialization"));
    for (const chat of this.visibleDiscussions(index)) {
-    if (chat.chapterID === this.INITIALIZATION_CHAPTER) continue;
+    if (chat.chapterID === this.INITIALIZATION_CHAPTER || chat.initializationPlacementManual) continue;
     const history = await this.loadHistory(this.discussionContext(ctx, chat).dir), kept = [], initial = [];
     for (let at = 0; at < history.length;) {
      let end = at + 1; while (end < history.length && history[end].role !== "user") end++;
@@ -195,7 +195,7 @@
     }
     if (!Number.isInteger(record.number) || record.number < 1) continue;
     if (data.chapter && !index.chapters.some(c => c.id === data.chapter.id)) index.chapters.push(data.chapter);
-    index.chats.push({ id: record.id, chapterID: record.chapterID || null, number: record.number, topic: String(record.topic || "discussion"), ...(record.topicManual ? { topicManual: true } : {}), ...(record.topicQuestions ? { topicQuestions: record.topicQuestions } : {}), createdAt: record.createdAt || data.updatedAt, updatedAt: data.updatedAt, ...(record.numberingRevision ? { numberingRevision: record.numberingRevision } : {}), ...(record.numberHistory ? { numberHistory: record.numberHistory } : {}), ...(record.mergedFrom ? { mergedFrom: record.mergedFrom } : {}), ...(record.deletedAt ? { deletedAt: record.deletedAt } : {}), ...(record.supersededBy ? { supersededBy: record.supersededBy } : {}) });
+    index.chats.push({ id: record.id, chapterID: record.chapterID || null, number: record.number, topic: String(record.topic || "discussion"), ...(record.initialization ? { initialization: true } : {}), ...(record.initializationPlacementManual ? { initializationPlacementManual: true } : {}), ...(record.topicManual ? { topicManual: true } : {}), ...(record.topicQuestions ? { topicQuestions: record.topicQuestions } : {}), createdAt: record.createdAt || data.updatedAt, updatedAt: data.updatedAt, ...(record.numberingRevision ? { numberingRevision: record.numberingRevision } : {}), ...(record.numberHistory ? { numberHistory: record.numberHistory } : {}), ...(record.mergedFrom ? { mergedFrom: record.mergedFrom } : {}), ...(record.deletedAt ? { deletedAt: record.deletedAt } : {}), ...(record.supersededBy ? { supersededBy: record.supersededBy } : {}) });
     const container = OS.Path.join(this.discussionRoot(ctx), "discussions"); await Zotero.File.createDirectoryIfMissingAsync(container);
     await Zotero.File.createDirectoryIfMissingAsync(OS.Path.join(container, record.id));
    }
@@ -250,17 +250,17 @@
    if (local && !ctx.reading.referenceNavigation) return { chapterID: this.chapterAtPage(index, location?.pageIndex), ambiguous: !this.chapterAtPage(index, location?.pageIndex) };
    return { chapterID: ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? null : ctx.discussion.chapterID };
   },
-  chooseDiscussionChapter(view, index) {
+  chooseDiscussionChapter(view, index, { forMove = false } = {}) {
    return new Promise(resolve => {
     const panel = this.el(view.doc, "div", "abstractin-panel abstractin-chapter-choice");
-    panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", "Choose the chapter this question is about");
-    panel.append(this.el(view.doc, "p", null, "Which chapter is this question about? No source search is needed."));
+    panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", forMove ? "Move discussion" : "Choose the chapter this question is about");
+    panel.append(this.el(view.doc, "p", null, forMove ? "Where should this discussion go?" : "Which chapter is this question about? No source search is needed."));
     const finish = value => { panel.remove(); resolve(value); };
-    for (const chapter of index.chapters.slice().sort((a, b) => a.order - b.order)) {
-     const button = this.el(view.doc, "button", "abstractin-btn", chapter.prefix + " · " + chapter.title);
+    for (const chapter of (forMove ? this.discussionGroups(view.ctx, index).filter(c => c.id !== null) : index.chapters.slice().sort((a, b) => a.order - b.order))) {
+     const button = this.el(view.doc, "button", "abstractin-btn", (chapter.prefix ? chapter.prefix + " · " : "") + chapter.title);
      button.addEventListener("click", () => finish(chapter.id)); panel.append(button);
     }
-    for (const [label, value] of [["Keep in current discussion", view.ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? null : view.ctx.discussion.chapterID], ["Unassigned", null], ["Cancel", undefined]]) {
+    for (const [label, value] of [["Keep in current discussion", !forMove && view.ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? null : view.ctx.discussion.chapterID], ["Unassigned", null], ["Cancel", undefined]]) {
      const button = this.el(view.doc, "button", "abstractin-btn", label); button.addEventListener("click", () => finish(value)); panel.append(button);
     }
     view.root.querySelector(".abstractin-log-wrap").append(panel);
@@ -358,10 +358,10 @@
   async assignDiscussionChapter(view, chapterID) {
    if (this._pending.has(view.ctx.dir) || this._discussionLocks.has(this.discussionRoot(view.ctx))) throw new Error("Wait for the current answer before moving this discussion.");
    const index = await this.discussionIndex(view.ctx);
-   if (view.ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER || chapterID === this.INITIALIZATION_CHAPTER) throw new Error("Initialization is reserved for initialization output.");
-   if (chapterID !== null && !index.chapters.some(c => c.id === chapterID)) throw new Error("Unknown chapter");
+   if (chapterID !== null && chapterID !== this.INITIALIZATION_CHAPTER && !index.chapters.some(c => c.id === chapterID)) throw new Error("Unknown chapter");
    const chat = index.chats.find(c => c.id === view.ctx.discussion.id);
    if (chat.chapterID === chapterID) return;
+   if (chat.chapterID === this.INITIALIZATION_CHAPTER || chapterID === this.INITIALIZATION_CHAPTER) chat.initializationPlacementManual = true;
    chat.numberHistory ||= []; chat.numberHistory.push({ chapterID: chat.chapterID, number: chat.number });
    const oldChapter = index.chapters.find(c => c.id === chat.chapterID);
    if (oldChapter?.activeChat === chat.id) oldChapter.activeChat = this.visibleDiscussions(index).filter(c => c.id !== chat.id && c.chapterID === chat.chapterID).sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id || null;
@@ -495,7 +495,7 @@
      cancel.onclick = () => panel.remove(); panel.append(field, save, cancel); root.querySelector(".abstractin-log-wrap").append(panel); field.focus();
     } });
     if (view.ctx.reading.type === "book") this.menuItem(view.doc, menu, { label: "Move current discussion to a chapter", onSelect: async () => {
-     this.closeMenu(root); const chapter = await this.chooseDiscussionChapter(view, index);
+     this.closeMenu(root); const chapter = await this.chooseDiscussionChapter(view, index, { forMove: true });
      if (chapter !== undefined) { try { await this.assignDiscussionChapter(view, chapter); } catch (e) { this.appendError(view, e.message); } }
     } });
     if (legacy.length) this.menuItem(view.doc, menu, { label: "Migrate legacy discussions (" + legacy.length + ")", desc: "Keep complete transcripts and available agent sessions; retain originals.", onSelect: () => {

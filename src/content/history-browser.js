@@ -359,7 +359,7 @@
     if (!count) body.append(this.el(view.doc, "p", "abstractin-menu-note", "No discussions yet."));
     const tools = this.el(view.doc, "div", "abstractin-history-browser-actions");
     if (view.ctx.reading.type === "book") action(tools, "Move current discussion to a chapter", async () => {
-     await this.returnFromHistoryBrowser(view); const chapter = await this.chooseDiscussionChapter(view, index);
+     await this.returnFromHistoryBrowser(view); const chapter = await this.chooseDiscussionChapter(view, index, { forMove: true });
      if (chapter !== undefined) await this.assignDiscussionChapter(view, chapter);
     });
     if (legacy.length) action(tools, "Classify / reimport legacy discussions", async () => {
