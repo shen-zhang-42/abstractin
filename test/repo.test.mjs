@@ -6,24 +6,14 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 const read = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
 const exists = path => existsSync(new URL("../" + path, import.meta.url));
 
-test("README explains install, build, test and opens with the illustration", () => {
+test("README explains current usage, development and privacy", () => {
 	const readme = read("README.md");
-	assert.ok(readme.trimStart().startsWith('<p align="center"><img src="docs/abstractin-hero.jpg"'), "the wide illustration is the first thing");
-	for (const heading of ["## Install", "## Build", "## Test", "## Privacy"]) {
+	for (const heading of ["## 开始使用", "## 会话管理", "## 数据与隐私", "## 开发与验证"]) {
 		assert.ok(readme.includes(heading), "README section " + heading);
 	}
-	for (const image of readme.matchAll(/\]\((docs\/[^)]+)\)|src="(docs\/[^"]+)"/g)) {
+	for (const image of readme.matchAll(/\]\(((?:docs|src)\/[^)]+)\)|src="((?:docs|src)\/[^"]+)"/g)) {
 		assert.ok(exists(image[1] || image[2]), "missing " + (image[1] || image[2]));
 	}
-});
-
-test("the README videos are recorded in Zotero and shown with their full-quality copies", () => {
-	const readme = read("README.md");
-	for (const video of ["abstractin-chat", "abstractin-proof", "abstractin-explain-better", "abstractin-figure"]) {
-		assert.ok(readme.includes(`docs/videos/${video}.gif`), video + ".gif shown");
-		assert.ok(readme.includes(`docs/videos/${video}.mp4`), video + ".mp4 linked");
-	}
-	assert.ok(exists("test/videos/zotero/record.sh"));
 });
 
 test("every bundled third-party file is credited with its licence", () => {

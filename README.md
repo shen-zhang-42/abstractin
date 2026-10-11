@@ -1,179 +1,184 @@
-<p align="center"><img src="docs/abstractin-hero.jpg" alt="AbstractIn: a girl in a red hoodie studying the ResNet paper at night" width="100%"></p>
-
 <h1 align="center">AbstractIn</h1>
 
-<p align="center"><b>Your study buddy inside Zotero.</b><br>Ask about the paper you're reading. Get maths, drawings and proofs back.</p>
+<p align="center"><b>在 Zotero 中阅读、提问、查证和整理讨论。</b><br>面向书籍与科学论文的 AI 阅读助手。</p>
+
+<p align="center"><img src="src/content/companions/marmoset-idle.png" alt="AbstractIn 狨猴阅读伴侣" width="176"></p>
 
 <p align="center">
-  <a href="https://github.com/shen-zhang-42/abstractin/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/shen-zhang-42/abstractin/ci.yml?branch=main&label=tests&color=d42a3c&labelColor=111111" alt="Tests"></a>
-  <a href="https://github.com/shen-zhang-42/abstractin/releases/latest"><img src="https://img.shields.io/github/v/release/shen-zhang-42/abstractin?label=release&color=b85a38&labelColor=111111" alt="Latest release"></a>
-  <img src="https://img.shields.io/badge/Zotero-7%20%E2%80%93%2010-c03a64?labelColor=111111" alt="Zotero 7 to 10">
-  <img src="https://img.shields.io/badge/Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Antigravity-6d4fd6?labelColor=111111" alt="Works with Claude Code, Codex and Antigravity">
-  <img src="https://img.shields.io/badge/no%20API%20keys-0d7f78?labelColor=111111" alt="No API keys">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-2d7d46?labelColor=111111" alt="MIT licence"></a>
+  <a href="https://github.com/shen-zhang-42/abstractin/releases/latest"><img src="https://img.shields.io/github/v/release/shen-zhang-42/abstractin?label=release" alt="最新版本"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT 许可"></a>
 </p>
 
-<p align="center"><img src="docs/rule.svg" alt="" width="100%"></p>
+AbstractIn 在 Zotero 的 PDF 阅读器中提供独立的讨论面板。你可以围绕当前页面、选中的段落、某个定理或整章内容提问，把讨论按章节组织，引用已有结论，并将阅读记录保存为可编辑的 Zotero 笔记。
 
-**Current AbstractIn milestone**
+插件通过本机安装的 AI 助手命令行工具工作，默认使用 **Codex**。本机负责运行工具和保存阅读工作区；模型处理仍通过所选助手的服务进行，并非离线推理。
 
-AbstractIn is an independently maintained Zotero reading assistant developed from **[Zusia](https://github.com/firekern/zusia), originally created by [Andrea Porcelli (firekern)](https://github.com/firekern)**. The original project provides the foundation for the Zotero integration, assistant backends and conversation rendering. AbstractIn extends that work with book-reading workflows, chapter discussions, source lookup, conversation management and reading companions.
+## 开始使用
 
-Zusia is released under the [MIT License](https://github.com/firekern/zusia/blob/main/LICENSE), which permits modification, publication and redistribution provided its copyright notice and permission text are retained. AbstractIn preserves Andrea Porcelli's original copyright and the complete MIT license in [LICENSE](LICENSE), including in every packaged `abstractin.xpi`. Bundled third-party notices are retained in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+1. 安装并登录本地 Codex CLI，确认它能在终端中正常回答问题。
+2. 从 [最新 Release](https://github.com/shen-zhang-42/abstractin/releases/latest) 下载 **`abstractin.xpi`**。
+3. 在 Zotero 中选择 **工具 → 插件 → 齿轮菜单 → 从文件安装插件**，选中 XPI；如有提示，重启 Zotero。
+4. 打开书籍或论文的 PDF，点击阅读器工具栏中的 **AbstractIn** 图标，打开右侧阅读面板。
+5. 点击 **`Let's start reading!`**，按面板提示确认文档、材料类型和阅读目标，再开始讨论。
 
-Version 0.2.42 supports **Start Reading → companion-led questions in the chat → confirm the title, material type, exact PDF and reading goal → rendered answers → editable Zotero child notes**. Answers follow the shared plugin language setting. Codex remains the default; checked custom agents can be selected in Settings → Assistants.
+新文档需要完成阅读初始化，输入框和会话管理功能才会开放。已经确认的文档在再次打开时会恢复阅读状态和讨论。安装 XPI 后不需要运行 Codespace，也不需要下载项目源码或安装 Node.js。
 
-The original `book-reading`, `scientific-paper-reading` and the paper skill's local extraction dependency are bundled without modification. Local skills may be used from your `.codex/skills` directory; `scientific-book-reading` is recognized as the folder alias for `book-reading`.
+插件声明支持 Zotero 7–10；不同版本和操作系统的原生界面表现仍需实际安装验证。
 
-See [Windows installation and verification](docs/WINDOWS-TESTING.md). No running Codespace is needed. Source development uses this checkout's `src/` directory; run `npm run source:path` to print its absolute location.
+## 阅读与提问
 
-In PDF readers, use the gray document-and-chat icon in the top toolbar beside the **Toggle Context Pane** controls to open the dedicated AbstractIn panel. The chat has its own right-side panel with a fixed composer and scrollable messages. It uses a plain gray theme, a companion welcome with a clickable “let's start reading” button, the header tools and the complete composer controls. For a new document, the composer stays hidden and Chats and new discussion stay disabled until Start Reading initialization succeeds. Title and goal can be entered directly in the inline setup cards. First-install setup appears inside this dedicated reading panel, never in the original context-pane section. It guides checked agent/model selection, companion, accent, font and text size, language, and chat interaction preferences. Confirmed documents restore their reading chat on subsequent visits, including after restarting Zotero. HTML elements and Zotero resource loading keep these controls usable in native reader windows. Close/reopen preserves drafts and running requests; switching PDF tabs selects the matching chat. The library item section remains available. In readers, the item section also keeps an **Open AbstractIn panel** launcher, so a missed toolbar event cannot hide every entry. Already-open PDFs receive a toolbar entry when the plugin starts; its visible AbstractIn label remains usable if the icon fails to load.
+### 书籍和论文使用不同的阅读流程
 
-Books initialize their actual table of contents from a bounded source excerpt without generating chapter summaries or scanning every chapter for page links. Failed automatic initialization is not repeated on subsequent visits. Completed discussions remain editable Zotero notes; verified source links preserve the original reading position. The old Contents & records, Return to reading and Resume here controls are temporarily removed while a new records entry point is designed. Unverified source page locations do not prevent a discussion note from saving; guessed links are omitted and source gaps are reported separately.
+书籍可以从原文初始化目录，并按章节或附录组织讨论。论文围绕阅读目标和主题展开，可以选择原文总结或直接提问。输入框提示会随材料类型变化。
 
-Current-page discussions receive text directly from the open reader at the page captured when you send the question, independently of the whole-document index. Page text is cached per loaded PDF; verified quotations can produce physical-page links even when global mapping is unavailable. Blank edge pages are restored only after comparing native reader pages with extracted text. Chapter navigation resolves locations on demand from a unique PDF bookmark, verified page label or mapped heading. It never assumes a fixed printed-page offset; the workspace UI currently has no dedicated entry button.
+阅读流程使用随插件打包的 `book-reading` 和 `scientific-paper-reading` 技能及其支持资源。也可以使用本地技能目录中的对应技能。
 
-AbstractIn uses a simple gray document with a conversation bubble as its app icon. Settings → Appearance → Reading companion offers a gray-brown marmoset, a black-and-white white wagtail, and a puffin with an orange beak. The marmoset gently sways its ringed tail; the wagtail bobs its long tail up and down; the puffin gently lifts and lowers its wing. Their bodies stay still, and reduced-motion preferences disable companion animation. The selected companion welcomes first-time readers, then appears at the left of the shortcut row immediately above the composer, followed by “Ask me a question?” and a compact question dropdown. Selecting a question fills the composer so it can be edited before sending. Custom instructions are also stored as editable quick prompts, with no automatic injection. Behaviour retains only send-key, automatic-scrolling, activity-display and quick-prompt visibility preferences; explanation detail follows the question instead of fixed length, level or tone settings. Book and paper prompt lists are edited independently in Settings → Chat. Material type, language, agent and PDF status appear below the composer. Changes apply to open panels and are saved for the next session. The Codex model menu reads the local CLI catalog through `codex app-server` and `model/list`, supports refresh and manual model IDs, and uses the same sign-in as `codex exec`. Model-specific reasoning choices follow the catalog. Catalog entries are not proof of account entitlement; a completed inference verifies access. All button SVGs are bundled with the startup script, so reader frames do not depend on separate resource reads to display their icons.
+### 围绕当前页面查找原文
 
-Drawing and LaTeX answer modes are removed: the agent chooses prose, mathematical notation and formal environments to suit the material and question, respecting explicit requests. Drawings are requested in the question itself. Rendering still uses KaTeX and sanitized SVG; these are formatting instructions and rendering code, not separate skills.
+插件在发送问题时记录当前 Zotero 阅读页面，并尝试读取该页的 PDF 文本。需要核对原文时，查找范围逐步扩大：
 
-The icon dropdown inside the composer’s bottom toolbar uses dedicated Lucide brain-circuit and file-search symbols and offers **Knowledge discussion** and **Source verification**. Knowledge discussion reuses saved notes, conversation and cached page text, skipping full-text extraction and disabling Codex command execution, apps and web search for ordinary follow-ups. An explicit current-page question reads only that page. When available context supports an answer without guessing, the assistant answers directly. Missing document-specific evidence triggers one automatic source-verification pass, and an explicit request to inspect the original source verifies it immediately. Numbered references include appendix labels such as Theorem A.78; mentioning a number alone does not force another lookup. Verification uses cached source text first and must report an unfound passage instead of guessing. An explicit prohibition on reading/searching the document prevents both new page reads and automatic verification for that turn. The selected mode persists; initial contents and explicit paper-summary actions always verify their sources. New chat preserves document-level contents, summaries and notes and starts a new backend session. Chats restores each discussion with its own available session. Replies and workspace recaps use bundled KaTeX, including multiline formulas and bare array environments. Copying selected reply text keeps formulas as TeX; the answer-copy action preserves Markdown and LaTeX. An undefined `\ThetaSpace` is displayed as its literal symbol name, without inferring its definition.
+**当前页 → 前后各四页 → 当前章节 → 整本文档。**
 
-The local workspace contains a PDF copy and text extracted by Zotero, with physical page boundaries when verified. Codex reads relevant portions as needed; the full text is not inserted into every prompt. Missing files and image-only PDFs produce explicit errors; OCR and QMD/HTML report export are not included. The demos below show the inherited AbstractIn interface.
+查找会优先匹配定理、定义等正文标题和附近证明，避免仅因为前面章节引用了某个编号，就把引用处当成原始陈述。后续问题可以沿用前一轮的原文引用线索。
 
-**Inherited interface**
+你可以使用两种讨论方式：
 
-- 💬 A chat **next to the PDF**, in Zotero's side pane.
-- ✏️ Answers with **LaTeX**, **drawings** and numbered **theorem boxes**.
-- 🔑 Uses **Claude Code, Codex or Antigravity** with your own login. No API keys.
-- ⏱️ Install in 2 minutes: [jump to Install](#install).
+| 方式 | 行为 |
+|---|---|
+| **Knowledge discussion** | 优先使用会话、已保存记录和已有上下文回答；缺少必要的原文证据时尝试自动查证。 |
+| **Source verification** | 针对原文陈述、证明或具体细节进行查证。 |
 
-<p align="center"><img src="docs/rule.svg" alt="" width="100%"></p>
+明确要求“去看原文”会触发查证；明确要求不读取或搜索文档，则会限制本轮原文访问。定位失败或文本无法提取时，插件会报告缺口，不应把猜测当作书中的结论。物理 PDF 页码和书上印刷页码分开处理，只有经过核对的位置才生成页面链接。
 
-## 1. Ask about the paper
+### 快捷问题、图片与公式
 
-> **Open the side pane → AbstractIn → ask.** Turn on *Drawing* and *LaTeX* for a diagram and real maths.
->
-> Real recording: Zotero on a Mac, *Attention Is All You Need*, a live answer from Claude. 27 seconds, with the wait sped up.
+- **Quick questions** 位于输入框右上角。点击选项会填入问题，你可以修改后再发送；解释文字放在悬停提示中。
+- 书籍和论文的快捷问题可以分别在设置中编辑。
+- 可以选中 PDF 段落发问，也可以附加当前 PDF 页面图片、上传图片或粘贴、拖入图片；图片能力取决于所选助手。
+- 回答支持 Markdown、KaTeX 数学公式、定理和定义等正式结果，以及经过清理的 SVG。直接在问题中说明需要公式、推导或图示即可。
+- 可以复制回答及公式的 TeX 内容，也可以停止正在生成的回答。
 
-<p align="center"><img src="docs/videos/abstractin-chat.gif" alt="In Zotero, open the side pane on Attention Is All You Need, turn on Drawing and LaTeX, ask how Q, K and V flow and why attention divides by the square root of d_k, and read Claude's answer with its diagram and lemmas" width="100%"></p>
+## 会话管理
 
-<p align="center"><a href="docs/videos/abstractin-chat.mp4">▶ Watch in full quality (MP4)</a></p>
+右上角的 **Chats** 统一提供会话浏览、管理、搜索和跳转。
 
-## 2. Make it yours
+- **按章节展开**：章节标题可折叠，会话分别显示醒目的 `Discussion-01` 编号和主题名称。
+- **自动命名**：Codex 根据会话中的问题概括主题；可以手动改名，手动名称会被保留。
+- **新建会话**：输入框下方的按钮在当前章节建立独立讨论。
+- **跳转到某一轮**：点击会话的 **Turns**，查看问题与回答预览并跳转到对应位置。
+- **搜索并跳转**：搜索当前文档或全部文档中的会话名称和消息，点击匹配结果定位。搜索在本地完成。
+- **删除和合并**：支持单个或批量删除、多选合并及操作确认；合并后的会话自动概括命名。
+- **删除一轮对话**：回答的更多操作菜单中有 **Delete this turn**，一次删除对应的问题和回答。
 
-Settings → Assistants supports custom ACP v1 agents and imported JSONL adapter configurations. Test skill compatibility before selecting a new reading agent. Original skills stay unchanged; verified adaptation instructions are cached separately. See [agent configuration and adapter contracts](docs/agent-adapters.md).
+删除或合并后，会话显示编号与会话内结果编号会重新整理。跨章节合并的讨论归入未分配分组，同章节合并保留章节归属。切换会话会保留未发送的草稿，各会话使用独立的助手线程；删除一轮后会重置线程，避免继续使用已删除内容作为上下文。
 
-> **Settings → AbstractIn.** Choose the reading companion, accent colour, button labels, spacing, font and text size. Accent colour controls send buttons, formal headings and rules, links and drawings in both the sidebar and reading panel. The interface uses plain surfaces with fixed corners; older background, glass, glow and pattern preferences are ignored. Answer length, level and tone remain in Behaviour.
+会话删除主要作用于历史索引和界面，本地原始记录可能保留用于恢复。独立保存的 Zotero 阅读笔记不会因删除一轮而一并删除。进行中的回答和会话切换会限制冲突操作。
 
-<p align="center"><img src="docs/palette.svg" alt="The eight accent colours: Zotero, Red, Clay, Rose, Violet, Teal, Forest and Graphite" width="560"></p>
+旧版本会话可通过 Chats 中的迁移入口导入，并在确认章节归属后整理。详细行为见 [章节讨论说明](docs/CHAPTER-DISCUSSIONS.md)。
 
-<p align="center"><sub>Eight accents. Red on black is the one in every video here.</sub></p>
+## 引用已有讨论
 
-## 3. Follow a proof
+输入框右上角的 **Quote** 提供三级选择：
 
-> **Turn on *LaTeX*.** Definitions, lemmas and theorems come back as numbered boxes, and every `\ref` is a link: click to jump, **Back** (⌥←) to return.
+**章节 → 会话 → 定理、定义、引理或其他结果。**
 
-<p align="center"><img src="docs/videos/abstractin-proof.gif" alt="In Zotero on the Adam paper, ask for the assumptions and regret bound of Theorem 4.1; the answer arrives as numbered lemmas with links, and clicking one jumps to it" width="100%"></p>
+选择后可以审阅和编辑引用片段，再插入当前问题；不会自动发送。
 
-<p align="center"><a href="docs/videos/abstractin-proof.mp4">▶ Watch in full quality (MP4)</a></p>
+会话中的结果使用单独的 **Chat** 前缀和编号样式，例如：
 
-## 4. Didn't click? Ask again, better
+- `Chat Theorem 1.1.1.1`
+- `Chat Definition 1.1.1.2`
+- `Chat Result 1.1.2.1`
 
-> **One button under every answer.** It comes back with the intuition first, then the steps, an example and the usual trap.
+四段编号依次表示 **章节、会话、对话轮次、结果序号**。不同结果类型共用最后一个计数；附录使用相应的附录标识。这些编号与原书的 `Theorem A.78` 等编号区分开，原文编号不被改写。
 
-<p align="center"><img src="docs/videos/abstractin-explain-better.gif" alt="In Zotero on the BERT paper, a dense one-sentence answer, then the Explain better button produces intuition, steps and an example" width="100%"></p>
+引用通过稳定的结果 ID 关联。删除或合并导致显示编号变化时，已有引用标签会随之更新。引用的助手结论仍属于讨论内容，不能替代经过核对的原文证据。
 
-<p align="center"><a href="docs/videos/abstractin-explain-better.mp4">▶ Watch in full quality (MP4)</a></p>
+## 阅读记录与多设备同步
 
-## 5. Ask about a figure
+阅读记录会保存为文档条目下的 **可编辑 Zotero 子笔记**。完整会话文本及章节、结果编号等元数据也通过专用会话笔记保存；长会话分段存储。
 
-> **📎 → *Current PDF page*.** The page you are looking at goes with the question, so figures and tables can be asked about. Upload, paste, drop or screenshot work too.
+启用 Zotero 数据同步后，另一台安装了 AbstractIn 的电脑可以从同步笔记恢复章节分组和完整讨论。新电脑仍需完成该文档的 Start Reading 初始化，PDF 也需要在本地可用。跨电脑继续讨论时会保留来源记录，避免直接覆盖另一台电脑的会话。
 
-<p align="center"><img src="docs/videos/abstractin-figure.gif" alt="In Zotero on the Vision Transformer paper, attach the current PDF page and ask what Figure 1 shows" width="100%"></p>
+同步范围需要区分：
 
-<p align="center"><a href="docs/videos/abstractin-figure.mp4">▶ Watch in full quality (MP4)</a></p>
+| 数据 | 保存与同步方式 |
+|---|---|
+| 阅读笔记、完整会话文字与公式、会话元数据 | Zotero 子笔记；随 Zotero 数据同步。 |
+| PDF 附件 | 由 Zotero 文件同步或本地附件可用性决定。 |
+| 插件设置、助手登录与线程 ID、提取文本缓存、图片附件 | 保留在本机，不随会话笔记同步。 |
 
-<p align="center"><img src="docs/rule.svg" alt="" width="100%"></p>
+图片问题在另一台电脑上可能需要重新提供图片。笔记写入失败时，插件保留本地会话并提示保存问题；回答菜单中的 **Save as note** 可手动保存完整回答。
 
-## Everything else, in one line each
+多设备同步有自动化测试覆盖，具体 Zotero 环境下的双机同步仍需实际验证。
 
-| | Feature | How |
-|:--:|---|---|
-| 🔴 | **Explain a passage** | Select text in the PDF → *Explain this* |
-| 🟠 | **Ask about a passage** | Select text → *Ask your assistant about this*, then add your question |
-| 💬 | **Chats** | Browse chapters and discussions, manage chats, select a turn, or search messages and jump to a match |
-| 🟣 | **Notes** | Save any answer or drawing as a Zotero note under the paper |
-| 🟢 | **Models** | Pick assistant, model and reasoning effort from the message box |
-| ⚫ | **Setup** | A visual wizard on first run |
+## 阅读伴侣与设置
 
-## Install
+可选择 **狨猴、白鹡鸰或海鹦** 作为阅读伴侣。
 
-1. **Install local Codex CLI** and sign in. Start Reading uses Codex; see the [Windows instructions](docs/WINDOWS-TESTING.md).
-2. **Download `abstractin.xpi`** from the [latest release](https://github.com/shen-zhang-42/abstractin/releases/latest).
-3. **In Zotero:** Tools → Plugins → ⚙ → *Install Plugin From File…* → pick the `.xpi`. Restart if asked.
-4. **Open a book or paper PDF.** Click the AbstractIn book icon in the reader toolbar to open its dedicated panel, then click **Start Reading**, confirm the attachment and material type, then initialize the book contents or choose a paper summary or immediate questions.
+当前狨猴使用提供的视频生成的透明循环动图，静止时显示该视频的第一帧。开始界面持续播放，讨论界面仅在回答生成期间播放，其余时候保持静止；系统的减少动态效果设置会关闭动画。
 
-The plugin update feed points at this AbstractIn repository. Releases include `abstractin.xpi` and `updates.json`, which Zotero uses for in-place updates. Previously installed AbstractIn builds with plugin ID `abstractin@shen-zhang-42.github.io` and this repository's update URL can upgrade to a higher released version, including from 0.2.41 to 0.2.42. Use Zotero's plugin manager to check for updates, or let Zotero check automatically when plugin auto-updates are enabled. A locally installed 0.2.42 build will not receive another 0.2.42 update; it can update when a higher version is released. Original Zusia installations use a different plugin ID and update feed, so install AbstractIn manually once to receive AbstractIn updates.
+设置中可以调整配色、字体、字号、间距、按钮文字、回答语言，以及发送快捷键、自动滚动、过程显示和快捷问题。回答语言可以跟随提问语言，也可以指定。
 
-## Sync across computers
+默认助手为 Codex。插件还保留 Claude Code、Antigravity 的内置适配器，并支持配置 ACP v1 或 AbstractIn JSONL 自定义助手。自定义助手必须通过兼容性检查才能用于阅读；原文访问、图片、模型和推理选项按实际能力开放。兼容性检查不等于保证所有任务都能成功。配置方式见 [助手适配说明](docs/agent-adapters.md)。
 
-Saved discussion notes, contents, summaries, the last recorded reading position and complete conversation text are Zotero child notes attached to the exact item/PDF identity. Zotero data sync carries them independently of PDF file downloads. Install AbstractIn on another computer, sync the same library and use Start Reading for that PDF: a fresh local workspace reconstructs chapter groups and complete discussion transcripts from sync notes. Each discussion keeps its own local agent session; returning to a chapter resumes that session when available. **Chats** groups chapters and discussions, with turn previews and a search field for the current document or all documents. Its **Migrate legacy discussions** button imports older current/archived chats without deleting originals or guessing chapter ownership. The new discussion button sits in the toolbar below the message input, beside Send, and creates another independent thread in the current chapter. See [Chapter discussions](docs/CHAPTER-DISCUSSIONS.md) for routing, source boundaries, migration and long-paper behavior.
+## 安装包与更新
 
-Long transcripts are stored in text chunks without truncation. Partial sync never restores an incomplete transcript. When another computer continues an imported chat it writes a separate branch, preserving the source computer's notes. Note-save failures preserve local conversation text and show a sync warning.
+每次正式发布均提供同名 **`abstractin.xpi`** 和 **`updates.json`**：
 
-Choose **Download files: As needed** in Zotero's file-sync settings to download only PDFs you open. All notes/metadata in the enabled library still data-sync; Zotero does not limit note sync to just the downloaded PDF. PDF availability depends on file syncing or the attachment's local availability. Recorded position does not represent completion or mastery.
+- [下载最新安装包](https://github.com/shen-zhang-42/abstractin/releases/latest/download/abstractin.xpi)
+- [查看版本说明](https://github.com/shen-zhang-42/abstractin/releases)
 
-Plugin settings, Codex session identifiers, screenshots/image files and extracted PDF caches remain local. The synced history contains message text, LaTeX and message metadata; an image-only question needs its image supplied again on another computer. The local `reading.json` activation/type setting is not synced. Syncing notes does not automatically activate Start Reading on a new computer.
+XPI 可以直接发送给其他人，通过 Zotero 的“从文件安装插件”安装。使用本仓库插件 ID 和更新地址的 AbstractIn 安装可在插件管理中检查更新，也可按 Zotero 自动更新设置升级。
 
-## Privacy
+当前版本为 **0.2.42**。原始 Zusia 使用不同的插件 ID；其用户需要先手动安装一次 AbstractIn，之后再通过本项目更新。
 
-- 🖥️ The assistants run **on your computer** with your own login. No server, no API keys.
-- 📄 Codex receives document metadata, annotations, the selected passage, the explicitly named reading skill, derived copies of saved reading notes, and any page image you attach. The reading workspace includes a local PDF copy and extracted text that Codex can inspect. Document content read by Codex is sent to the model through your signed-in account.
-- 📁 PDF/text copies, chat caches and images stay in `abstractin/` inside Zotero's data folder. Reading records and full chat text are saved as Zotero child notes and are uploaded through Zotero data sync when enabled. Screenshots, PDF/text caches, plugin settings and backend session identifiers stay local. Two-computer synchronization still needs actual Zotero verification.
+## 数据与隐私
 
-<p align="center"><img src="docs/rule.svg" alt="" width="100%"></p>
+AbstractIn 的本地工作区位于 Zotero 数据目录中的 `abstractin/`，包含会话缓存、文档副本、提取文本、图片和阅读状态。插件读取副本和缓存，原始 PDF 附件不被改写。
 
-<details>
-<summary><b>For developers: build, test, release, record the videos</b></summary>
+问题、所提供的文档上下文和图片，以及助手读取的原文内容，会通过所选助手发送到对应模型服务。使用本地 CLI 不意味着文档内容始终留在本机。Zotero 笔记在开启数据同步时也会上传到你的 Zotero 同步服务。
 
-## Build
+插件诊断日志位于 `<Zotero 数据目录>/abstractin/debug.log`，可能含有问题或上下文片段，分享前应检查内容。
+
+## 当前边界
+
+- 没有内置 OCR；扫描版或无法提取文本的 PDF 可能需要提供页面图片或选中文本。
+- 原文定位依赖可读取的页面、目录和提取文本；无法核对的位置不会生成猜测链接。
+- 本地助手需要单独安装、登录，并具备相应模型权限；插件模型列表不代表账号一定能调用全部模型。
+- 当前不提供 QMD/HTML 阅读报告导出。
+
+## 开发与验证
 
 ```sh
 npm ci
-npm run build        # writes abstractin.xpi
+npm run build        # 输出项目根目录的 abstractin.xpi
+npm test             # 自动化测试
+npm run source:path  # 查看本地源码目录的绝对路径
 ```
 
-## Test
+原生界面验证可按环境选择：
 
 ```sh
-npm test             # unit tests (jsdom): rendering, settings, wizard, backends, repo checks
-npm run shots        # screenshots of the UI in headless Firefox (optional)
-npm run test:zotero  # headless Zotero integration run (Linux, Flatpak)
-ZOTERO_BIN=/path/to/zotero bash test/integration/appearance.sh # native layout and icons
-ZOTERO_BIN=/path/to/zotero bash test/integration/restart.sh    # install built XPI and restart twice
-ABSTRACTIN_BACKGROUND=path/to/illustration.jpg npm run videos   # re-records the README videos (macOS)
+npm run shots        # 需要 Firefox，生成界面截图
+npm run test:zotero  # Linux Zotero 集成验证，需要对应环境
+ZOTERO_BIN=/path/to/zotero bash test/integration/appearance.sh
+ZOTERO_BIN=/path/to/zotero bash test/integration/restart.sh
 ```
 
-The videos are recorded in a real Zotero with its own demo profile and library, so your library is never used. The scenes move the real pointer: don't touch the Mac while they run. Needs `ffmpeg`, `cliclick`, the `claude` CLI, and Screen Recording and Accessibility permission for the terminal.
+自动化测试覆盖阅读流程、会话、引用、源文定位、设置、渲染和适配器等逻辑；不能替代真实 Zotero 的界面、动画、模型访问和双机同步检查。Windows 安装及诊断参考 [Windows 使用说明](docs/WINDOWS-TESTING.md)，其中历史版本的验证条目供排查旧问题使用，当前界面以本 README 为准。
 
-## Release
-
-After choosing to publish a release, keep `version` consistent in `package.json`, the root entries in `package-lock.json`, and `src/manifest.json`, then tag the tested commit:
+发布时保持 `package.json`、`package-lock.json` 和 `src/manifest.json` 的版本一致。仓库配置了标签触发的 Release 工作流，构建 XPI 和更新清单；实际手动发布时也必须同时上传两个文件：
 
 ```sh
-git tag v0.2.42
-git push origin v0.2.42
+npm run build
+node scripts/updates.mjs
 ```
 
-The tag is what releases. `.github/workflows/release.yml` refuses to run if the tag and the two versions disagree, then runs the tests, builds the `.xpi`, writes `updates.json` and attaches both to a GitHub release. Pushing to `main` never publishes anything. Zotero can offer an automatic update only after the release and its `updates.json` asset are publicly available, and the released version must be higher than the installed version. All packages use the single filename `abstractin.xpi`.
+正式发布的版本需要高于已安装版本，Zotero 才能提供更新。仅推送文档或代码到 `main` 不会使现有插件自动升级。
 
-New behaviour starts with a failing test; see [CONTRIBUTING.md](CONTRIBUTING.md).
+## 项目来源与许可
 
-</details>
+AbstractIn 基于 **[Zusia](https://github.com/firekern/zusia)** 开发，原作者为 **[Andrea Porcelli（firekern）](https://github.com/firekern)**。本项目在其基础上独立维护，发展了书籍与论文阅读流程、章节会话管理、原文查找、讨论引用、阅读记录同步和阅读伴侣等功能。
 
-## Credits
-
-Icons: [Phosphor Icons](https://phosphoricons.com) (MIT). Maths: [KaTeX](https://katex.org) (MIT) and Latin Modern Math (GUST Font License). The study buddies are original to this project; the illustrations were made for Zusia with Google Gemini. Papers in the videos: arXiv 1706.03762, 1512.03385, 1810.04805, 2010.11929, 2005.14165, 1412.6980. Details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-Original project: [Zusia](https://github.com/firekern/zusia) by [Andrea Porcelli (firekern)](https://github.com/firekern). AbstractIn builds on that work and preserves its MIT license and original copyright. See [LICENSE](LICENSE).
+本项目采用 **MIT 协议**，保留原作者版权声明和完整许可文本，见 [LICENSE](LICENSE)。第三方组件及许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，相关许可文件随安装包提供。
