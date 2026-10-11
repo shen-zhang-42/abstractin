@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { loadPlugin } from "./load-plugin.mjs";
 
 async function setup(type = "book") {
-	const env = loadPlugin({ prefs: { "extensions.abstractin.onboarded": true } });
+	const env = loadPlugin({ prefs: { "extensions.abstractin.onboarded": true, "extensions.abstractin.readingEvidenceMode": "source" } });
 	const { plugin: p, window, document } = env;
 	const dir = await mkdtemp(join(tmpdir(), "abstractin-workflow-"));
 	window.OS = { Path: { join }, File: { copy: copyFile, stat, exists: async path => { try { await access(path); return true; } catch { return false; } } } };
@@ -410,15 +410,15 @@ test("knowledge discussion skips full PDF extraction, supplies corrected notes i
  let calls = 0; p.runBackend = async (_, request) => { calls++; assert.equal(request.session.id, 'knowledge-thread'); return { text: 'Follow-up\n<abstractin-record>{"title":"Follow-up","summary":"More intuition","openQuestions":[]}</abstractin-record>' }; };
  result = await p.ask(ctx, 'Give an example', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined); assert.equal(calls, 1);
  p.updateReadingControls(view); const button = view.root.querySelector('.abstractin-reading-evidence-mode');
- assert.equal(button.dataset.mode, 'knowledge');
+ assert.equal(button.dataset.mode, 'balanced');
  assert.ok(button.closest('.abstractin-composer .abstractin-controls')); assert.equal(view.root.querySelector('.abstractin-header .abstractin-reading-evidence-mode'), null);
- assert.equal(button.querySelector('.abstractin-i').dataset.icon, 'readingKnowledge');
+ assert.equal(button.querySelector('.abstractin-i').dataset.icon, 'readingBalanced');
  button.click(); assert.equal(button.getAttribute('aria-expanded'), 'true');
  const choices = [...view.root.querySelectorAll('.abstractin-menu-item')];
  assert.ok(choices[0].closest('.abstractin-reading-mode-menu'));
  assert.equal(choices[0].querySelector('.abstractin-reading-menu-icon').closest('.abstractin-menu-item'), choices[0]);
  assert.equal(choices[0].querySelector('.abstractin-menu-text').children.length, 2);
- assert.equal(choices[0].getAttribute('aria-checked'), 'true'); choices[1].click();
+ assert.equal(choices[1].getAttribute('aria-checked'), 'true'); choices[2].click();
  assert.equal(p.getReadingEvidenceMode(), 'source'); assert.equal(button.dataset.mode, 'source');
  assert.equal(button.querySelector('.abstractin-i').dataset.icon, 'readingSource');
  assert.equal(button.getAttribute('aria-expanded'), 'false'); assert.equal(view.root.querySelector('.abstractin-menu'), null);
@@ -682,4 +682,95 @@ test("native PDF extraction unwraps cross-window promises, page methods and text
  const result = await p.readNativeReadingPage(ctx, 599);
  assert.equal(result.pageIndex, 599);
  assert.match(result.text, /Theorem A.78/); assert.match(result.text, /Actual proof text/);
+});
+
+test("answer modes default to Balanced and preserve legacy choices", () => {
+ const { plugin: p, prefs } = loadPlugin();
+ assert.equal(p.getReadingAnswerMode(), 'balanced');
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
+ assert.equal(p.getReadingAnswerMode(), 'balanced');
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'source';
+ assert.equal(p.getReadingAnswerMode(), 'source');
+});
+
+test("Context only blocks PDF and note exports even for explicit source requests", async () => {
+ const { plugin: p, prefs, ctx } = await setup();
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'context';
+ ctx.reading.knowledgeContext = 'Stale note content';
+ let reads = 0;
+ for (const name of ['exportContext', 'knowledgeReadingSource', 'exportReadingSource', 'prepareCurrentReadingPage', 'exportReadingRecords', 'exportReadingWorkspace']) {
+  p[name] = async () => { reads++; throw new Error('Context only must not retrieve material'); };
+ }
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  calls++;
+  assert.equal(request.ctx.reading.answerMode, 'context');
+  assert.equal(request.ctx.reading.currentPage, null);
+  assert.doesNotMatch(request.question, /Stale note content/);
+  assert.match(p.systemPrompt(request.ctx), /Do not access PDF files/);
+  return { text: '<abstractin-source-needed>Theorem statement missing</abstractin-source-needed>' };
+ };
+ const result = await p.ask(ctx, '请搜索当前页的 Theorem A.78 原文', { backend: 'codex', progress() {} });
+ assert.equal(result.error, undefined);
+ assert.equal(reads, 0); assert.equal(calls, 1);
+});
+
+test("Balanced retrieves a selected bare theorem before answering", async () => {
+ const { plugin: p, prefs, ctx } = await setup();
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'balanced';
+ p.prepareReadingSkills = async ctx => ctx.reading;
+ let reads = 0;
+ p.exportReadingSource = async () => { reads++; return ctx.reading.pdfSource; };
+ p.runBackend = async (_, request) => {
+  assert.equal(request.ctx.reading.answerMode, 'balanced');
+  assert.equal(request.ctx.reading.evidenceMode, 'source');
+  return { text: 'Verified explanation' };
+ };
+ const result = await p.ask(ctx, '为什么证明中有不可数的指标集？', { backend: 'codex', progress() {}, selection: { attachmentID: 7, text: 'Theorem A.78.' } });
+ assert.equal(result.error, undefined); assert.equal(reads, 1);
+ assert.equal(p.getReadingAnswerMode(), 'balanced');
+});
+
+for (const refusal of ["I cannot access the PDF. Please provide the proof.", "目前你提供的原文只有 Theorem A.78，没有定理陈述和证明。", "请贴出原文证明，我才能判断。"]) test("Balanced retries a plain PDF refusal once: " + refusal, async () => {
+ const { plugin: p, prefs, ctx, dir } = await setup();
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'balanced';
+ p.prepareReadingSkills = async ctx => ctx.reading;
+ let reads = 0, calls = 0;
+ p.exportReadingSource = async () => { reads++; return ctx.reading.pdfSource; };
+ p.runBackend = async (_, request) => {
+  calls++;
+  return { text: calls === 1 ? refusal : 'Inspected original argument' };
+ };
+ const result = await p.ask(ctx, 'Why that assumption?', { backend: 'codex', progress() {} });
+ assert.equal(result.error, undefined); assert.equal(reads, 1); assert.equal(calls, 2);
+ const history = await p.loadHistory(dir);
+ assert.equal(history.filter(m => m.role === 'assistant').length, 1);
+ assert.equal(history.at(-1).text, 'Inspected original argument');
+});
+
+test("switching Context only to Balanced resets a thread even with the same evidence state", async () => {
+ const { plugin: p, prefs, ctx } = await setup();
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'context';
+ p.runBackend = async () => ({ text: 'Supplied explanation', sessionId: 'context-thread' });
+ await p.ask(ctx, 'Explain this', { backend: 'codex', progress() {} });
+ prefs['extensions.abstractin.readingEvidenceMode'] = 'balanced';
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  calls++; assert.equal(request.session, null);
+  assert.equal(request.ctx.reading.answerMode, 'balanced');
+  assert.equal(request.history.at(-1).text, 'Supplied explanation');
+  return { text: 'General explanation' };
+ };
+ const result = await p.ask(ctx, 'Give an example', { backend: 'codex', progress() {} });
+ assert.equal(result.error, undefined); assert.equal(calls, 1);
+});
+
+test("Source only forbids outside facts even when document access is prohibited for one turn", async () => {
+ const { plugin: p, ctx } = await setup();
+ ctx.reading.answerMode = 'source'; ctx.reading.evidenceMode = 'source';
+ assert.match(p.readingPrompt(ctx), /Do not add external facts/);
+ ctx.reading.evidenceMode = 'knowledge'; ctx.reading.forbidSource = true;
+ assert.match(p.readingPrompt(ctx), /Do not supplement missing facts from your knowledge/);
+ assert.doesNotMatch(p.readingPrompt(ctx), /supplemented by your existing knowledge/);
+ assert.match(p.systemPrompt(ctx), /Do not add outside facts/);
 });

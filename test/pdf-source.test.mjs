@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { loadPlugin } from "./load-plugin.mjs";
 
 async function setup() {
-	const { plugin: p, window } = loadPlugin();
+	const { plugin: p, window } = loadPlugin({ prefs: { "extensions.abstractin.readingEvidenceMode": "source" } });
 	const root = await mkdtemp(join(tmpdir(), "abstractin-pdf-"));
 	const path = join(root, "original.pdf");
 	await writeFile(path, "%PDF-1.7 test source");

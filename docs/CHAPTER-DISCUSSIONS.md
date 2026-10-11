@@ -50,7 +50,7 @@ labels, and resets agent threads so deleted messages are not reused as context.
 Drafts remain intact. Deletion is blocked during a running answer or discussion
 change. Independently saved Zotero reading notes are retained.
 
-Knowledge discussion uses the current transcript, supplied passage or page and
+Balanced uses the current transcript, supplied passage or page and
 model knowledge. When this context establishes the answer without guessing,
 the assistant answers directly, including follow-ups about numbered theorems.
 When essential original evidence is missing, the assistant requests one automatic
@@ -152,3 +152,8 @@ Zotero view stats provide a fallback while the iframe is unavailable. Printed
 labels remain separate from zero-based physical indices.
 
 Chats is the single header entry for history, management, turn navigation and local search. Each discussion has a Turns button showing paired question/answer previews; selecting a turn opens and highlights its question. Search defaults to the current document, can include all documents, matches message text and discussion names, and jumps to the matching question or answer. Each row supports renaming without switching the active discussion. Switching preserves unfinished drafts and agent sessions; it does not insert a quotation or send a message. New documents keep the composer hidden and discussion navigation disabled until the Start Reading setup succeeds. Confirmed documents resume normally on later visits.
+
+Context only never retrieves PDF text or saved reading notes; it explains supplied
+passages, images and the current conversation. Source only limits factual claims to
+inspected original text. The selected answer mode stays unchanged during automatic
+lookup, and mode changes start a fresh assistant thread while preserving visible history.

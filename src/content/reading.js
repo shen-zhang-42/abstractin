@@ -5,8 +5,32 @@
 Object.assign(AbstractIn, {
 	_readingStates: new Map(),
 
+	READING_ANSWER_MODES: {
+		context: { label: "Context only", icon: "readingContext", description: "Explain supplied content only. Never read or search the PDF." },
+		balanced: { label: "Balanced", icon: "readingBalanced", description: "Answer directly when context is sufficient; check the PDF when evidence is needed." },
+		source: { label: "Source only", icon: "readingSource", description: "Base every document claim on inspected original text, without outside facts." },
+	},
+
+	getReadingAnswerMode() {
+		let value = this.getPref("readingEvidenceMode");
+		return Object.hasOwn(this.READING_ANSWER_MODES, value) ? value : "balanced";
+	},
+
 	getReadingEvidenceMode() {
-		return this.getPref("readingEvidenceMode") === "knowledge" ? "knowledge" : "source";
+		return this.getReadingAnswerMode() === "source" ? "source" : "knowledge";
+	},
+
+	needsReadingSource(question, selection) {
+		let text = selection?.text || "";
+		let specific = this.readingSourceReferences(text).length > 0 ||
+			/(?:这本书|书中|原文|这个定理|这个证明|这一证明)|\b(?:this theorem|this proof|in the book)\b/i.test(question);
+		if (!specific) return false;
+		return text.trim().length < 180 || (/(?:证明|proof)/i.test(question) && !/(?:证明|proof)/i.test(text));
+	},
+
+	missingReadingEvidence(answer) {
+		return /<abstractin-source-needed>[\s\S]*?<\/abstractin-source-needed>/.test(answer || "") ||
+			/(?:请|需要)[^。\n]{0,35}(?:粘贴|贴出|提供)[^。\n]{0,45}(?:原文|陈述|证明|段落)|(?:未提供|没有提供|缺少|无法访问|不能访问)[^。\n]{0,35}(?:原文|定理陈述|证明|PDF)|(?:原文|摘录|上下文)[^。\n]{0,60}(?:只有|仅有|不包含|没有)[^。\n]{0,50}(?:编号|陈述|证明|定理内容)|(?:cannot|can’t|can\'t|unable to)\s+(?:access|read|search)[^.!?\n]{0,40}(?:PDF|document|source)|(?:please|need you to)\s+(?:paste|provide|share)[^.!?\n]{0,80}(?:passage|statement|proof|original text)/i.test(answer || "");
 	},
 
 	requestsKnowledgeDiscussion(question) {
@@ -445,13 +469,13 @@ Object.assign(AbstractIn, {
 		let reading = view.ctx.reading;
 		let evidence = view.root.querySelector(".abstractin-reading-evidence-mode");
 		if (evidence) {
-			let mode = this.getReadingEvidenceMode();
+			let mode = this.getReadingAnswerMode();
 			evidence.hidden = !reading;
 			evidence.dataset.mode = mode;
-			let label = mode === "knowledge" ? "Knowledge discussion" : "Source verification";
+			let label = this.READING_ANSWER_MODES[mode].label;
 			evidence.title = label + " — change reading discussion mode";
 			evidence.setAttribute("aria-label", evidence.title);
-			let icon = mode === "knowledge" ? "readingKnowledge" : "readingSource";
+			let icon = this.READING_ANSWER_MODES[mode].icon;
 			let current = evidence.querySelector(".abstractin-i:not(.abstractin-chevron)");
 			if (current?.dataset.icon !== icon) current?.replaceWith(this.svgIcon(view.doc, icon));
 		}
@@ -491,9 +515,10 @@ Object.assign(AbstractIn, {
 		let reading = ctx.reading;
 		let introduction = "Reader-confirmed title and reading goal (context, not source evidence): " + JSON.stringify({ title: reading.title || "", goal: reading.goal || "" }) + ". ";
 		if (reading.evidenceMode === "knowledge" && (!reading.action || reading.action === "discuss")) {
-			return "AbstractIn Knowledge discussion. " + introduction + this.languageInstruction() +
-				" Answer from the supplied current page/selection, saved notes and previous conversation, supplemented by your existing knowledge. " +
-				"Use the supplied context first. Original-source retrieval is handled by the plugin; no file tools are needed in this context pass. Knowledge discussion is a preference for answering from available context, not a user prohibition on source verification. " +
+			let suppliedOnly = reading.answerMode === "context" || reading.answerMode === "source";
+			return (suppliedOnly ? "AbstractIn " + this.READING_ANSWER_MODES[reading.answerMode].label + ". " : "AbstractIn Balanced (Knowledge discussion context pass). ") + introduction + this.languageInstruction() +
+				(suppliedOnly ? " Explain only the user-supplied passage/image and this conversation. Do not supplement missing facts from your knowledge, cached PDF pages, annotations or saved notes. Previous assistant claims are unverified context. If required content is absent, ask the user to paste it. Never request automatic source retrieval. " : " Answer from the supplied current page/selection, saved notes and previous conversation, supplemented by your existing knowledge. ") +
+				(suppliedOnly ? "Only supplied original passages or images can support document claims. No PDF retrieval is permitted for this turn. " : "Use the supplied context first. Original-source retrieval is handled by the plugin; no file tools are needed in this context pass. Knowledge discussion is a preference for answering from available context, not a user prohibition on source verification. ") +
 				(reading.forbidSource ?
 					"The user explicitly prohibited document access for this turn. If document-specific evidence is missing, explain that limitation and ask for the passage; do not guess or request tools. " :
 					"If the supplied context already establishes the answer without guessing, answer directly without requesting source retrieval. If answering requires missing document-specific evidence (such as a theorem statement, its proof or an author-specific claim), do not give speculative alternatives or refuse to search. Instead output ONLY <abstractin-source-needed>brief description of the missing evidence</abstractin-source-needed>. The plugin will verify the original source automatically before answering. Never guess a numbered theorem or claim it follows from general knowledge. ") +
@@ -501,7 +526,7 @@ Object.assign(AbstractIn, {
 				"Label independent explanations and alternative derivations naturally. Do not claim that generic knowledge was verified in this document. " +
 				"Document identity: " + JSON.stringify({ itemKey: ctx.paperItem.key, attachmentKey: ctx.attachmentItem.key }) + ". " +
 				"Supplied passage: " + JSON.stringify(selection || null) + ". Current page: " + JSON.stringify(reading.currentPage || null) + ". " +
-				"Current editable Zotero notes take precedence over older chat: " + JSON.stringify(reading.knowledgeContext || "No saved notes.") + ". " +
+				"Current editable Zotero notes take precedence over older chat: " + JSON.stringify(suppliedOnly ? "" : reading.knowledgeContext || "No saved notes.") + ". " +
 				"Answer, then append exactly one <abstractin-record>JSON</abstractin-record> block with title, summary (concise discussed conclusions), " +
 				"openQuestions (array), topicKey (stable lowercase hyphenated identifier), and scope {level: book|paper|chapter|section, id: verified contents ID or empty, title: scope title or empty}. " +
 				"For follow-ups merge existing valid conclusions on the same topic, noting corrections. Do not infer mastery. " +
@@ -521,7 +546,7 @@ Object.assign(AbstractIn, {
 			selectedText: selection.text, printedPageLabel: selection.pageLabel || null,
 			pdfPageIndex: selection.position?.pageIndex ?? null,
 		} : null;
-		return introduction + "AbstractIn reading session. Read and follow the original skill at " + JSON.stringify(reading.skillPath) +
+		return introduction + (reading.answerMode === "source" ? "Source only policy: base all factual claims on inspected original-source text or supplied original passages. Do not add external facts or invent what the book says. Explanation and deduction must be traceable to that evidence. If no supporting passage is found, say it was not found within the searched scope; do not claim the whole book omits it. This policy overrides conflicting skill or earlier conversation instructions. " : "Balanced policy: use inspected text for document-specific claims; general knowledge and supplementary reasoning are allowed when clearly distinguished from the author’s text. If evidence is missing, inspect the available original source before asking the user to paste it. ") + "AbstractIn reading session. Read and follow the original skill at " + JSON.stringify(reading.skillPath) +
 			". Resolve its supporting resources relative to that skill directory; preserve the skill and its files. " +
 			"Material type: " + reading.type + ". " + this.languageInstruction() + " " +
 			(reading.type === "paper" ? (reading.action === "summary" ? "Use initial read mode; the user approved this paper summary. " : "Use discuss mode; use the saved summary when available. ") +
@@ -536,7 +561,7 @@ Object.assign(AbstractIn, {
 			"PDF source status: " + JSON.stringify(reading.pdfSource || { status: "not checked" }) + ". " +
 			"When PDF source status is ready, source.pdf is the exact attachment and source-text.md contains its extracted text in this working directory. " +
 			"Read the requested portions of source-text.md using local file tools; you do not need a Zotero browser or reader tool to access it. " +
-			(reading.sourceLookup ? "This turn automatically verifies missing evidence from Knowledge discussion. Search the exact requested theorem/section/claim, read only its statement and relevant nearby definitions or proof, and answer from that evidence. Use cached source-text.md first; do not scan the whole book or perform general initialization. If the passage cannot be found, say so and ask for clarification rather than guessing. " : "") +
+			(reading.sourceLookup ? "This turn automatically verifies missing evidence in Balanced mode. Search the exact requested theorem/section/claim, read only its statement and relevant nearby definitions or proof, and answer from that evidence. Use cached source-text.md first; do not scan the whole book or perform general initialization. If the passage cannot be found, say so and ask for clarification rather than guessing. " : "") +
 			"For a book overview, inspect the actual contents and chapter openings; for a chapter or proof question, locate the requested section and its dependencies. " +
 			"Start from the selected passage or attached page when supplied. Expand only to answer the user's request, not by reading the whole book by default. " +
 			"Do not claim to have read content you have not inspected, or to have verified a whole-book synthesis from metadata or highlights alone. " +
@@ -689,7 +714,8 @@ Object.assign(AbstractIn, {
 		wrapper.appendChild(this.el(doc, "h1", null, "AbstractIn — " + record.title));
 		let add = text => wrapper.appendChild(this.el(doc, "p", null, text));
 		add("Material: " + ctx.reading.type + " · " + new Date().toISOString());
-		if (ctx.reading.evidenceMode === "knowledge") add("Discussion mode: Knowledge discussion — supplementary reasoning; original PDF not searched for this answer.");
+		add("Answer mode: " + (this.READING_ANSWER_MODES[ctx.reading.answerMode]?.label || "Balanced"));
+		if (ctx.reading.evidenceMode === "knowledge") add("Evidence: supplied context; original PDF not searched for this answer.");
 		add("Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key);
 		add("Scope: " + scope.level + "; id: " + scope.id);
 		if (ctx.discussion) add("Discussion: " + ctx.discussion.id);

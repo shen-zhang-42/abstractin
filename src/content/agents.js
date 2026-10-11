@@ -41,7 +41,7 @@
    if (!this.agentRegistry()[id]) throw new Error("Unknown agent.");
    if (id !== "codex" && !this.getAgentValidation(id)?.discussion) throw new Error("Test this agent before enabling it for reading.");
    this.setPref("readingAgent", id);
-   if (!this.agentCanReadSources(id)) this.setPref("readingEvidenceMode", "knowledge");
+   if (!this.agentCanReadSources(id)) this.setPref("readingEvidenceMode", "context");
   },
   agentCanReadSources(id = this.readingAgent()) { return id === "codex" || this.getAgentValidation(id)?.source === true; },
   validateAgentConfig(input) {
@@ -143,7 +143,7 @@
     this.clearAgentValidation(id);
     throw new Error("Reading skills changed. Test and adapt this agent again.");
    }
-   if (mode !== "knowledge" && !result.source) throw new Error("This agent passed discussion tests but cannot read original sources. Choose Knowledge discussion or a source-capable agent.");
+   if (mode !== "knowledge" && !result.source) throw new Error("This agent passed discussion tests but cannot read original sources. Choose Context only or a source-capable agent.");
   },
   agentMappingText(result) {
    return "AbstractIn agent adaptation v1. Original skills are authoritative and unchanged. " +
@@ -481,7 +481,7 @@ Object.assign(AbstractIn, {
     test.addEventListener("click", async () => {
      test.disabled = true; select.disabled = true;
      try { const result = await this.testAndAdaptAgent(id, message => { status.textContent = message; });
-      status.textContent = result.source ? "Passed discussion and source checks. Ready to enable." : "Passed discussion checks. Source access is unavailable; use Knowledge discussion.";
+      status.textContent = result.source ? "Passed discussion and source checks. Ready to enable." : "Passed discussion checks. Source access is unavailable; use Context only.";
      } catch (e) { status.textContent = "Check failed: " + (e.message || e); }
      finally { redraw(); }
     });

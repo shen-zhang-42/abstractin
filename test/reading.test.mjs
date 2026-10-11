@@ -74,7 +74,7 @@ test("saved reading notes use the correct library, parent and verifiable PDF loc
 });
 
 for (const fallback of [false, true]) test("selected-passage flow saves exactly one concise record" + (fallback ? " after model fallback" : ""), async () => {
-	const { plugin: p } = loadPlugin();
+	const { plugin: p } = loadPlugin({ prefs: { "extensions.abstractin.readingEvidenceMode": "source" } });
 	let request, record, runs = 0, saves = 0;
 	const history = [];
 	p.exportContext = async () => ({ metadata: "# Book", annotations: "" });
@@ -142,7 +142,7 @@ for (const type of ["book", "paper"]) {
 	test(type + ": real skill files, mocked CLI transport, rendered answer and Zotero child note form one reading loop", async () => {
 		const skillRoot = fileURLToPath(new URL("../skills/", import.meta.url));
 		const { plugin: p, window, document } = loadPlugin({ prefs: {
-			"extensions.abstractin.onboarded": true, "extensions.abstractin.readingSkillsDir": skillRoot,
+			"extensions.abstractin.onboarded": true, "extensions.abstractin.readingSkillsDir": skillRoot, "extensions.abstractin.readingEvidenceMode": "source",
 			"extensions.abstractin.language": "English",
 		} });
 		filesystem(window);

@@ -909,7 +909,7 @@ test("reading mode menu wraps check, symbol and text in an inner layout and swit
  assert.equal(root.querySelector(".abstractin-header .abstractin-reading-evidence-mode"), null);
  root.querySelector(".abstractin-reading-evidence-mode").click();
  const rows = [...root.querySelectorAll(".abstractin-reading-mode-menu .abstractin-menu-item")];
- assert.equal(rows.length, 2);
+ assert.equal(rows.length, 3);
  for (const row of rows) {
   assert.equal(row.children.length, 1);
   const content = row.firstElementChild;
@@ -918,8 +918,8 @@ test("reading mode menu wraps check, symbol and text in an inner layout and swit
   assert.equal(content.querySelector(".abstractin-menu-text").children.length, 2);
  }
  rows[0].click();
- assert.equal(prefs[PREFIX + "readingEvidenceMode"], "knowledge");
- assert.equal(root.querySelector(".abstractin-reading-evidence-mode .abstractin-i").dataset.icon, "readingKnowledge");
+ assert.equal(prefs[PREFIX + "readingEvidenceMode"], "context");
+ assert.equal(root.querySelector(".abstractin-reading-evidence-mode .abstractin-i").dataset.icon, "readingContext");
  assert.equal(root.querySelector(".abstractin-menu"), null);
 });
 
