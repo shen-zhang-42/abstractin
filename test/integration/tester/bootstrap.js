@@ -383,6 +383,9 @@ async function run() {
 			links.length === 1 && /abstractin\.css\?v=/.test(links[0].href), links.map(l => l.href));
 		let win = await waitFor(() => Zotero.getMainWindow() && Zotero.getMainWindow().ZoteroPane && Zotero.getMainWindow(), 30000, "main window");
 		await testSidebar(win, CS);
+		const composerScope = { Zotero, Cc, Ci, check, waitFor };
+		Services.scriptloader.loadSubScript("file://" + repo + "/test/integration/tester/composer.js", composerScope);
+		await composerScope.testComposer(win, CS);
 		await testPrefs(CS);
 		await testReaderWidth(win, CS);
 		if (Zotero.Prefs.get("extensions.abstractin-tester.live", true)) {

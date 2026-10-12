@@ -3098,3 +3098,15 @@
 .abstractin-history-chapter-body[hidden] { display: none !important; }
 .abstractin-root .abstractin-history-chapter-head { display: block; }
 .abstractin-history-chapter-label { display: flex; gap: 8px; align-items: center; }
+
+/* The HTML iframe gives CodeMirror a regular Gecko editing document. */
+.abstractin-composer-frame {
+	display: block;
+	width: 100%;
+	min-height: 40px;
+	max-height: 180px;
+	border: 0;
+	background: transparent;
+}
+.abstractin-composer-frame[hidden],
+.abstractin-input[hidden] { display: none !important; }

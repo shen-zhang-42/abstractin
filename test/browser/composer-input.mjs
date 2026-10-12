@@ -8,7 +8,11 @@ try {
  const errors = []; page.on('pageerror', e => errors.push(e.message));
  await page.goto(new URL('../harness.html?scenario=empty&width=500', import.meta.url).href);
  await page.evaluate(() => {
-  window.input=document.querySelector('textarea.abstractin-input');
+  const original=document.querySelector('textarea.abstractin-input');
+  // Exercise the native fallback directly, alongside the CodeMirror suite.
+  window.input=document.createElement('textarea');input.className='abstractin-input';
+  original.before(input);original.closest('.abstractin-root').disposeUI?.();original.remove();
+  AbstractIn.installNativeMathComposer(input);
   const root=input.closest('.abstractin-root'); root.dataset.readingIntro='false'; root.dataset.readingReady='true'; root.querySelector('.abstractin-composer').hidden=false;
   // Exercise the same attribute-based transition as the host, not an editor flag.
   input.setAttribute('disabled',''); input.removeAttribute('disabled');

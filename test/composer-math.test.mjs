@@ -10,7 +10,7 @@ function composer(text = "", disabled = false) {
 	env.document.body.append(input);
 	const nativeFocus = input.focus, nativeSelection = input.setSelectionRange;
 	const dispose = env.plugin.installMathComposer(input);
-	return { ...env, input, preview: input.nextSibling, nativeFocus, nativeSelection, dispose };
+	return { ...env, input, preview: input.parentElement.querySelector(".abstractin-math-preview"), nativeFocus, nativeSelection, dispose };
 }
 const key = (env, key, options = {}) => {
 	const event = new env.window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options });
@@ -171,4 +171,24 @@ test("invalid math stays in editable source and dispose removes preview and hook
 	assert.equal(env.preview.isConnected, false);
 	assert.equal(env.input.value, original);
 	assert.equal(env.input.hidden, false);
+});
+
+
+test("CodeMirror initialization failure retains the native draft, selection and editing methods", () => {
+	const env = composer("A draft with $x$.");
+	env.input.focus(); env.input.setSelectionRange(0, env.input.value.length, "backward");
+	const frame = env.document.querySelector("iframe");
+	frame.contentWindow.AbstractInComposer = { create() { throw new Error("editor initialization failed"); } };
+	frame.dispatchEvent(new env.window.Event("load"));
+	assert.equal(env.input.hidden, false);
+	assert.equal(env.input.focus, env.nativeFocus);
+	assert.equal(env.input.setSelectionRange, env.nativeSelection);
+	assert.equal(env.input.value, "A draft with $x$.");
+	assert.equal(env.input.selectionStart, 0);
+	assert.equal(env.input.selectionEnd, env.input.value.length);
+	assert.equal(env.input.selectionDirection, "backward");
+	assert.equal(env.input._composerEditor, undefined);
+	assert.equal(env.document.querySelectorAll(".abstractin-math-preview").length, 1);
+	assert.equal(key(env, "Backspace").defaultPrevented, false);
+	env.dispose();
 });

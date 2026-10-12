@@ -2223,6 +2223,7 @@ AbstractIn = {
 
 	autoGrow(input) {
 		input._refreshMathPreview?.();
+		if (input._composerEditor) return;
 		input.style.height = "auto";
 		input.style.height = Math.min(input.scrollHeight, 180) + "px";
 	},

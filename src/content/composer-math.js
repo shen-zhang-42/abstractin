@@ -1,4 +1,4 @@
-/* Native textarea editing with a separate, non-editable KaTeX preview. */
+/* CodeMirror in an HTML document, with native textarea editing as fallback. */
 Object.assign(AbstractIn, {
 	composerMathTokens(text) {
 		const tokens = [];
@@ -27,6 +27,121 @@ Object.assign(AbstractIn, {
 	},
 
 	installMathComposer(input) {
+		const doc = input.ownerDocument, win = doc.defaultView;
+		let disposeNative = this.installNativeMathComposer(input);
+		const frame = this.el(doc, "iframe", "abstractin-composer-frame");
+		frame.setAttribute("title", "Message editor");
+		// XUL chrome documents may not create a docshell for display:none
+		// iframes. Keep it laid out offscreen until the HTML editor is ready.
+		frame.style.cssText = "position:absolute;left:-10000px;visibility:hidden;height:40px";
+
+		const nativeFocus = input.focus, nativeSelect = input.setSelectionRange;
+		const focusDescriptor = Object.getOwnPropertyDescriptor(input, "focus");
+		const selectDescriptor = Object.getOwnPropertyDescriptor(input, "setSelectionRange");
+		let editor = null, disposed = false, failed = false, updating = false;
+		const sync = () => {
+			if (!editor || updating) return;
+			editor.sync(input.value, input.disabled, input.placeholder);
+			frame.tabIndex = input.disabled ? -1 : 0;
+			const computed = win.getComputedStyle(input);
+			const style = frame.contentDocument.documentElement.style;
+			for (const [target, source] of [["--editor-text", "--abstractin-text"], ["--editor-faint", "--abstractin-faint"], ["--editor-hover", "--abstractin-hover"]])
+				style.setProperty(target, computed.getPropertyValue(source));
+			frame.contentDocument.body.style.font = computed.font;
+		};
+		const restore = () => {
+			input.hidden = false;
+			if (focusDescriptor) Object.defineProperty(input, "focus", focusDescriptor); else delete input.focus;
+			if (selectDescriptor) Object.defineProperty(input, "setSelectionRange", selectDescriptor); else delete input.setSelectionRange;
+			delete input._composerEditor;
+			frame.hidden = true;
+		};
+		const fail = error => {
+			if (disposed || failed) return;
+			failed = true;
+			const focused = doc.activeElement === frame;
+			editor?.destroy(); editor = null;
+			disposeNative?.();
+			restore();
+			disposeNative = this.installNativeMathComposer(input);
+			if (focused && !input.disabled) nativeFocus.call(input);
+			Zotero.debug("AbstractIn CodeMirror fallback: " + error);
+		};
+		const forward = (type, original, property) => {
+			if (input.disabled) return true;
+			const event = type === "keydown"
+				? new win.KeyboardEvent(type, { key: original.key, code: original.code, ctrlKey: original.ctrlKey, metaKey: original.metaKey, altKey: original.altKey, shiftKey: original.shiftKey, bubbles: true, cancelable: true })
+				: new win.Event(type, { bubbles: true, cancelable: true });
+			if (property) Object.defineProperty(event, property, { value: original[property] });
+			input.dispatchEvent(event);
+			return event.defaultPrevented;
+		};
+		const loaded = () => {
+			if (disposed || failed || editor) return;
+			try {
+				const factory = frame.contentWindow.AbstractInComposer;
+				if (!factory) throw new Error("Editor bundle did not load");
+				const focused = doc.activeElement === input;
+				const start = input.selectionStart, end = input.selectionEnd, direction = input.selectionDirection;
+				editor = factory.create({
+					text: input.value, disabled: input.disabled, placeholder: input.placeholder,
+					tokens: text => this.composerMathTokens(text),
+					renderMath: (target, tex, display) => this.texToMathML(target, tex, display),
+					onChange: (text, anchor, head, changed) => {
+						updating = true;
+						try {
+							if (changed) input.value = text;
+							nativeSelect.call(input, Math.min(anchor, head), Math.max(anchor, head), anchor > head ? "backward" : "forward");
+							if (changed) input.dispatchEvent(new win.Event("input", { bubbles: true }));
+						} finally { updating = false; }
+					},
+					onKey: event => (this.isSendKey(event) || event.key === "Escape" || (event.key === "ArrowUp" && !input.value) || event.altKey) ? forward("keydown", event) : false,
+					onPaste: event => event.clipboardData?.files.length ? forward("paste", event, "clipboardData") : false,
+					onDrop: event => event.dataTransfer?.files.length ? forward("drop", event, "dataTransfer") : false,
+					onHeight: height => { frame.style.height = height + "px"; },
+					onError: error => win.setTimeout(() => fail(error), 0),
+				});
+				editor.select(direction === "backward" ? end : start, direction === "backward" ? start : end);
+				disposeNative(); disposeNative = null;
+				input._refreshMathPreview = sync;
+				input._composerEditor = editor;
+				input.focus = () => { if (!input.disabled) { sync(); editor.focus(); } };
+				input.setSelectionRange = (start, end = start, direction = "none") => {
+					nativeSelect.call(input, start, end, direction);
+					sync();
+					editor.select(direction === "backward" ? input.selectionEnd : input.selectionStart, direction === "backward" ? input.selectionStart : input.selectionEnd);
+				};
+				input.hidden = true;
+				frame.style.removeProperty("position");
+				frame.style.removeProperty("left");
+				frame.style.removeProperty("visibility");
+				frame.hidden = false;
+				sync(); editor.measure();
+				if (focused) editor.focus();
+			} catch (error) { fail(error); }
+		};
+		frame.addEventListener("load", loaded, true);
+		frame.addEventListener("error", fail);
+		const observer = new win.MutationObserver(() => { try { sync(); } catch (error) { fail(error); } });
+		observer.observe(input, { attributes: true, attributeFilter: ["disabled", "placeholder"] });
+		frame.src = (this.resourceURI || this.rootURI || "") + "content/editor/composer.html";
+		input.after(frame);
+		// Chrome documents can load a local frame synchronously during insertion.
+		if (frame.contentWindow?.AbstractInComposer) loaded();
+		return () => {
+			disposed = true;
+			observer.disconnect();
+			frame.removeEventListener("load", loaded, true);
+			frame.removeEventListener("error", fail);
+			editor?.destroy();
+			disposeNative?.();
+			restore();
+			delete input._refreshMathPreview;
+			frame.remove();
+		};
+	},
+
+	installNativeMathComposer(input) {
 		// Keep Gecko's native textarea as the editing host, including in Zotero's
 		// chrome documents. Rendering must never replace its text or selection.
 		const doc = input.ownerDocument;

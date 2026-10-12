@@ -80,7 +80,7 @@ Vocabulary tutoring respects all three answer modes: Balanced can use language k
 - **Quick questions** appears at the top right of the composer. Selecting an option fills in a question that you can edit before sending; explanations appear on hover.
 - Book and paper quick questions can be edited separately in settings.
 - Ask about selected PDF passages, attach an image of the current PDF page, upload an image, or paste or drag one into the composer. Image support depends on the selected assistant.
-- The native textarea supports inline `$…$` and display/multiline `$$…$$` formulas, with a separate preview below using the bundled KaTeX. Clicking a preview places the caret immediately after its closing delimiter. Moving the caret into a formula or immediately after its closing delimiter marks it as active; the source stays editable and the preview remains visible. Enter inside `$$…$$` inserts a line; sending preserves the original LaTeX.
+- The composer uses a locally bundled CodeMirror 6 editor for inline `$…$` and display/multiline `$$…$$` formulas, rendered with the existing KaTeX. Clicking a formula or moving the caret into it or immediately after its closing delimiter reveals editable LaTeX source; moving away renders the formula again. Enter inside `$$…$$` inserts a line; sending preserves the original LaTeX. CodeMirror handles selections, whole-sentence deletion, undo and IME input. Loading or runtime failure restores the native textarea with a separate formula preview.
 - Answers support Markdown, KaTeX mathematics, formal results such as theorems and definitions, and sanitized SVG. Ask for formulas, derivations, or diagrams directly in your question.
 - Copy answers and formula TeX, or stop an answer while it is being generated.
 
@@ -159,7 +159,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.54**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.55**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 
@@ -190,6 +190,7 @@ Choose native interface checks appropriate to your environment:
 ```sh
 npm run shots        # Requires Firefox; generates interface screenshots
 npm run test:zotero  # Linux Zotero integration checks; requires a suitable environment
+ZOTERO_BIN=/path/to/zotero bash test/integration/composer.sh  # Input and formulas in an isolated empty library
 ZOTERO_BIN=/path/to/zotero bash test/integration/appearance.sh
 ZOTERO_BIN=/path/to/zotero bash test/integration/restart.sh
 ```

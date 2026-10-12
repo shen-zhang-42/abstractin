@@ -80,7 +80,7 @@ Context only 即使问题要求查原文也不会访问 PDF，需要查证时请
 - **Quick questions** 位于输入框右上角。点击选项会填入问题，你可以修改后再发送；解释文字放在悬停提示中。
 - 书籍和论文的快捷问题可以分别在设置中编辑。
 - 可以选中 PDF 段落发问，也可以附加当前 PDF 页面图片、上传图片或粘贴、拖入图片；图片能力取决于所选助手。
-- 输入使用原生文本框，支持 `$…$` 行内公式和 `$$…$$` 独立行、多行公式，下方通过已有 KaTeX 显示公式预览。点击预览会将光标定位到对应公式的结束标记后；光标进入公式或移到结束标记后会自动标记正在编辑的公式，源码始终可编辑，预览不会消失。在 `$$…$$` 内按 Enter 换行，发送时保留原始 LaTeX。
+- 输入使用本地打包的 CodeMirror 6 编辑器，支持 `$…$` 行内公式和 `$$…$$` 独立行、多行公式，复用已有 KaTeX 渲染。点击公式、光标进入公式或移到结束标记后会显示可编辑的 LaTeX 源码，移开后恢复公式。在 `$$…$$` 内按 Enter 换行，发送时保留原始 LaTeX。编辑器负责选区、整句删除、撤销和中文输入法；加载或运行失败时自动恢复原生文本框及独立公式预览。
 - 回答支持 Markdown、KaTeX 数学公式、定理和定义等正式结果，以及经过清理的 SVG。直接在问题中说明需要公式、推导或图示即可。
 - 可以复制回答及公式的 TeX 内容，也可以停止正在生成的回答。
 
@@ -159,7 +159,7 @@ Context only 即使问题要求查原文也不会访问 PDF，需要查证时请
 
 XPI 可以直接发送给其他人，通过 Zotero 的“从文件安装插件”安装。使用本仓库插件 ID 和更新地址的 AbstractIn 安装可在插件管理中检查更新，也可按 Zotero 自动更新设置升级。
 
-当前版本为 **0.2.54**。原始 Zusia 使用不同的插件 ID；其用户需要先手动安装一次 AbstractIn，之后再通过本项目更新。
+当前版本为 **0.2.55**。原始 Zusia 使用不同的插件 ID；其用户需要先手动安装一次 AbstractIn，之后再通过本项目更新。
 
 ## 数据与隐私
 
@@ -190,6 +190,7 @@ npm run source:path  # 查看本地源码目录的绝对路径
 ```sh
 npm run shots        # 需要 Firefox，生成界面截图
 npm run test:zotero  # Linux Zotero 集成验证，需要对应环境
+ZOTERO_BIN=/path/to/zotero bash test/integration/composer.sh  # 输入与公式；使用独立空库
 ZOTERO_BIN=/path/to/zotero bash test/integration/appearance.sh
 ZOTERO_BIN=/path/to/zotero bash test/integration/restart.sh
 ```
