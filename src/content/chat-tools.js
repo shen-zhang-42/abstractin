@@ -259,7 +259,7 @@
    for (const win of new Set([...(Zotero.getMainWindows?.() || [Zotero.getMainWindow()]), ...this._readerPanelWindows.keys()])) for (const root of win.document.querySelectorAll(".abstractin-root")) roots.add(root);
    for (const root of roots) {
     const other = this._views.get(root);
-    if (other && this.discussionRoot(other.ctx) === this.discussionRoot(view.ctx)) other.input.value = update(other.input.value);
+    if (other && this.discussionRoot(other.ctx) === this.discussionRoot(view.ctx)) { other.input.value = update(other.input.value); this.autoGrow(other.input); }
    }
   },
   async assignDiscussionChapter(view, chapterID) {

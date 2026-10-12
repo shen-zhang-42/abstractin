@@ -1,5 +1,4 @@
-/* The textarea remains the source-of-truth API for drafts and sending.
- * The editable surface shows math, never serializes rendered MathML. */
+/* Native textarea editing with a separate, non-editable KaTeX preview. */
 Object.assign(AbstractIn, {
 	composerMathTokens(text) {
 		const tokens = [];
@@ -28,295 +27,97 @@ Object.assign(AbstractIn, {
 	},
 
 	installMathComposer(input) {
-		const doc = input.ownerDocument, win = doc.defaultView;
-		const editor = this.el(doc, "div", "abstractin-math-editor");
-		editor.setAttribute("role", "textbox");
-		editor.setAttribute("aria-multiline", "true");
-		editor.setAttribute("aria-label", "Message");
-		editor.spellcheck = false;
-		input.before(editor);
-		input.hidden = true;
-		input._mathEditor = editor;
-		const proto = win.HTMLTextAreaElement.prototype;
-		const value = Object.getOwnPropertyDescriptor(proto, "value");
-		let composing = false, rendering = false, selecting = false, lastRender = "", saved = [0, 0];
-		let past = [], future = [], previous = value.get.call(input);
-		const source = node => node.nodeType === 3 ? node.data
-			: node.dataset?.mathSource !== undefined ? node.dataset.mathSource
-			// Enter/paste insert explicit newline text. Gecko's contenteditable
-			// filler <br> is not draft content (especially after deleting all text).
-			: node.localName === "br" ? "" : Array.from(node.childNodes, source).join("");
-		const selection = () => {
-			const sel = win.getSelection();
-			if (!sel?.rangeCount || !sel.getRangeAt(0).intersectsNode(editor)) return null;
-			const range = sel.getRangeAt(0);
-			const forward = sel.anchorNode === range.startContainer && sel.anchorOffset === range.startOffset;
-			const offset = (node, position, edge) => {
-				// Gecko can put a select-all endpoint outside the editing host.
-				// Clamp it to the draft instead of falling back to an old caret.
-				if (!editor.contains(node)) {
-					const point = doc.createRange(), contents = doc.createRange();
-					point.setStart(node, position); point.collapse(true);
-					contents.selectNodeContents(editor);
-					return point.compareBoundaryPoints(win.Range.START_TO_START, contents) <= 0 ? 0 : source(editor).length;
-				}
-				let total = 0;
-				const walk = current => {
-					// Rendered MathML is one source token. Its annotation and glyph
-					// text must never become offsets in the editable LaTeX string.
-					if (current.dataset?.mathSource !== undefined && current.contains(node)) {
-						if (edge !== "start") total += source(current).length;
-						return true;
-					}
-					if (current === node) {
-						total += current.nodeType === 3 ? position : Array.from(current.childNodes).slice(0, position).map(source).join("").length;
-						return true;
-					}
-					if (current.contains(node) && current.dataset?.mathSource === undefined) {
-						for (const child of current.childNodes) if (walk(child)) return true;
-					} else total += source(current).length;
-					return false;
-				};
-				walk(editor);
-				return total;
-			};
-			return [offset(sel.anchorNode, sel.anchorOffset, sel.isCollapsed || !forward ? "end" : "start"),
-				offset(sel.focusNode, sel.focusOffset, sel.isCollapsed || forward ? "end" : "start")];
+		// Keep Gecko's native textarea as the editing host, including in Zotero's
+		// chrome documents. Rendering must never replace its text or selection.
+		const doc = input.ownerDocument;
+		const preview = this.el(doc, "div", "abstractin-math-preview");
+		preview.setAttribute("aria-label", "LaTeX preview");
+		preview.hidden = true;
+		input.after(preview);
+		let composing = false, renderedText = null;
+		const updateState = () => {
+			const focused = doc.activeElement === input;
+			for (const node of preview.children) {
+				node.disabled = input.disabled;
+				node.dataset.active = String(focused && input.selectionStart === input.selectionEnd
+					&& input.selectionStart >= Number(node.dataset.start) && input.selectionStart <= Number(node.dataset.end));
+			}
 		};
-		const place = (positions) => {
-			const point = offset => {
-				offset = Math.max(0, Math.min(offset, source(editor).length));
-				const find = parent => {
-					for (const node of parent.childNodes) {
-						const length = source(node).length;
-						if (node.nodeType === 3 && offset <= length) return [node, offset];
-						if (node.nodeType === 1 && node.dataset?.mathSource === undefined && length > 0 && offset <= length) return find(node);
-						if (offset < length) {
-							if (node.dataset?.mathSource === undefined) return find(node);
-							return [parent, Array.from(parent.childNodes).indexOf(node)];
-						}
-						offset -= length;
-					}
-					return [parent, parent.childNodes.length];
-				};
-				return find(editor);
-			};
-			win.getSelection().setBaseAndExtent(...point(positions[0]), ...point(positions[1]));
-			saved = positions;
-		};
-		const render = (positions = selection()) => {
-			if (composing || rendering) return;
-			const text = value.get.call(input);
-			editor.dataset.empty = String(text.length === 0);
-			// Never rebuild nodes beneath an active selection: mouse dragging,
-			// double/triple click and Shift+arrows must retain their exact range.
-			if (positions && positions[0] !== positions[1] && source(editor) === text) return;
-			const tokens = this.composerMathTokens(text);
-			const active = positions ? tokens.filter(token => Math.max(...positions) >= token.start && Math.min(...positions) <= token.end) : [];
-			const key = JSON.stringify([text, active.map(token => token.start)]);
-			if (key === lastRender) return;
-			// Keep native text nodes and the caret while typing ordinary text or
-			// editing raw math. Only rebuild when formula presentation changes.
-			if (editor.firstChild && source(editor) === text && !editor.querySelector(".abstractin-composer-formula")
-				&& tokens.length === active.length) { lastRender = key; return; }
-			rendering = true;
+		const refresh = () => {
+			if (composing) return;
+			if (renderedText === input.value) { updateState(); return; }
 			try {
 				const fragment = doc.createDocumentFragment();
-				let cursor = 0;
-				for (const token of tokens) {
-					fragment.appendChild(doc.createTextNode(text.slice(cursor, token.start)));
-					if (active.includes(token)) {
-						const raw = this.el(doc, "span", "abstractin-composer-source", token.source);
-						raw.dataset.display = String(token.display);
-						fragment.appendChild(raw);
-					}
-					else {
-						const math = this.texToMathML(doc, token.tex, token.display);
-						if (!math) fragment.appendChild(doc.createTextNode(token.source));
-						else {
-							const node = this.el(doc, "span", "abstractin-composer-formula");
-							node.dataset.mathSource = token.source;
-							node.dataset.display = String(token.display);
-							node.setAttribute("contenteditable", "false");
-							node.setAttribute("aria-label", token.source);
-							node.title = "Click to edit LaTeX";
-							node.appendChild(math);
-							node.addEventListener("click", () => {
-								if (input.disabled) return;
-								const selected = selection();
-								if (selected && selected[0] !== selected[1]) return;
-								editor.focus();
-								render([token.end, token.end]);
-								place([token.end, token.end]);
-							});
-							fragment.appendChild(node);
-						}
-					}
-					cursor = token.end;
+				for (const token of this.composerMathTokens(input.value)) {
+					const math = this.texToMathML(doc, token.tex, token.display);
+					if (!math) continue;
+					const node = this.el(doc, "button", "abstractin-composer-formula");
+					node.type = "button";
+					node.disabled = input.disabled;
+					node.dataset.display = String(token.display);
+					node.dataset.start = String(token.start);
+					node.dataset.end = String(token.end);
+					node.setAttribute("aria-label", token.source);
+					node.title = "Click to edit LaTeX";
+					node.appendChild(math);
+					node.addEventListener("click", () => {
+						if (input.disabled) return;
+						input.focus();
+						input.setSelectionRange(token.end, token.end);
+						refresh();
+					});
+					fragment.appendChild(node);
 				}
-				fragment.appendChild(doc.createTextNode(text.slice(cursor)));
-				editor.replaceChildren(fragment);
-				if (positions) place(positions);
-				lastRender = key;
-			} finally { rendering = false; }
-		};
-		const notify = () => input.dispatchEvent(new win.Event("input", { bubbles: true }));
-		const commit = (text, positions) => {
-			if (text !== previous) { past.push({ text: previous, positions: saved }); future = []; previous = text; }
-			value.set.call(input, text);
-			saved = positions || saved;
-			render(positions);
-			notify();
-		};
-		const insert = text => {
-			if (input.disabled) return;
-			const positions = selection() || saved;
-			const start = Math.min(...positions), end = Math.max(...positions);
-			const current = value.get.call(input);
-			commit(current.slice(0, start) + text + current.slice(end), [start + text.length, start + text.length]);
-		};
-		const remove = (forward, word = false) => {
-			if (input.disabled) return;
-			const positions = selection() || saved;
-			let start = Math.min(...positions), end = Math.max(...positions);
-			const current = input.value;
-			if (start === end) {
-				const segmenter = new win.Intl.Segmenter(undefined, { granularity: word ? "word" : "grapheme" });
-				const segments = Array.from(segmenter.segment(current));
-				if (forward) {
-					for (const part of segments) {
-						if (part.index + part.segment.length <= end) continue;
-						end = part.index + part.segment.length;
-						if (!word || part.isWordLike) break;
-					}
-				} else {
-					for (const part of segments.reverse()) {
-						if (part.index >= start) continue;
-						start = part.index;
-						if (!word || part.isWordLike) break;
-					}
-				}
+				preview.replaceChildren(fragment);
+				preview.hidden = !preview.childNodes.length;
+				renderedText = input.value;
+				updateState();
+			} catch (error) {
+				// A broken formula or unavailable renderer must not disable typing.
+				preview.replaceChildren();
+				preview.hidden = true;
+				renderedText = null;
+				Zotero.debug("AbstractIn formula preview: " + error);
 			}
-			commit(current.slice(0, start) + current.slice(end), [start, start]);
 		};
-		Object.defineProperty(input, "value", {
-			get: () => value.get.call(input),
-			set: text => {
-				value.set.call(input, text);
-				previous = value.get.call(input); past = []; future = [];
-				saved = [previous.length, previous.length];
-				render(doc.activeElement === editor ? saved : null);
-			}, configurable: true,
-		});
-		for (const property of ["disabled", "placeholder"]) {
-			const descriptor = Object.getOwnPropertyDescriptor(proto, property);
-			const sync = () => {
-				editor.tabIndex = input.disabled ? -1 : 0;
-				editor.setAttribute("contenteditable", String(!input.disabled));
-				editor.setAttribute("aria-disabled", String(input.disabled));
-				editor.dataset.placeholder = input.placeholder;
-			};
-			Object.defineProperty(input, property, { get: () => descriptor.get.call(input), set: v => { descriptor.set.call(input, v); sync(); }, configurable: true });
-			sync();
-		}
-		input.focus = () => { if (!input.disabled) { editor.focus(); render(saved); place(saved); } };
-		input.setSelectionRange = (start, end = start) => {
-			const length = input.value.length;
-			saved = [Math.min(Math.max(start, 0), length), Math.min(Math.max(end, 0), length)];
-			if (doc.activeElement === editor) { render(saved); place(saved); }
+		// Programmatic draft changes already call autoGrow; no native DOM
+		// properties or editing methods need to be shadowed for synchronization.
+		input._refreshMathPreview = refresh;
+		const listeners = [];
+		const on = (type, handler) => {
+			input.addEventListener(type, handler);
+			listeners.push([type, handler]);
 		};
-		editor.addEventListener("input", () => { commit(source(editor), selection()); });
-		editor.addEventListener("compositionstart", () => { composing = true; });
-		editor.addEventListener("compositionend", () => { composing = false; commit(source(editor), selection()); });
-		const undo = redo => {
-			const from = redo ? future : past, to = redo ? past : future;
-			if (!from.length) return;
-			to.push({ text: input.value, positions: selection() || saved });
-			const entry = from.pop(); previous = entry.text;
-			value.set.call(input, entry.text); render(entry.positions); notify();
-		};
-		editor.addEventListener("keydown", event => {
-			if (input.disabled || composing || event.isComposing || event.keyCode === 229) return;
-			changed();
-			if (event.key === "Backspace" || event.key === "Delete") {
-				event.preventDefault(); event.stopPropagation();
-				remove(event.key === "Delete", event.ctrlKey || (Zotero.isMac && event.altKey));
+		for (const type of ["input", "focus", "blur", "select", "selectionchange", "keyup", "mouseup"]) on(type, refresh);
+		on("compositionstart", () => { composing = true; });
+		on("compositionend", () => { composing = false; refresh(); });
+		on("keydown", event => {
+			// Leave insertion, deletion, clipboard, selection and undo to Gecko.
+			// Only protect IME confirmation and formula newlines from send-on-Enter.
+			if (event.key !== "Enter" || input.disabled) return;
+			if (composing || event.isComposing || event.keyCode === 229) {
+				event.stopImmediatePropagation();
 				return;
 			}
-			// Enter inside $$...$$ inserts a formula line, including while the
-			// closing delimiter is still being typed. Modified Enter can send.
-			if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey) {
-				const prefix = input.value.slice(0, Math.min(...(selection() || saved)));
-				let display = false;
-				for (let i = 0; i < prefix.length - 1; i++) {
-					if (prefix.slice(i, i + 2) !== "$$") continue;
-					let slashes = 0, before = i;
-					while (before > 0 && prefix[--before] === "\\") slashes++;
-					if (slashes % 2 === 0) { display = !display; i++; }
-				}
-				if (display) { event.preventDefault(); event.stopPropagation(); insert("\n"); return; }
+			if (event.ctrlKey || event.metaKey || event.altKey) return;
+			const prefix = input.value.slice(0, input.selectionStart);
+			let display = false;
+			for (let i = 0; i < prefix.length - 1; i++) {
+				if (prefix.slice(i, i + 2) !== "$$") continue;
+				let slashes = 0, before = i;
+				while (before > 0 && prefix[--before] === "\\") slashes++;
+				if (slashes % 2 === 0) { display = !display; i++; }
 			}
-			if ((event.ctrlKey || event.metaKey) && !event.altKey && ["z", "y"].includes(event.key.toLowerCase())) {
-				event.preventDefault(); event.stopPropagation(); undo(event.shiftKey || event.key.toLowerCase() === "y"); return;
-			}
-			event.stopPropagation();
-			// Forward only plugin shortcuts. Synthetic ordinary keys targeted at
-			// a hidden textarea can be cancelled by Zotero's window shortcuts.
-			let handled = false;
-			if (this.isSendKey(event) || event.key === "Escape" || (event.key === "ArrowUp" && !input.value) || event.altKey) {
-				const forwarded = new win.KeyboardEvent("keydown", { key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, bubbles: true, cancelable: true });
-				input.dispatchEvent(forwarded);
-				handled = forwarded.defaultPrevented;
-			}
-			if (handled) event.preventDefault();
-			else if (event.key === "Enter") { event.preventDefault(); insert("\n"); }
+			if (display) event.stopImmediatePropagation(); // Native Enter still inserts the newline.
 		});
-		editor.addEventListener("keypress", event => event.stopPropagation());
-		editor.addEventListener("beforeinput", event => {
-			if (input.disabled || composing || event.isComposing) return;
-			if (/^delete(Content|Word)(Backward|Forward)$/.test(event.inputType)) {
-				event.preventDefault();
-				remove(event.inputType.endsWith("Forward"), event.inputType.includes("Word"));
-			}
-			if (["insertParagraph", "insertLineBreak"].includes(event.inputType)) { event.preventDefault(); insert("\n"); }
-			if (["historyUndo", "historyRedo"].includes(event.inputType)) { event.preventDefault(); undo(event.inputType === "historyRedo"); }
-		});
-		editor.addEventListener("paste", event => {
-			const forwarded = new win.Event("paste", { bubbles: true, cancelable: true });
-			Object.defineProperty(forwarded, "clipboardData", { value: event.clipboardData });
-			input.dispatchEvent(forwarded);
-			event.preventDefault();
-			if (!forwarded.defaultPrevented) insert(event.clipboardData?.getData("text/plain") || "");
-		});
-		editor.addEventListener("drop", event => {
-			if (event.dataTransfer?.files.length) return; // Existing image attachment handler.
-			event.preventDefault();
-			insert(event.dataTransfer?.getData("text/plain") || "");
-		});
-		for (const type of ["copy", "cut"]) editor.addEventListener(type, event => {
-			const positions = selection(); if (!positions || !event.clipboardData) return;
-			event.preventDefault(); event.stopPropagation();
-			event.clipboardData.setData("text/plain", input.value.slice(Math.min(...positions), Math.max(...positions)));
-			if (type === "cut" && !input.disabled) insert("");
-		});
-		const changed = () => {
-			if (doc.activeElement !== editor || composing || rendering || selecting) return;
-			const positions = selection(); if (!positions) return;
-			saved = positions; render(positions);
-		};
-		const released = () => { selecting = false; changed(); };
-		editor.addEventListener("pointerdown", () => { selecting = true; });
-		doc.addEventListener("pointerup", released);
-		doc.addEventListener("pointercancel", released);
-		doc.addEventListener("selectionchange", changed);
-		editor.addEventListener("keyup", changed);
-		editor.addEventListener("mouseup", changed);
-		editor.addEventListener("blur", () => render(null));
-		render(null);
+		const observer = new doc.defaultView.MutationObserver(refresh);
+		observer.observe(input, { attributes: true, attributeFilter: ["disabled"] });
+		refresh();
 		return () => {
-			doc.removeEventListener("selectionchange", changed);
-			doc.removeEventListener("pointerup", released);
-			doc.removeEventListener("pointercancel", released);
+			for (const [type, handler] of listeners) input.removeEventListener(type, handler);
+			observer.disconnect();
+			delete input._refreshMathPreview;
+			preview.remove();
 		};
 	},
 });

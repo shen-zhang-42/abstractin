@@ -2222,7 +2222,7 @@ AbstractIn = {
 	},
 
 	autoGrow(input) {
-		if (input._mathEditor) return;
+		input._refreshMathPreview?.();
 		input.style.height = "auto";
 		input.style.height = Math.min(input.scrollHeight, 180) + "px";
 	},
@@ -2519,7 +2519,7 @@ AbstractIn = {
 			for (let node of roots) {
 				let other = this._views.get(node);
 				if (other?.ctx.dir !== dir) continue;
-				other.input.value = ""; other.pageImageSource = null;
+				other.input.value = ""; this.autoGrow(other.input); other.pageImageSource = null;
 				this.renderMessages(other, restored); this.renderAttachments(other); this.updateReadingControls(other);
 			}
 			view.input.focus();
