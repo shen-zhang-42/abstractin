@@ -923,21 +923,26 @@ test("reading mode menu wraps check, symbol and text in an inner layout and swit
  assert.equal(root.querySelector(".abstractin-menu"), null);
 });
 
-test("marmoset animated image loops on welcome and only while answering in the composer", () => {
+for (const [version, extension] of [["9.0.6", "png"], ["10.0", "webp"]]) {
+test(`marmoset ${version} animation loops on welcome and only while answering in the composer`, () => {
  const { root, view, plugin } = sidebar();
+ view.doc.defaultView.Zotero.version = version;
+ // Recreate the composer mascot after setting the host version.
+ root.querySelector('.abstractin-discussion-companion .abstractin-mascot').replaceWith(
+  plugin.svgIcon(view.doc, 'mascot-marmoset', 'abstractin-mascot'));
  plugin.renderMessages(view, []);
  const welcome = root.querySelector('.abstractin-reading-welcome .abstractin-mascot');
  const companion = root.querySelector('.abstractin-discussion-companion .abstractin-mascot');
  const wm = welcome.querySelector('.abstractin-companion-motion');
  const cm = companion.querySelector('.abstractin-companion-motion');
- assert.match(wm.src, /marmoset-motion\.webp\?play=/);
+ assert.ok(wm.src.includes('marmoset-motion.' + extension + '?play='));
  assert.equal(cm.getAttribute('src'), null, 'idle companion does not load the animation');
  const loaded = motion => motion.dispatchEvent(new view.doc.defaultView.Event('load'));
  loaded(wm);
  assert.equal(welcome.querySelector('.abstractin-companion-still').hidden, true);
  plugin.setBusy(view, true);
  const firstPlayback = cm.src;
- assert.match(firstPlayback, /marmoset-motion\.webp\?play=/);
+ assert.ok(firstPlayback.includes('marmoset-motion.' + extension + '?play='));
  assert.notEqual(firstPlayback, wm.src, 'instances have independent playback clocks');
  loaded(cm);
  assert.equal(cm.hidden, false);
@@ -956,6 +961,7 @@ test("marmoset animated image loops on welcome and only while answering in the c
   assert.equal(icon.querySelector('.abstractin-companion-still').hidden, false);
  }
 });
+}
 
 test("marmoset keeps its still image if animated image loading fails", () => {
  const { root, view, plugin } = sidebar();

@@ -62,6 +62,7 @@ function shutdown() {
 		chromeHandle = null;
 		return;
 	}
+	AbstractIn.closeSettings();
 	AbstractIn.unwatchPrefs();
 	AbstractIn.stopReadingPositionTracking();
 	AbstractIn.removeAllReaderPanels();

@@ -27,6 +27,10 @@ New documents require reading initialization before the composer and chat manage
 
 The plugin declares support for Zotero 7–10. Native interface behavior still needs installation testing across versions and operating systems.
 
+The settings button checks Zotero's major version: Zotero 9 opens a separate AbstractIn settings window, while Zotero 10 keeps the native Settings → AbstractIn pane. Both use the same settings content and storage, so switching versions does not require reconfiguration.
+
+The marmoset animation also selects its format by version: APNG on Zotero 9 and the existing animated WebP on Zotero 10, with identical frames, transparency, and timing.
+
 ## Reading and asking questions
 
 ### Separate workflows for books and papers
@@ -154,7 +158,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.49**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.50**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

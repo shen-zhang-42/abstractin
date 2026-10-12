@@ -348,7 +348,7 @@ async function testLive(win, CS) {
 
 async function testPrefs(CS) {
 	check("settings pane registered", Zotero.PreferencePanes.pluginPanes.some(p => p.id === CS.PREFS_PANE_ID));
-	let prefsWin = Zotero.Utilities.Internal.openPreferences(CS.PREFS_PANE_ID);
+	let prefsWin = CS.openSettings();
 	await waitFor(() => prefsWin.document && prefsWin.document.readyState === "complete", 20000, "settings window");
 	let prefs = await waitFor(() => prefsWin.document.querySelector(".abstractin-prefs"), 20000, "settings pane content");
 	prefsWin.resizeTo(1000, 1500);

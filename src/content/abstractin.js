@@ -795,13 +795,16 @@ AbstractIn = {
 
 	async registerPrefsPane() {
 		try {
+			// Use plugin-relative resources on Zotero 9; keep Zotero 10's
+			// cache-busted chrome resources unchanged.
+			let zotero9 = this.isZotero9();
 			this.prefsPaneID = await Zotero.PreferencePanes.register({
 				pluginID: this.id,
 				id: this.PREFS_PANE_ID,
-				src: (this.resourceURI || this.rootURI) + "prefs.xhtml",
+				src: zotero9 ? "prefs.xhtml" : (this.resourceURI || this.rootURI) + "prefs.xhtml",
 				label: "AbstractIn",
-				image: (this.resourceURI || this.rootURI) + "icons/icon20.svg",
-				stylesheets: [this.stylesheetURL],
+				image: zotero9 ? "icons/icon20.svg" : (this.resourceURI || this.rootURI) + "icons/icon20.svg",
+				stylesheets: [zotero9 ? "content/abstractin.css" : this.stylesheetURL],
 			});
 			this.log("registered settings pane " + this.prefsPaneID);
 		}
@@ -810,8 +813,30 @@ AbstractIn = {
 		}
 	},
 
+	isZotero9() {
+		return /^9(?:\.|$)/.test(String(Zotero.version || ""));
+	},
+
 	openSettings() {
-		Zotero.Utilities.Internal.openPreferences(this.prefsPaneID || this.PREFS_PANE_ID);
+		if (this.isZotero9()) {
+			// Zotero 9 opens a complete internal chrome document and shares the
+			// native pane's renderer instead of navigating through preferences.
+			if (this._prefsWindow && !this._prefsWindow.closed) {
+				this._prefsWindow.focus();
+				return this._prefsWindow;
+			}
+			this._prefsWindow = Zotero.getMainWindow().openDialog(
+				(this.resourceURI || "chrome://abstractin/content/") + "prefs-window.xhtml",
+				"abstractin-settings", "chrome,titlebar,centerscreen,resizable=yes,width=900,height=750",
+			);
+			return this._prefsWindow;
+		}
+		return Zotero.Utilities.Internal.openPreferences(this.prefsPaneID || this.PREFS_PANE_ID);
+	},
+
+	closeSettings() {
+		if (this._prefsWindow && !this._prefsWindow.closed) this._prefsWindow.close();
+		this._prefsWindow = null;
 	},
 
 	// ---------------------------------------------------------------------
@@ -841,7 +866,9 @@ AbstractIn = {
 			still.alt = "";
 			let motion = this.el(doc, "img", "abstractin-companion-motion");
 			motion.alt = "";
-			motion.dataset.source = base + "marmoset-motion.webp";
+			// Zotero 9 uses APNG to avoid its reported animated WebP playback
+			// issue. Zotero 10 keeps the working WebP asset and playback path.
+			motion.dataset.source = base + (this.isZotero9() ? "marmoset-motion.png" : "marmoset-motion.webp");
 			motion.hidden = true;
 			motion.addEventListener("load", () => {
 				if (!motion._abstractinRunning || motion._abstractinFailed || !icon.isConnected) return;

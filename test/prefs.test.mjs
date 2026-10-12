@@ -1,6 +1,96 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadPlugin } from "./load-plugin.mjs";
+import { readFileSync } from "node:fs";
+
+test("settings version routing recognizes Zotero 9 releases and prereleases only", () => {
+	const { plugin, window } = loadPlugin();
+	for (const version of ["9.0", "9.0.6", "9.0-beta.1", "9"]) {
+		window.Zotero.version = version;
+		assert.equal(plugin.isZotero9(), true, version);
+	}
+	for (const version of ["10.0", "10.0-beta.1", "7.0", "8.0", "90.0", undefined]) {
+		window.Zotero.version = version;
+		assert.equal(plugin.isZotero9(), false, String(version));
+	}
+});
+
+test("Zotero 9 opens an internal settings document, reuses it and closes it on shutdown", () => {
+	const { plugin, window } = loadPlugin();
+	window.Zotero.version = "9.0.6";
+	plugin.resourceURI = "chrome://abstractin-test/content/";
+	let opened = 0, focused = 0;
+	const settingsWindow = { closed: false, focus() { focused++; }, close() { this.closed = true; } };
+	window.Zotero.Utilities.Internal.openPreferences = () => assert.fail("must use Zotero 9 window");
+	window.openDialog = (uri, name, features) => {
+		assert.equal(uri, "chrome://abstractin-test/content/prefs-window.xhtml");
+		assert.equal(name, "abstractin-settings");
+		assert.match(features, /chrome/);
+		opened++;
+		settingsWindow.closed = false;
+		return settingsWindow;
+	};
+	assert.equal(plugin.openSettings(), settingsWindow);
+	assert.equal(plugin.openSettings(), settingsWindow);
+	assert.equal(opened, 1);
+	assert.equal(focused, 1);
+	settingsWindow.close();
+	plugin.openSettings();
+	assert.equal(opened, 2);
+	plugin.closeSettings();
+	assert.equal(settingsWindow.closed, true);
+	assert.equal(plugin._prefsWindow, null);
+});
+
+test("Zotero 10 retains native settings navigation and returns its window", () => {
+	const { plugin, window } = loadPlugin();
+	window.Zotero.version = "10.0";
+	window.openDialog = () => assert.fail("must use native Zotero 10 settings");
+	const settingsWindow = {};
+	let selected;
+	window.Zotero.Utilities.Internal.openPreferences = id => { selected = id; return settingsWindow; };
+	assert.equal(plugin.openSettings(), settingsWindow);
+	assert.equal(selected, plugin.PREFS_PANE_ID);
+	plugin.prefsPaneID = "registered-pane";
+	plugin.openSettings();
+	assert.equal(selected, "registered-pane");
+});
+
+test("native settings registration uses relative assets on 9 and existing chrome assets on 10", async () => {
+	const { plugin, window } = loadPlugin();
+	plugin.id = "abstractin@test";
+	plugin.resourceURI = "chrome://abstractin-test/content/";
+	plugin.stylesheetURL = plugin.resourceURI + "content/abstractin.css?v=test";
+	const registrations = [];
+	window.Zotero.PreferencePanes = { register: async options => { registrations.push(options); return options.id; } };
+	for (const version of ["9.0", "10.0"]) {
+		window.Zotero.version = version;
+		await plugin.registerPrefsPane();
+		assert.equal(plugin.prefsPaneID, plugin.PREFS_PANE_ID);
+	}
+	assert.equal(registrations[0].src, "prefs.xhtml");
+	assert.equal(registrations[0].image, "icons/icon20.svg");
+	assert.deepEqual([...registrations[0].stylesheets], ["content/abstractin.css"]);
+	assert.equal(registrations[1].src, plugin.resourceURI + "prefs.xhtml");
+	assert.equal(registrations[1].image, plugin.resourceURI + "icons/icon20.svg");
+	assert.deepEqual([...registrations[1].stylesheets], [plugin.stylesheetURL]);
+});
+
+test("Zotero 9 standalone document loads the shared settings renderer and stylesheet", () => {
+	const { plugin, window, document } = loadPlugin();
+	const source = path => readFileSync(new URL("../src/" + path, import.meta.url), "utf8");
+	const parsed = new window.DOMParser().parseFromString(source("prefs-window.xhtml"), "application/xhtml+xml");
+	assert.equal(parsed.querySelector("parsererror"), null);
+	assert.ok(parsed.querySelector('script[src="chrome://zotero/content/include.js"]'));
+	assert.ok(parsed.querySelector('script[src="prefs-window.js"]'));
+	document.body.innerHTML = '<div id="abstractin-prefs-root"></div>';
+	window.Zotero.AbstractIn = plugin;
+	plugin.stylesheetURL = "chrome://abstractin-test/content/content/abstractin.css?v=test";
+	window.eval(source("prefs-window.js"));
+	window.dispatchEvent(new window.Event("load"));
+	assert.equal(document.querySelector('link[rel="stylesheet"]').getAttribute("href"), plugin.stylesheetURL);
+	assert.equal(document.querySelectorAll(".abstractin-card").length, 4);
+});
 
 const PREFIX = "extensions.abstractin.";
 
