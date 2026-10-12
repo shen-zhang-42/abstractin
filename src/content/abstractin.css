@@ -1138,6 +1138,16 @@
 	text-align: center;
 }
 .abstractin-composer-formula math { font-size: 1.1em; }
+.abstractin-composer-source {
+	color: var(--abstractin-text);
+	font-family: monospace;
+	white-space: pre-wrap;
+}
+.abstractin-composer-source[data-display="true"] {
+	display: block;
+	min-height: 1.4em;
+	margin: 6px 0;
+}
 .abstractin-controls {
 	display: flex;
 	align-items: center;

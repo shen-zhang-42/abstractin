@@ -39,7 +39,7 @@ Object.assign(AbstractIn, {
 		input._mathEditor = editor;
 		const proto = win.HTMLTextAreaElement.prototype;
 		const value = Object.getOwnPropertyDescriptor(proto, "value");
-		let composing = false, rendering = false, lastRender = "", saved = [0, 0];
+		let composing = false, rendering = false, selecting = false, lastRender = "", saved = [0, 0];
 		let past = [], future = [], previous = value.get.call(input);
 		const source = node => node.nodeType === 3 ? node.data
 			: node.dataset?.mathSource !== undefined ? node.dataset.mathSource
@@ -48,10 +48,26 @@ Object.assign(AbstractIn, {
 			: node.localName === "br" ? "" : Array.from(node.childNodes, source).join("");
 		const selection = () => {
 			const sel = win.getSelection();
-			if (!sel?.rangeCount || !editor.contains(sel.anchorNode) || !editor.contains(sel.focusNode)) return null;
-			const offset = (node, position) => {
+			if (!sel?.rangeCount || !sel.getRangeAt(0).intersectsNode(editor)) return null;
+			const range = sel.getRangeAt(0);
+			const forward = sel.anchorNode === range.startContainer && sel.anchorOffset === range.startOffset;
+			const offset = (node, position, edge) => {
+				// Gecko can put a select-all endpoint outside the editing host.
+				// Clamp it to the draft instead of falling back to an old caret.
+				if (!editor.contains(node)) {
+					const point = doc.createRange(), contents = doc.createRange();
+					point.setStart(node, position); point.collapse(true);
+					contents.selectNodeContents(editor);
+					return point.compareBoundaryPoints(win.Range.START_TO_START, contents) <= 0 ? 0 : source(editor).length;
+				}
 				let total = 0;
 				const walk = current => {
+					// Rendered MathML is one source token. Its annotation and glyph
+					// text must never become offsets in the editable LaTeX string.
+					if (current.dataset?.mathSource !== undefined && current.contains(node)) {
+						if (edge !== "start") total += source(current).length;
+						return true;
+					}
 					if (current === node) {
 						total += current.nodeType === 3 ? position : Array.from(current.childNodes).slice(0, position).map(source).join("").length;
 						return true;
@@ -64,17 +80,26 @@ Object.assign(AbstractIn, {
 				walk(editor);
 				return total;
 			};
-			return [offset(sel.anchorNode, sel.anchorOffset), offset(sel.focusNode, sel.focusOffset)];
+			return [offset(sel.anchorNode, sel.anchorOffset, sel.isCollapsed || !forward ? "end" : "start"),
+				offset(sel.focusNode, sel.focusOffset, sel.isCollapsed || forward ? "end" : "start")];
 		};
 		const place = (positions) => {
 			const point = offset => {
-				for (const node of editor.childNodes) {
-					const length = source(node).length;
-					if (offset <= length && node.nodeType === 3) return [node, offset];
-					if (offset < length) return [editor, Array.from(editor.childNodes).indexOf(node)];
-					offset -= length;
-				}
-				return [editor, editor.childNodes.length];
+				offset = Math.max(0, Math.min(offset, source(editor).length));
+				const find = parent => {
+					for (const node of parent.childNodes) {
+						const length = source(node).length;
+						if (node.nodeType === 3 && offset <= length) return [node, offset];
+						if (node.nodeType === 1 && node.dataset?.mathSource === undefined && length > 0 && offset <= length) return find(node);
+						if (offset < length) {
+							if (node.dataset?.mathSource === undefined) return find(node);
+							return [parent, Array.from(parent.childNodes).indexOf(node)];
+						}
+						offset -= length;
+					}
+					return [parent, parent.childNodes.length];
+				};
+				return find(editor);
 			};
 			win.getSelection().setBaseAndExtent(...point(positions[0]), ...point(positions[1]));
 			saved = positions;
@@ -83,46 +108,57 @@ Object.assign(AbstractIn, {
 			if (composing || rendering) return;
 			const text = value.get.call(input);
 			editor.dataset.empty = String(text.length === 0);
+			// Never rebuild nodes beneath an active selection: mouse dragging,
+			// double/triple click and Shift+arrows must retain their exact range.
+			if (positions && positions[0] !== positions[1] && source(editor) === text) return;
 			const tokens = this.composerMathTokens(text);
 			const active = positions ? tokens.filter(token => Math.max(...positions) >= token.start && Math.min(...positions) <= token.end) : [];
 			const key = JSON.stringify([text, active.map(token => token.start)]);
 			if (key === lastRender) return;
-			lastRender = key;
 			// Keep native text nodes and the caret while typing ordinary text or
 			// editing raw math. Only rebuild when formula presentation changes.
 			if (editor.firstChild && source(editor) === text && !editor.querySelector(".abstractin-composer-formula")
-				&& tokens.length === active.length) return;
+				&& tokens.length === active.length) { lastRender = key; return; }
 			rendering = true;
-			editor.replaceChildren();
-			let cursor = 0;
-			for (const token of tokens) {
-				editor.appendChild(doc.createTextNode(text.slice(cursor, token.start)));
-				if (active.includes(token)) editor.appendChild(doc.createTextNode(token.source));
-				else {
-					const math = this.texToMathML(doc, token.tex, token.display);
-					if (!math) editor.appendChild(doc.createTextNode(token.source));
-					else {
-						const node = this.el(doc, "span", "abstractin-composer-formula");
-						node.dataset.mathSource = token.source;
-						node.dataset.display = String(token.display);
-						node.setAttribute("contenteditable", "false");
-						node.setAttribute("aria-label", token.source);
-						node.title = "Click to edit LaTeX";
-						node.appendChild(math);
-						node.addEventListener("click", () => {
-							if (input.disabled) return;
-							editor.focus();
-							render([token.end, token.end]);
-							place([token.end, token.end]);
-						});
-						editor.appendChild(node);
+			try {
+				const fragment = doc.createDocumentFragment();
+				let cursor = 0;
+				for (const token of tokens) {
+					fragment.appendChild(doc.createTextNode(text.slice(cursor, token.start)));
+					if (active.includes(token)) {
+						const raw = this.el(doc, "span", "abstractin-composer-source", token.source);
+						raw.dataset.display = String(token.display);
+						fragment.appendChild(raw);
 					}
+					else {
+						const math = this.texToMathML(doc, token.tex, token.display);
+						if (!math) fragment.appendChild(doc.createTextNode(token.source));
+						else {
+							const node = this.el(doc, "span", "abstractin-composer-formula");
+							node.dataset.mathSource = token.source;
+							node.dataset.display = String(token.display);
+							node.setAttribute("contenteditable", "false");
+							node.setAttribute("aria-label", token.source);
+							node.title = "Click to edit LaTeX";
+							node.appendChild(math);
+							node.addEventListener("click", () => {
+								if (input.disabled) return;
+								const selected = selection();
+								if (selected && selected[0] !== selected[1]) return;
+								editor.focus();
+								render([token.end, token.end]);
+								place([token.end, token.end]);
+							});
+							fragment.appendChild(node);
+						}
+					}
+					cursor = token.end;
 				}
-				cursor = token.end;
-			}
-			editor.appendChild(doc.createTextNode(text.slice(cursor)));
-			if (positions) place(positions);
-			rendering = false;
+				fragment.appendChild(doc.createTextNode(text.slice(cursor)));
+				editor.replaceChildren(fragment);
+				if (positions) place(positions);
+				lastRender = key;
+			} finally { rendering = false; }
 		};
 		const notify = () => input.dispatchEvent(new win.Event("input", { bubbles: true }));
 		const commit = (text, positions) => {
@@ -264,15 +300,23 @@ Object.assign(AbstractIn, {
 			if (type === "cut" && !input.disabled) insert("");
 		});
 		const changed = () => {
-			if (doc.activeElement !== editor || composing || rendering) return;
+			if (doc.activeElement !== editor || composing || rendering || selecting) return;
 			const positions = selection(); if (!positions) return;
 			saved = positions; render(positions);
 		};
+		const released = () => { selecting = false; changed(); };
+		editor.addEventListener("pointerdown", () => { selecting = true; });
+		doc.addEventListener("pointerup", released);
+		doc.addEventListener("pointercancel", released);
 		doc.addEventListener("selectionchange", changed);
 		editor.addEventListener("keyup", changed);
 		editor.addEventListener("mouseup", changed);
 		editor.addEventListener("blur", () => render(null));
 		render(null);
-		return () => doc.removeEventListener("selectionchange", changed);
+		return () => {
+			doc.removeEventListener("selectionchange", changed);
+			doc.removeEventListener("pointerup", released);
+			doc.removeEventListener("pointercancel", released);
+		};
 	},
 });

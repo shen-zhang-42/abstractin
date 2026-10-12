@@ -213,3 +213,78 @@ test("ordinary text input keeps the native text node and updates placeholder sta
 	assert.equal(env.input.value, "hello");
 	assert.equal(env.editor.dataset.empty, "false");
 });
+
+test("caret inside a MathML glyph reveals visible source at the correct formula offset", () => {
+	const text = "Before $$x^2$$ after";
+	const env = composer(text);
+	env.editor.focus();
+	const glyph = env.editor.querySelector("mi").firstChild;
+	env.window.getSelection().setBaseAndExtent(glyph, 1, glyph, 1);
+	env.document.dispatchEvent(new env.window.Event("selectionchange"));
+	assert.equal(env.input.value, text);
+	const raw = env.editor.querySelector(".abstractin-composer-source");
+	assert.equal(raw.textContent, "$$x^2$$");
+	assert.equal(env.window.getSelection().anchorNode, raw.firstChild);
+	assert.equal(env.window.getSelection().anchorOffset, raw.textContent.length);
+	// Editing the shown source still preserves the rest of the sentence.
+	raw.firstChild.data = "$$x^3$$";
+	env.editor.dispatchEvent(new env.window.Event("input"));
+	assert.equal(env.input.value, "Before $$x^3$$ after");
+});
+
+for (const backwards of [false, true]) {
+	test(`selecting an entire sentence across formulas preserves the ${backwards ? "backward" : "forward"} range and deletes it in one keypress`, () => {
+		const text = "Compare $x^2$ and $$y^2$$ now.";
+		const env = composer(text);
+		env.editor.focus();
+		const first = env.editor.firstChild, last = env.editor.lastChild;
+		const formula = env.editor.querySelector(".abstractin-composer-formula");
+		const selection = env.window.getSelection();
+		selection.setBaseAndExtent(...(backwards ? [last, last.length, first, 0] : [first, 0, last, last.length]));
+		env.document.dispatchEvent(new env.window.Event("selectionchange"));
+		assert.equal(env.editor.querySelector(".abstractin-composer-formula"), formula, "selection must not rebuild the editor");
+		formula.click();
+		assert.equal(selection.isCollapsed, false, "formula click must not collapse a selected sentence");
+		key(env, backwards ? "Delete" : "Backspace");
+		assert.equal(env.input.value, "");
+		key(env, "z", { ctrlKey: true });
+		assert.equal(env.input.value, text);
+	});
+}
+
+test("drag selection is not interrupted when the pointer crosses a formula", () => {
+	const env = composer("Before $x$ after");
+	env.editor.focus();
+	const formula = env.editor.querySelector(".abstractin-composer-formula");
+	const glyph = formula.querySelector("mi").firstChild;
+	env.editor.dispatchEvent(new env.window.Event("pointerdown", { bubbles: true }));
+	env.window.getSelection().setBaseAndExtent(glyph, 0, glyph, 0);
+	env.document.dispatchEvent(new env.window.Event("selectionchange"));
+	assert.equal(env.editor.querySelector(".abstractin-composer-formula"), formula);
+	const first = env.editor.firstChild, last = env.editor.lastChild;
+	env.window.getSelection().setBaseAndExtent(first, 0, last, last.length);
+	env.document.dispatchEvent(new env.window.Event("pointerup"));
+	assert.equal(env.window.getSelection().isCollapsed, false);
+	key(env, "Backspace");
+	assert.equal(env.input.value, "");
+});
+
+test("selection starting in MathML removes the whole source token and only the selected following text", () => {
+	const env = composer("Before $x^2$ after. Keep this.");
+	env.editor.focus();
+	const glyph = env.editor.querySelector("mi").firstChild;
+	const last = env.editor.lastChild;
+	env.window.getSelection().setBaseAndExtent(glyph, 0, last, " after.".length);
+	env.document.dispatchEvent(new env.window.Event("selectionchange"));
+	key(env, "Delete");
+	assert.equal(env.input.value, "Before  Keep this.");
+});
+
+test("host select-all endpoints surrounding the composer are clamped to the draft", () => {
+	const env = composer("A whole sentence with $x$.");
+	env.editor.focus();
+	const body = env.document.body;
+	env.window.getSelection().setBaseAndExtent(body, 0, body, body.childNodes.length);
+	key(env, "Backspace");
+	assert.equal(env.input.value, "");
+});
