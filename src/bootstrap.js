@@ -22,6 +22,7 @@ async function startup({ id, version, rootURI }) {
 	]);
 	let resourceURI = "chrome://" + resourcePackage + "/content/";
 	Services.scriptloader.loadSubScript(resourceURI + "content/abstractin.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/composer-math.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/icon-assets.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading-workflow.js");

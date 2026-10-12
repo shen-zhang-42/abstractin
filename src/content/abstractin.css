@@ -1092,7 +1092,8 @@
 .abstractin-controls .abstractin-attach {
 	margin-inline-end: 2px;
 }
-.abstractin-input {
+.abstractin-input,
+.abstractin-math-editor {
 	width: 100%;
 	min-height: 20px;
 	max-height: 180px;
@@ -1112,6 +1113,31 @@
 	color: var(--abstractin-faint);
 	opacity: 1;
 }
+.abstractin-math-editor {
+	min-height: 2.8em;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	overflow-y: auto;
+}
+.abstractin-math-editor:empty::before {
+	content: attr(data-placeholder);
+	color: var(--abstractin-faint);
+	pointer-events: none;
+}
+.abstractin-math-editor[aria-disabled="true"] { opacity: .6; }
+.abstractin-composer-formula {
+	display: inline-block;
+	max-width: 100%;
+	vertical-align: middle;
+	cursor: text;
+}
+.abstractin-composer-formula[data-display="true"] {
+	display: block;
+	margin: 6px 0;
+	overflow-x: auto;
+	text-align: center;
+}
+.abstractin-composer-formula math { font-size: 1.1em; }
 .abstractin-controls {
 	display: flex;
 	align-items: center;

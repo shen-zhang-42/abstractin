@@ -615,7 +615,7 @@ test("the dropdown switches lists and fills an editable draft without sending", 
 	root.querySelector(".abstractin-menu-item").click();
 	assert.equal(sent.length, 0);
 	assert.equal(view.input.value, plugin.getPrompts("book")[0].prompt);
-	assert.equal(root.ownerDocument.activeElement, view.input);
+	assert.equal(root.ownerDocument.activeElement, view.input._mathEditor);
 	view.input.value += " Please focus on the second equation.";
 	view.send(view.input.value);
 	assert.match(sent[0], /Please focus on the second equation/);

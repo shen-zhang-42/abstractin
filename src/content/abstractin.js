@@ -1265,6 +1265,7 @@ AbstractIn = {
 		root.addEventListener("copy", event => this.copyAnswerSelection(root, event));
 		root.addEventListener("click", event => this.handleReadingSourceLink(this._views.get(root), event));
 		body.appendChild(root);
+		cleanup.push(this.installMathComposer(input));
 
 		this.updateControls(root);
 		this.renderQuickPrompts(root, quick);
@@ -2221,6 +2222,7 @@ AbstractIn = {
 	},
 
 	autoGrow(input) {
+		if (input._mathEditor) return;
 		input.style.height = "auto";
 		input.style.height = Math.min(input.scrollHeight, 180) + "px";
 	},

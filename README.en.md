@@ -80,6 +80,7 @@ Vocabulary tutoring respects all three answer modes: Balanced can use language k
 - **Quick questions** appears at the top right of the composer. Selecting an option fills in a question that you can edit before sending; explanations appear on hover.
 - Book and paper quick questions can be edited separately in settings.
 - Ask about selected PDF passages, attach an image of the current PDF page, upload an image, or paste or drag one into the composer. Image support depends on the selected assistant.
+- The composer renders inline `$…$` and display/multiline `$$…$$` formulas with the bundled KaTeX. Moving the caret into a formula or immediately after its closing delimiter reveals its LaTeX source; moving away renders it again. Click a formula to edit it. Enter inside `$$…$$` inserts a line; sending preserves the original LaTeX.
 - Answers support Markdown, KaTeX mathematics, formal results such as theorems and definitions, and sanitized SVG. Ask for formulas, derivations, or diagrams directly in your question.
 - Copy answers and formula TeX, or stop an answer while it is being generated.
 
@@ -158,7 +159,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.50**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.51**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

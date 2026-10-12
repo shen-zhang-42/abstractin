@@ -25,6 +25,7 @@ export function loadPlugin({ prefs = {} } = {}) {
 		runInNewContext(read("src/content/lib/katex.min.js"), scope);
 	} } };
 	window.eval("var AbstractIn;\n" + read("src/content/abstractin.js") + "\nwindow.AbstractIn = AbstractIn;");
+	window.eval(read("src/content/composer-math.js"));
 	window.eval(read("src/content/icon-assets.js"));
 	window.eval(read("src/content/reading.js"));
 	window.eval(read("src/content/reading-workflow.js"));
