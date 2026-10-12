@@ -38,6 +38,14 @@ async function testComposer(win, CS) {
   input.value='Ready $x$';CS.autoGrow(input);input.focus();input.setSelectionRange(input.value.length,input.value.length);key('Enter','Enter',13);
   check('outside formula Enter reaches send',sent===1,sent);
   check('input listeners notified',notifications>3,notifications);
+  input.value=String.raw`Before $\frac{x_1+23}{\alpha}`;CS.autoGrow(input);input.focus();input.setSelectionRange(input.value.length);await Zotero.Promise.delay(100);
+  check('unfinished LaTeX highlights contents and opening delimiter',frame.contentDocument.querySelectorAll('.composer-latex-delimiter').length===1 && !!frame.contentDocument.querySelector('.composer-latex-content'));
+  check('LaTeX commands and numbers highlight separately',frame.contentDocument.querySelectorAll('.composer-latex-command').length===2 && frame.contentDocument.querySelectorAll('.composer-latex-number').length===2);
+  const colors=['.cm-content','.composer-latex-content','.composer-latex-delimiter','.composer-latex-command'].map(selector=>frameWin.getComputedStyle(frame.contentDocument.querySelector(selector)).color);
+  check('highlight colors differ from prose and each other',new Set(colors).size===4,colors);
+  input.value='Hg $x^2$ Hg';CS.autoGrow(input);input.focus();input.setSelectionRange(0,0);await Zotero.Promise.delay(100);
+  const formula=frame.contentDocument.querySelector('.composer-math');
+  check('inline math uses native baseline and prose size',frameWin.getComputedStyle(formula).verticalAlign==='baseline' && frameWin.getComputedStyle(formula).display==='inline' && frameWin.getComputedStyle(formula.querySelector('math')).fontSize===frameWin.getComputedStyle(editor.view.contentDOM).fontSize);
   input.disabled=true;await Zotero.Promise.delay(100);check('readonly follows host disabled state',editor.view.contentDOM.contentEditable==='false');
   dispose();check('dispose restores native input',!input.hidden&&!holder.querySelector('iframe'));holder.remove();
 

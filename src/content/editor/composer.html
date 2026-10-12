@@ -6,9 +6,10 @@
 <title>Message editor</title>
 <style>
 html, body { margin: 0; padding: 0; background: transparent; color: var(--editor-text, CanvasText); font: 13px system-ui, sans-serif; }
-.composer-math { display: inline-block; max-width: 100%; vertical-align: middle; cursor: text; }
+.composer-math { display: inline; max-width: 100%; vertical-align: baseline; cursor: text; }
 .composer-math[data-display="true"] { display: block; margin: 6px 0; overflow-x: auto; text-align: center; }
-.composer-math math { font-size: 1.1em; }
+.composer-math math { font-size: 1em; }
+.composer-math[data-display="true"] math { font-size: 1.1em; }
 </style>
 <script defer src="composer.bundle.js"></script>
 </head>

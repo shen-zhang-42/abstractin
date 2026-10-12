@@ -1,6 +1,7 @@
 import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateField, Transaction } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, keymap, placeholder } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { latexSourceBlocks, latexHighlightRanges } from "./latex-highlights.js";
 
 // This module runs in an HTML iframe, rather than Zotero's chrome document.
 // CodeMirror owns the document, selection, history, clipboard and IME handling.
@@ -37,12 +38,18 @@ window.AbstractInComposer = {
 		}
 		const decorate = (state, focused) => {
 			const decorations = [];
-			for (const token of config.tokens(state.doc.toString())) {
-				const active = focused && state.selection.ranges.some(range => range.to >= token.start && range.from <= token.end);
-				decorations.push((active
-					? Decoration.mark({ class: "composer-math-source" })
-					: Decoration.replace({ widget: new MathWidget(token), block: token.display }))
-					.range(token.start, token.end));
+			const text = state.doc.toString();
+			const rendered = new Map(config.tokens(text).map(token => [token.start, token]));
+			for (const block of latexSourceBlocks(text)) {
+				const token = rendered.get(block.start);
+				const active = focused && state.selection.ranges.some(range => range.to >= block.start && range.from <= block.end);
+				if (token && !active) {
+					decorations.push(Decoration.replace({ widget: new MathWidget(token), block: token.display }).range(token.start, token.end));
+				} else {
+					decorations.push(Decoration.mark({ class: "composer-math-source" }).range(block.start, block.end));
+					for (const range of latexHighlightRanges(text, block))
+						decorations.push(Decoration.mark({ class: range.className }).range(range.from, range.to));
+				}
 			}
 			return Decoration.set(decorations, true);
 		};
@@ -99,6 +106,12 @@ window.AbstractInComposer = {
 				".cm-placeholder": { color: "var(--editor-faint)" },
 				"&.cm-focused .cm-placeholder": { display: "none" },
 				".composer-math-source": { backgroundColor: "var(--editor-hover)", borderRadius: "3px" },
+				".composer-latex-content": { color: "color-mix(in srgb, var(--editor-text) 40%, #007bbf)" },
+				".composer-latex-delimiter": { color: "color-mix(in srgb, var(--editor-text) 30%, #ce5579)", fontWeight: "600" },
+				".composer-latex-command": { color: "color-mix(in srgb, var(--editor-text) 30%, #a05cc0)" },
+				".composer-latex-bracket, .composer-latex-operator": { color: "color-mix(in srgb, var(--editor-text) 30%, #bc7828)" },
+				".composer-latex-number": { color: "color-mix(in srgb, var(--editor-text) 30%, #168677)" },
+				".composer-latex-comment": { color: "var(--editor-faint)", fontStyle: "italic" },
 			}),
 		];
 		const view = new EditorView({

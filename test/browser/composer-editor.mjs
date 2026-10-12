@@ -64,6 +64,42 @@ try {
   view.contentDOM.dispatchEvent(event);
  });
  assert.equal(await page.evaluate(()=>imagePastes),1);assert.equal(await page.evaluate(()=>input.value),'Ask $x^2$?');
+ // Source highlighting starts before the closing delimiter is written.
+ await page.evaluate(()=>{input.value=String.raw`Before $\frac{x_1+23}{\alpha}`;AbstractIn.autoGrow(input);input.focus();input.setSelectionRange(input.value.length);});
+ const frame=page.frameLocator('.abstractin-composer-frame');
+ assert.equal(await frame.locator('.composer-latex-delimiter').textContent(),'$');
+ assert.equal(await frame.locator('.composer-latex-command').count(),2);
+ assert.equal(await frame.locator('.composer-latex-number').count(),2);
+ const colors=await page.evaluate(()=>{
+  const d=input._composerEditor.view.dom.ownerDocument;
+  return ['.cm-content','.composer-latex-content','.composer-latex-delimiter','.composer-latex-command'].map(selector=>d.defaultView.getComputedStyle(d.querySelector(selector)).color);
+ });
+ assert.equal(new Set(colors).size,4,'prose, math contents, delimiters and commands have distinct colors');
+ await page.keyboard.type('$');
+ assert.equal(await frame.locator('.composer-latex-delimiter').count(),2);
+ assert.equal(await page.evaluate(()=>input.value),String.raw`Before $\frac{x_1+23}{\alpha}$`);
+ await page.keyboard.press('Control+a');await page.keyboard.press('Backspace');assert.equal(await page.evaluate(()=>input.value),'');
+ await page.keyboard.press('Control+z');assert.equal(await page.evaluate(()=>input.value),String.raw`Before $\frac{x_1+23}{\alpha}$`);
+ await page.evaluate(()=>{input.value='$$a_1+2\nb=3';AbstractIn.autoGrow(input);input.focus();});
+ assert.equal(await frame.locator('.composer-latex-delimiter').textContent(),'$$');
+ assert.equal(await frame.locator('.composer-latex-number').count(),3);
+ // Measure real line baselines without modifying CodeMirror's editing DOM.
+ await page.evaluate(()=>{input.value='Hg $x^2$ Hg';AbstractIn.autoGrow(input);input.focus();input.setSelectionRange(0,0);});
+ const baselines=await page.evaluate(()=>{
+  const d=input._composerEditor.view.dom.ownerDocument;
+  const sample=d.createElement('div');sample.style.cssText='font:13px system-ui;line-height:1.4';
+  const formula=d.querySelector('.composer-math').cloneNode(true);
+  const probe=()=>{const p=d.createElement('span');p.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';return p;};
+  const textBaseline=probe(), mathBaseline=probe();formula.append(mathBaseline);
+  sample.append('Hg ',textBaseline,formula,' Hg');d.body.append(sample);
+  const corrected=Math.abs(textBaseline.getBoundingClientRect().y-mathBaseline.getBoundingClientRect().y);
+  formula.style.display='inline-block';formula.style.verticalAlign='middle';formula.querySelector('math').style.fontSize='1.1em';
+  const previous=Math.abs(textBaseline.getBoundingClientRect().y-mathBaseline.getBoundingClientRect().y);
+  sample.remove();return {corrected,previous};
+ });
+ assert.ok(baselines.corrected<=0.5,JSON.stringify(baselines));
+ assert.ok(baselines.previous>baselines.corrected+1,'old middle alignment displaces the formula baseline: '+JSON.stringify(baselines));
+ console.log('LaTeX highlights and inline baseline measurements:',JSON.stringify(baselines));
  assert.deepEqual(errors,[]);
  console.log('CodeMirror typing, selection, deletion, formulas, undo and multiline Enter/send passed in Firefox');
 }finally{await browser.close();}
