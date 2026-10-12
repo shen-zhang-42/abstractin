@@ -140,9 +140,76 @@ test("programmatic drafts, placeholder and disabled state remain compatible", ()
 	assert.ok(env.editor.querySelector("math"));
 	env.input.disabled = true;
 	assert.equal(env.editor.getAttribute("contenteditable"), "false");
+	key(env, "Backspace");
+	assert.equal(env.input.value, "$x$", "disabled composer does not delete the draft");
 	env.input.disabled = false;
 	assert.equal(env.editor.getAttribute("contenteditable"), "true");
 	env.input.value = "";
 	assert.equal(env.editor.textContent, "");
 	env.dispose();
+});
+
+test("Backspace and Delete edit the draft even when the host cancels keys on the hidden textarea", () => {
+	const env = composer("hello world");
+	let forwarded = 0, changed = 0;
+	env.document.addEventListener("keydown", event => {
+		if (event.target === env.input) { forwarded++; event.preventDefault(); }
+	});
+	env.input.addEventListener("input", () => changed++);
+	env.input.focus(); env.input.setSelectionRange(5, 5);
+	key(env, "Backspace");
+	assert.equal(env.input.value, "hell world");
+	key(env, "Delete");
+	assert.equal(env.input.value, "hellworld");
+	assert.equal(forwarded, 0);
+	assert.equal(changed, 2);
+	env.input.setSelectionRange(0, env.input.value.length);
+	key(env, "Backspace");
+	assert.equal(env.input.value, "");
+	assert.equal(env.editor.dataset.empty, "true");
+	key(env, "z", { ctrlKey: true });
+	assert.equal(env.input.value, "hellworld");
+});
+
+test("deletion removes a whole Unicode grapheme and supports word deletion", () => {
+	const env = composer("a👨‍👩‍👧‍👦e\u0301");
+	env.input.focus(); env.input.setSelectionRange(env.input.value.length);
+	key(env, "Backspace");
+	assert.equal(env.input.value, "a👨‍👩‍👧‍👦");
+	key(env, "Backspace");
+	assert.equal(env.input.value, "a");
+	env.input.value = "hello world";
+	env.input.setSelectionRange(11);
+	key(env, "Backspace", { ctrlKey: true });
+	assert.equal(env.input.value, "hello ");
+	env.input.setSelectionRange(0);
+	key(env, "Delete", { ctrlKey: true });
+	assert.equal(env.input.value, " ");
+});
+
+test("beforeinput deletion edits formula source and can clear the final character", () => {
+	const env = composer("$x$ tail");
+	env.input.focus(); env.input.setSelectionRange(2);
+	const deletion = new env.window.InputEvent("beforeinput", { inputType: "deleteContentBackward", cancelable: true });
+	env.editor.dispatchEvent(deletion);
+	assert.equal(env.input.value, "$$ tail");
+	env.input.value = "a"; env.input.setSelectionRange(1);
+	key(env, "Backspace");
+	assert.equal(env.input.value, "");
+	env.editor.replaceChildren(env.document.createElement("br"));
+	env.editor.dispatchEvent(new env.window.Event("input"));
+	assert.equal(env.input.value, "", "Gecko filler br is not a new line in the draft");
+	assert.equal(env.editor.dataset.empty, "true");
+});
+
+test("ordinary text input keeps the native text node and updates placeholder state", () => {
+	const env = composer();
+	env.input.focus();
+	const text = env.editor.firstChild;
+	text.data = "hello";
+	env.window.getSelection().setBaseAndExtent(text, 5, text, 5);
+	env.editor.dispatchEvent(new env.window.Event("input"));
+	assert.equal(env.editor.firstChild, text, "typing does not rebuild plain-text DOM");
+	assert.equal(env.input.value, "hello");
+	assert.equal(env.editor.dataset.empty, "false");
 });

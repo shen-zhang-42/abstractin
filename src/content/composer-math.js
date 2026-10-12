@@ -43,7 +43,9 @@ Object.assign(AbstractIn, {
 		let past = [], future = [], previous = value.get.call(input);
 		const source = node => node.nodeType === 3 ? node.data
 			: node.dataset?.mathSource !== undefined ? node.dataset.mathSource
-			: node.localName === "br" ? "\n" : Array.from(node.childNodes, source).join("");
+			// Enter/paste insert explicit newline text. Gecko's contenteditable
+			// filler <br> is not draft content (especially after deleting all text).
+			: node.localName === "br" ? "" : Array.from(node.childNodes, source).join("");
 		const selection = () => {
 			const sel = win.getSelection();
 			if (!sel?.rangeCount || !editor.contains(sel.anchorNode) || !editor.contains(sel.focusNode)) return null;
@@ -80,11 +82,16 @@ Object.assign(AbstractIn, {
 		const render = (positions = selection()) => {
 			if (composing || rendering) return;
 			const text = value.get.call(input);
+			editor.dataset.empty = String(text.length === 0);
 			const tokens = this.composerMathTokens(text);
 			const active = positions ? tokens.filter(token => Math.max(...positions) >= token.start && Math.min(...positions) <= token.end) : [];
 			const key = JSON.stringify([text, active.map(token => token.start)]);
 			if (key === lastRender) return;
 			lastRender = key;
+			// Keep native text nodes and the caret while typing ordinary text or
+			// editing raw math. Only rebuild when formula presentation changes.
+			if (editor.firstChild && source(editor) === text && !editor.querySelector(".abstractin-composer-formula")
+				&& tokens.length === active.length) return;
 			rendering = true;
 			editor.replaceChildren();
 			let cursor = 0;
@@ -126,10 +133,35 @@ Object.assign(AbstractIn, {
 			notify();
 		};
 		const insert = text => {
+			if (input.disabled) return;
 			const positions = selection() || saved;
 			const start = Math.min(...positions), end = Math.max(...positions);
 			const current = value.get.call(input);
 			commit(current.slice(0, start) + text + current.slice(end), [start + text.length, start + text.length]);
+		};
+		const remove = (forward, word = false) => {
+			if (input.disabled) return;
+			const positions = selection() || saved;
+			let start = Math.min(...positions), end = Math.max(...positions);
+			const current = input.value;
+			if (start === end) {
+				const segmenter = new win.Intl.Segmenter(undefined, { granularity: word ? "word" : "grapheme" });
+				const segments = Array.from(segmenter.segment(current));
+				if (forward) {
+					for (const part of segments) {
+						if (part.index + part.segment.length <= end) continue;
+						end = part.index + part.segment.length;
+						if (!word || part.isWordLike) break;
+					}
+				} else {
+					for (const part of segments.reverse()) {
+						if (part.index >= start) continue;
+						start = part.index;
+						if (!word || part.isWordLike) break;
+					}
+				}
+			}
+			commit(current.slice(0, start) + current.slice(end), [start, start]);
 		};
 		Object.defineProperty(input, "value", {
 			get: () => value.get.call(input),
@@ -168,8 +200,13 @@ Object.assign(AbstractIn, {
 			value.set.call(input, entry.text); render(entry.positions); notify();
 		};
 		editor.addEventListener("keydown", event => {
-			if (composing || event.isComposing || event.keyCode === 229) return;
+			if (input.disabled || composing || event.isComposing || event.keyCode === 229) return;
 			changed();
+			if (event.key === "Backspace" || event.key === "Delete") {
+				event.preventDefault(); event.stopPropagation();
+				remove(event.key === "Delete", event.ctrlKey || (Zotero.isMac && event.altKey));
+				return;
+			}
 			// Enter inside $$...$$ inserts a formula line, including while the
 			// closing delimiter is still being typed. Modified Enter can send.
 			if (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -186,13 +223,25 @@ Object.assign(AbstractIn, {
 			if ((event.ctrlKey || event.metaKey) && !event.altKey && ["z", "y"].includes(event.key.toLowerCase())) {
 				event.preventDefault(); event.stopPropagation(); undo(event.shiftKey || event.key.toLowerCase() === "y"); return;
 			}
-			const forwarded = new win.KeyboardEvent("keydown", { key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, bubbles: true, cancelable: true });
-			input.dispatchEvent(forwarded);
 			event.stopPropagation();
-			if (forwarded.defaultPrevented) event.preventDefault();
+			// Forward only plugin shortcuts. Synthetic ordinary keys targeted at
+			// a hidden textarea can be cancelled by Zotero's window shortcuts.
+			let handled = false;
+			if (this.isSendKey(event) || event.key === "Escape" || (event.key === "ArrowUp" && !input.value) || event.altKey) {
+				const forwarded = new win.KeyboardEvent("keydown", { key: event.key, code: event.code, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, bubbles: true, cancelable: true });
+				input.dispatchEvent(forwarded);
+				handled = forwarded.defaultPrevented;
+			}
+			if (handled) event.preventDefault();
 			else if (event.key === "Enter") { event.preventDefault(); insert("\n"); }
 		});
+		editor.addEventListener("keypress", event => event.stopPropagation());
 		editor.addEventListener("beforeinput", event => {
+			if (input.disabled || composing || event.isComposing) return;
+			if (/^delete(Content|Word)(Backward|Forward)$/.test(event.inputType)) {
+				event.preventDefault();
+				remove(event.inputType.endsWith("Forward"), event.inputType.includes("Word"));
+			}
 			if (["insertParagraph", "insertLineBreak"].includes(event.inputType)) { event.preventDefault(); insert("\n"); }
 			if (["historyUndo", "historyRedo"].includes(event.inputType)) { event.preventDefault(); undo(event.inputType === "historyRedo"); }
 		});

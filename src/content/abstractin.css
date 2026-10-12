@@ -1119,7 +1119,7 @@
 	overflow-wrap: anywhere;
 	overflow-y: auto;
 }
-.abstractin-math-editor:empty::before {
+.abstractin-math-editor[data-empty="true"]:not(:focus)::before {
 	content: attr(data-placeholder);
 	color: var(--abstractin-faint);
 	pointer-events: none;
