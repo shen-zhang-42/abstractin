@@ -5781,12 +5781,6 @@ AbstractIn = {
 		if (onSpawn) {
 			onSpawn(proc);
 		}
-		// Claude and Codex read prompts from stdin, avoiding command-line length limits.
-		try {
-			if (stdinText !== null) await proc.stdin.write(new TextEncoder().encode(stdinText).buffer);
-		}
-		finally { await proc.stdin.close(); }
-
 		let emit = (line) => {
 			line = line.trim();
 			if (!line || !onEvent) {
@@ -5824,8 +5818,30 @@ AbstractIn = {
 			return out;
 		})();
 
-		let [stdout, stderr] = await Promise.all([readStdout, readStderr]);
-		let { exitCode } = await proc.wait();
+		// Drain both output pipes while feeding stdin. A child can print a startup
+		// error and exit before reading its prompt; preserve that error rather
+		// than replacing it with the write-side "File closed" exception.
+		let inputError = null;
+		let feedInput = (async () => {
+			try {
+				if (stdinText !== null) await proc.stdin.write(new TextEncoder().encode(stdinText).buffer);
+			}
+			catch (e) { inputError = e; }
+			finally {
+				try { await proc.stdin.close(); }
+				catch (e) {
+					if (!inputError && e.errorCode !== 0xff7a0001 && e.message !== "File closed") inputError = e;
+				}
+			}
+		})();
+		let results = await Promise.allSettled([readStdout, readStderr, feedInput, proc.wait()]);
+		for (let result of results) if (result.status === "rejected") throw result.reason;
+		let stdout = results[0].value, stderr = results[1].value;
+		let { exitCode } = results[3].value;
+		if (inputError) {
+			if (exitCode === 0) throw new Error("Agent closed its input before receiving the complete prompt. " + (stderr.trim() || inputError.message || String(inputError)));
+			if (!stderr.trim() && !stdout.trim()) stderr = "Agent exited with code " + exitCode + " before receiving the prompt. Check that the CLI can answer a question in your terminal. Input pipe: " + (inputError.message || String(inputError));
+		}
 		this.log(command + " exited with code " + exitCode + (stderr ? ("; stderr: " + stderr.slice(0, 2000)) : ""));
 		return { stdout, stderr, exitCode };
 	},

@@ -9,6 +9,9 @@ async function testAgentSetup(win, plugin) {
  await IOUtils.writeUTF8(command, String.raw`#!/bin/sh
 if [ "$1" = "--version" ]; then echo "fixture-cli 1.0"; exit 0; fi
 if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo '{"loggedIn":true}'; exit 0; fi
+for arg in "$@"; do
+ if [ "$arg" = "fixture-startup-error" ]; then echo 'Fixture CLI initialization failed before reading input' >&2; exit 1; fi
+done
 if [ "$1" = "-p" ]; then
  printf '%s\n' "$@" > "$0.args"
  cat > "$0.prompt"
@@ -62,5 +65,9 @@ exit 1
   const argv = await IOUtils.readUTF8(command + '.args');
   check('all original skills and Unicode reach the child stdin intact', piped === plugin.claudePrompt(request), { received: piped.length, expected: plugin.claudePrompt(request).length });
   check('child command stays below Windows argument limit', argv.length < 10000 && !argv.includes(skills), argv.length);
+  const failure = await plugin.runClaude({ ...request, question: 'long prompt 中文 '.repeat(100000), model: 'fixture-startup-error' });
+  check('early CLI exit reports its real stderr instead of File closed', failure.error === 'Fixture CLI initialization failed before reading input', failure);
+  const retry = await plugin.runClaude(request);
+  check('normal requests still succeed after an input pipe failure', retry.text === 'fixture answer', retry);
  } finally { plugin.testAndAdaptAgent = originalTest; holder._agentSetup?.close(); holder.remove(); }
 }

@@ -451,3 +451,52 @@ test("Claude stdin preserves Unicode history, resumed prompts and formatting", a
   assert.equal((await p.runClaude(request)).text, "OK");
  }
 });
+
+function processFixture(window, { stdout = '', stderr = '', exitCode = 0, writeError = null, closeError = null, gateWrite = false } = {}) {
+ let outputRead = false, waited = false, closeCalls = 0;
+ const once = text => { let pending = text; return async () => { const chunk = pending; pending = ''; outputRead = true; return chunk; }; };
+ const proc = {
+  stdin: {
+   write: async () => {
+    if (gateWrite) assert.equal(outputRead, true, 'output is drained before awaiting stdin writes');
+    if (writeError) throw writeError;
+   },
+   close: async () => { closeCalls++; if (closeError) throw closeError; },
+  },
+  stdout: { readString: once(stdout) }, stderr: { readString: once(stderr) },
+  wait: async () => { waited = true; return { exitCode }; },
+ };
+ window.Subprocess.call = async () => proc;
+ return () => ({ waited, closeCalls });
+}
+
+test('early Claude exit exposes its stderr instead of a File closed write error', async () => {
+ const { plugin: p, window } = loadPlugin(); p.findBinary = async () => '/bin/claude'; p.buildChildEnvironment = () => ({});
+ const inspect = processFixture(window, { stderr: 'Unsupported CLI option: --include-partial-messages', exitCode: 1, writeError: new Error('File closed'), closeError: new Error('File closed') });
+ const result = await p.runClaude({ ...base, question: 'Long prompt'.repeat(10000), onProgress() {} });
+ assert.equal(result.error, 'Unsupported CLI option: --include-partial-messages');
+ assert.deepEqual(inspect(), { waited: true, closeCalls: 1 });
+});
+
+test('early exit preserves JSON error output and diagnoses silent exits', async () => {
+ for (const stdout of ['', JSON.stringify({ type: 'result', is_error: true, result: 'CLI initialization failed' })]) {
+  const { plugin: p, window } = loadPlugin(); p.findBinary = async () => '/bin/claude'; p.buildChildEnvironment = () => ({});
+  processFixture(window, { stdout, exitCode: 1, writeError: new Error('File closed') });
+  const result = await p.runClaude({ ...base, onProgress() {} });
+  assert.match(result.error, stdout ? /CLI initialization failed/ : /exited with code 1 before receiving the prompt/);
+ }
+});
+
+test('process output drains concurrently with stdin and harmless close races preserve successful answers', async () => {
+ const { plugin: p, window } = loadPlugin(); p.buildChildEnvironment = () => ({});
+ const inspect = processFixture(window, { stdout: 'Answer', gateWrite: true, closeError: Object.assign(new Error('File closed'), { errorCode: 0xff7a0001 }) });
+ const result = await p.runProcess('/bin/agent', [], '/tmp', null, null, 'A very long prompt');
+ assert.equal(result.stdout, 'Answer'); assert.equal(result.exitCode, 0);
+ assert.deepEqual(inspect(), { waited: true, closeCalls: 1 });
+});
+
+test('incomplete stdin is never accepted as a successful request even with exit code zero', async () => {
+ const { plugin: p, window } = loadPlugin(); p.buildChildEnvironment = () => ({});
+ processFixture(window, { stdout: 'Answer', exitCode: 0, writeError: new Error('File closed') });
+ await assert.rejects(p.runProcess('/bin/agent', [], '/tmp', null, null, 'Incomplete prompt'), /before receiving the complete prompt/);
+});
