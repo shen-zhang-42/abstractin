@@ -1234,7 +1234,10 @@ AbstractIn = {
 	// ---------------------------------------------------------------------
 
 	renderSkeleton(doc, body) {
-		body.querySelector(".abstractin-root")?.disposeUI?.();
+		let current = body.querySelector(".abstractin-root");
+		// Item-pane refreshes must not destroy an in-progress reading setup.
+		if (this._views.get(current)?.readingSetup) return;
+		current?.disposeUI?.();
 		body.textContent = "";
 
 		let root = this.el(doc, "div", "abstractin-root");
@@ -2350,6 +2353,13 @@ AbstractIn = {
 		let root = body.querySelector(".abstractin-root");
 		let logEl = body.querySelector(".abstractin-log");
 		let input = body.querySelector(".abstractin-input");
+		let existing = this._views.get(root);
+		if (existing?.readingSetup) {
+			if (item && [existing.ctx.paperItem?.id, existing.ctx.attachmentItem?.id].includes(item.id)) return;
+			// Leaving the document cancels its setup before any async commit.
+			delete existing.readingSetup;
+		}
+		let renderID = root ? (root._contentRenderID = (root._contentRenderID || 0) + 1) : 0;
 		if (!logEl) {
 			return;
 		}
@@ -2392,9 +2402,10 @@ AbstractIn = {
 		view.send = (text, images) => this.sendText(view, text, images);
 
 		let history = await this.loadHistory(ctx.dir);
-		if (!logEl.isConnected) {
-			return;
-		}
+		if (!logEl.isConnected || root._contentRenderID !== renderID) return;
+		// A setup started while context/history was loading belongs to the live view.
+		let live = this._views.get(root);
+		if (live?.readingSetup && [live.ctx.paperItem?.id, live.ctx.attachmentItem?.id].includes(item.id)) return;
 		this._views.set(root, view);
 		this.updateReadingControls(view);
 		this.renderPaperChip(root, this.paperInfo(ctx));
@@ -5548,6 +5559,15 @@ AbstractIn = {
 		// the shared "abstractin" directory before the per-item subdirectory.
 		await Zotero.File.createDirectoryIfMissingAsync(this.getDataDir());
 		await Zotero.File.createDirectoryIfMissingAsync(dir);
+		// A parent item's best attachment can differ from the PDF chosen for reading.
+		// Restore that choice on item-pane refresh and after restarting Zotero.
+		if (item.isRegularItem() && paperItem.getAttachments && Zotero.Items?.get) {
+			try {
+				let active = JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(dir, "reading-active.json")));
+				let selected = paperItem.getAttachments().map(id => Zotero.Items.get(id)).find(pdf => pdf?.key === active.attachmentKey && pdf.isPDFAttachment?.());
+				if (selected) attachmentItem = selected;
+			} catch (e) { /* Older documents use the best attachment until a PDF is chosen. */ }
+		}
 		let reading = attachmentItem && this._readingStates.get(attachmentItem.id);
 		if (!reading && attachmentItem) {
 			try {

@@ -26,14 +26,9 @@ Object.assign(AbstractIn, {
 	},
 
 	async loadVocabularyTutorSkill() {
-		let key = (this.getPref("readingSkillsDir") || "") + ":" + (this.version || "");
+		let key = this.version || "development";
 		if (this._vocabularyTutorSkillKey !== key) { this._vocabularyTutorSkill = null; this._vocabularyTutorSkillKey = key; }
 		if (!this._vocabularyTutorSkill) this._vocabularyTutorSkill = (async () => {
-			let configured = (this.getPref("readingSkillsDir") || "").trim();
-			if (configured) {
-				let path = OS.Path.join(configured, "english-vocabulary-tutor", "SKILL.md");
-				if (await OS.File.exists(path)) return await Zotero.File.getContentsAsync(path);
-			}
 			let base = this.resourceURI || this.rootURI;
 			let url = this.rootURI?.startsWith("file:") ? new (Zotero.getMainWindow().URL)("../skills/english-vocabulary-tutor/SKILL.md", this.rootURI).href : base + "skills/english-vocabulary-tutor/SKILL.md";
 			return await this.readBundledText(url);
@@ -211,30 +206,13 @@ Object.assign(AbstractIn, {
 
 	async findReadingSkill(type) {
 		let name = type === "extraction" ? "scientific-information-extraction" : this.readingSkillName(type);
-		let env = Subprocess.getEnvironment();
-		let home = env.USERPROFILE || env.HOME || "";
-		let configured = (this.getPref("readingSkillsDir") || "").trim();
-		let roots = configured ? [configured] : [
-			OS.Path.join(home, ".codex", "skills"), OS.Path.join(home, ".agents", "skills"),
-		];
-		let directories = name === "book-reading" ? ["book-reading", "scientific-book-reading"] : [name];
-		for (let root of roots) {
-			for (let directory of directories) {
-				let path = OS.Path.join(root, directory, "SKILL.md");
-				if (await OS.File.exists(path)) {
-					let content = await Zotero.File.getContentsAsync(path);
-					if (!content.trim()) throw new Error(name + "/SKILL.md is empty.");
-					return { path, content };
-				}
-			}
-		}
-		if (!configured && this.rootURI && (Zotero.File.getResourceAsync || Zotero.getMainWindow().fetch)) {
-			let root = await this.installBundledReadingSkills();
-			let directory = name === "book-reading" ? "scientific-book-reading" : name;
-			let path = OS.Path.join(root, directory, "SKILL.md");
-			return { path, content: await Zotero.File.getContentsAsync(path) };
-		}
-		throw new Error("Could not find " + name + "/SKILL.md. Set the reading skills folder to the directory containing both original skills.");
+		if (!this.rootURI) throw new Error("The bundled reading skills are unavailable. Reinstall AbstractIn.");
+		let root = await this.installBundledReadingSkills();
+		let directory = name === "book-reading" ? "scientific-book-reading" : name;
+		let path = OS.Path.join(root, directory, "SKILL.md");
+		let content = await Zotero.File.getContentsAsync(path);
+		if (!content.trim()) throw new Error("Bundled " + name + "/SKILL.md is empty. Reinstall AbstractIn.");
+		return { path, content };
 	},
 
 	async installBundledReadingSkills() {
@@ -466,6 +444,7 @@ Object.assign(AbstractIn, {
 		await Zotero.File.putContentsAsync(OS.Path.join(dir, "reading.json"), JSON.stringify({
 			type: options.type, title: options.title || "", goal: options.goal || "", itemKey: parent.key, attachmentKey: attachment.key,
 		}));
+		await Zotero.File.putContentsAsync(OS.Path.join(baseDir, "reading-active.json"), JSON.stringify({ attachmentKey: attachment.key }));
 		this._readingStates.set(attachment.id, options);
 		view.ctx = { paperItem: parent, attachmentItem: attachment, dir, reading: options,
 			reader: view.ctx.reader?.itemID === attachment.id ? view.ctx.reader : this.readerFor({ paperItem: parent, attachmentItem: attachment }, view.doc.defaultView) };

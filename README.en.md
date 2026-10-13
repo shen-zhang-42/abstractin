@@ -37,7 +37,7 @@ The marmoset animation also selects its format by version: APNG on Zotero 9 and 
 
 Books can initialize a table of contents from the source and organize discussions by chapter or appendix. Papers focus on reading goals and topics, with options to summarize the source or ask directly. The composer placeholder reflects the material type.
 
-Reading workflows use the bundled `book-reading` and `scientific-paper-reading` skills and their supporting resources. Corresponding skills from a local skill directory can also be used.
+Reading workflows use the bundled `book-reading` and `scientific-paper-reading` skills and their supporting resources. No local skill directory is required. The plugin always uses its bundled originals and automatically extracts them unchanged into its own cache so local CLIs can read them.
 
 ### Finding the source from the current page
 
@@ -73,7 +73,7 @@ Questions about English word meanings, pronunciation, IPA, collocations, grammar
 
 The skill starts with an overview of common parts of speech and their meanings, lists common derived words and applicable grammatical forms (such as verb forms, noun plurals, and adjective comparisons), then explains the major senses separately, with American and British IPA, natural expressions, spoken and written examples, and short exercises. The target word, derived words, and each synonym and antonym receive explicit spoken/written usage labels, including when they are natural in both. Synonym and antonym comparisons focus on nuance, collocations, grammar, and whether substitution works in the target sense, illustrated with short paired examples. They do not expand unrelated senses of comparison words or recursively introduce more vocabulary. Questions about a specific passage prioritize its actual usage. As required by the skill, these answers are in English regardless of the ordinary answer-language setting. Scientific concepts and proof questions continue to use the regular reading workflow.
 
-Vocabulary tutoring respects all three answer modes: Balanced can use language knowledge, while Context only and Source only do not add missing facts from external knowledge. When a textbook's specific usage requires source evidence, the plugin supplies the material; the vocabulary assistant itself does not execute tools or write files. The skill ships with the installation package and can be overridden by a folder with the same name in a custom skill directory.
+Vocabulary tutoring respects all three answer modes: Balanced can use language knowledge, while Context only and Source only do not add missing facts from external knowledge. When a textbook's specific usage requires source evidence, the plugin supplies the material; the vocabulary assistant itself does not execute tools or write files. The skill ships with the installation package and always uses that bundled version; no local skill directory is required.
 
 ### Quick questions, images, and formulas
 
@@ -161,7 +161,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.63**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.64**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

@@ -101,6 +101,36 @@ exit 1
    plugin.removeDeepSeekKey();
    check('DeepSeek key removal uses native login manager', !plugin.deepSeekKey());
   } finally { plugin.deepSeekRequest = originalAPIRequest; plugin.removeDeepSeekKey(); holder._agentSetup?.close(); }
+  const documentBody = plugin.el(doc, 'div'); (doc.body || doc.documentElement).append(documentBody);
+  const originalFind = plugin.findBinary, originalBegin = plugin.beginReadingWorkflow;
+  try {
+   const item = new Zotero.Item('journalArticle'); item.setField('title', 'Reading refresh fixture'); await item.saveTx();
+   const file = PathUtils.join(repo, 'test', 'integration', 'assets', 'test-paper.pdf');
+   const first = await Zotero.Attachments.importFromFile({ file, parentItemID: item.id });
+   const second = await Zotero.Attachments.importFromFile({ file, parentItemID: item.id });
+   const best = await item.getBestAttachment(), selected = best.id === first.id ? second : first;
+   plugin.setPref('readingAgent', 'codex');
+   plugin.setPref('readingSkillsDir', '/deliberately-missing/obsolete-skills');
+   check('obsolete local skill preference does not override bundled skills', (await plugin.findReadingSkill('paper')).path.includes('skill-cache'));
+   plugin.renderSkeleton(doc, documentBody);
+   const root = documentBody.querySelector('.abstractin-root');
+   const view = { doc, root, ctx: await plugin.getContext(item), input: root.querySelector('.abstractin-input'), logEl: root.querySelector('.abstractin-log') };
+   plugin._views.set(root, view); plugin.renderMessages(view, []);
+   plugin.findBinary = async id => id === 'codex' ? command : originalFind.call(plugin, id);
+   let began = 0; plugin.beginReadingWorkflow = async current => { began++; check('native reading workflow receives selected PDF', current.ctx.attachmentItem.id === selected.id && current.ctx.reading.type === 'paper'); };
+   await plugin.openReadingSetup(root);
+   const setup = view.readingSetup;
+   plugin.renderSkeleton(doc, documentBody); await plugin.renderContent(doc, documentBody, item);
+   check('native item refresh preserves the reading setup', documentBody.querySelector('.abstractin-root') === root && plugin._views.get(root) === view && view.readingSetup === setup);
+   await plugin.answerReadingSetup(view, 'Reading refresh fixture'); await plugin.answerReadingSetup(view, 'paper');
+   await plugin.answerReadingSetup(view, String(selected.id)); await plugin.answerReadingSetup(view, 'skip');
+   check('native setup completes without returning to start', began === 1 && !view.readingSetup && !root.querySelector('.abstractin-start-reading'));
+   plugin._readingStates.delete(first.id); plugin._readingStates.delete(second.id);
+   const restored = await plugin.getContext(item);
+   check('native parent restores selected nondefault PDF from disk', restored.attachmentItem.id === selected.id && restored.reading?.type === 'paper');
+   await plugin.renderContent(doc, documentBody, item);
+   check('native refresh after activation retains reading state', plugin._views.get(root)?.ctx.attachmentItem.id === selected.id && !root.querySelector('.abstractin-start-reading'));
+  } finally { plugin.findBinary = originalFind; plugin.beginReadingWorkflow = originalBegin; documentBody.querySelector('.abstractin-root')?.disposeUI?.(); documentBody.remove(); }
   const snapshot = await plugin.agentSkillSnapshot();
   const skills = snapshot.files.filter(file => file.name === 'SKILL.md').map(file => file.content).join('\n');
   const request = { ctx: { dir: plugin.getDataDir() }, question: skills + '\nExplain 中文 🐒', history: [], session: null, model: '', effort: '', onProgress() {}, onSpawn() {} };

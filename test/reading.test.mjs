@@ -16,14 +16,14 @@ test("reading routes books and papers, leaving unknown materials for the user", 
 	assert.equal(p.readingType({ itemType: "bookSection" }), "");
 });
 
-test("skill discovery uses the local Windows directory and never substitutes a missing skill", async () => {
-	const { plugin: p, window } = loadPlugin();
-	window.Subprocess.getEnvironment = () => ({ USERPROFILE: "C:/Users/SZhang" });
-	const expected = "C:/Users/SZhang/.codex/skills/book-reading/SKILL.md";
-	window.OS.File = { exists: async path => path === expected };
-	window.Zotero.File = { getContentsAsync: async () => "# Book reading\nAnswer only user questions." };
-	assert.equal((await p.findReadingSkill("book")).path, expected);
-	await assert.rejects(() => p.findReadingSkill("paper"), /scientific-paper-reading/);
+test("skill discovery ignores Windows home skills and obsolete custom paths, using bundled originals", async () => {
+ const { plugin: p, window } = loadPlugin({ prefs: { "extensions.abstractin.readingSkillsDir": "C:/old/missing/skills" } });
+ filesystem(window); window.Zotero.DataDirectory = { dir: await mkdtemp(join(tmpdir(), 'abstractin-builtins-')) }; await mkdir(p.getDataDir());
+ p.rootURI = new URL('../src/', import.meta.url).href;
+ window.Subprocess.getEnvironment = () => { throw new Error('Must not inspect CLI skill directories'); };
+ window.Zotero.File.getResourceAsync = url => readFile(fileURLToPath(url), 'utf8');
+ for (const type of ['book', 'paper', 'extraction']) assert.ok((await p.findReadingSkill(type)).path.includes('skill-cache'));
+ assert.match(await p.loadVocabularyTutorSkill(), /english-vocabulary-tutor/);
 });
 
 test("reading prompts name the original skill and exact attachment, without whole-document exports", () => {
@@ -147,6 +147,8 @@ for (const type of ["book", "paper"]) {
 			"extensions.abstractin.language": "English",
 		} });
 		filesystem(window);
+		p.rootURI = new URL("../src/", import.meta.url).href;
+		window.Zotero.File.getResourceAsync = url => readFile(fileURLToPath(url), "utf8");
 		window.Zotero.DataDirectory = { dir: await mkdtemp(join(tmpdir(), "abstractin-loop-")) };
 		const notes = [];
 		const parent = { id: 9, key: "ITEM0001", libraryID: 1, itemType: type === "book" ? "book" : "journalArticle",
@@ -413,4 +415,52 @@ test("fresh reading setup with no local skills reaches the workflow and retains 
  assert.equal(began, 1); assert.equal(view.readingSetup, undefined); assert.equal(root.dataset.readingIntro, 'false');
  assert.equal((await p.getContext(parent)).reading.type, 'paper');
  p.renderMessages(view, []); assert.equal(root.querySelector('.abstractin-start-reading'), null);
+});
+
+test("item-pane refresh preserves reading setup and restores the selected PDF instead of the best attachment", async () => {
+ const { plugin: p, window, document } = loadPlugin({ prefs: { 'extensions.abstractin.onboarded': true } }); filesystem(window);
+ window.Zotero.DataDirectory = { dir: await mkdtemp(join(tmpdir(), 'abstractin-refresh-')) };
+ p.rootURI = new URL('../src/', import.meta.url).href;
+ window.Zotero.File.getResourceAsync = url => readFile(fileURLToPath(url), 'utf8');
+ const parent = { id: 9, key: 'ITEM0001', libraryID: 1, itemType: 'journalArticle', isRegularItem: () => true, getField: () => 'Multi-PDF', getAttachments: () => [7, 8] };
+ const attachments = [7, 8].map(id => ({ id, key: 'PDF0000' + id, parentItem: parent, isRegularItem: () => false, isAttachment: () => true, isPDFAttachment: () => true, isFileAttachment: () => true }));
+ parent.getBestAttachment = async () => attachments[0]; window.Zotero.Items = { get: id => attachments.find(pdf => pdf.id === id) };
+ p.findBinary = async () => '/fixture/codex';
+ const body = document.createElement('div'); document.body.append(body); p.renderSkeleton(document, body);
+ const root = body.querySelector('.abstractin-root'), view = { doc: document, root, ctx: await p.getContext(parent), input: root.querySelector('.abstractin-input'), logEl: root.querySelector('.abstractin-log') };
+ p._views.set(root, view); p.renderMessages(view, []); await p.openReadingSetup(root);
+ const state = view.readingSetup;
+ p.renderSkeleton(document, body); assert.equal(body.querySelector('.abstractin-root'), root);
+ await p.renderContent(document, body, parent); assert.equal(p._views.get(root), view); assert.equal(view.readingSetup, state);
+ let began = 0; p.beginReadingWorkflow = async live => { began++; assert.equal(live.ctx.attachmentItem.id, 8); };
+ await p.answerReadingSetup(view, 'Multi-PDF'); await p.answerReadingSetup(view, 'paper'); await p.answerReadingSetup(view, '8'); await p.answerReadingSetup(view, 'skip');
+ assert.equal(began, 1); assert.equal(view.readingSetup, undefined);
+ p._readingStates.clear();
+ const restored = await p.getContext(parent); assert.equal(restored.attachmentItem.id, 8); assert.equal(restored.reading.type, 'paper');
+ assert.equal((await p.getContext(attachments[0])).reading, undefined, 'explicit PDF selection retains that PDF');
+ await p.renderContent(document, body, parent);
+ assert.equal(p._views.get(root).ctx.attachmentItem.id, 8); assert.equal(root.querySelector('.abstractin-start-reading'), null);
+});
+
+test("a context load started before reading setup cannot overwrite the active setup view", async () => {
+ const { plugin: p, document } = loadPlugin({ prefs: { 'extensions.abstractin.onboarded': true } });
+ const parent = { id: 9, key: 'ITEM0001', isRegularItem: () => true, getField: () => 'Fixture' };
+ const body = document.createElement('div'); document.body.append(body); p.renderSkeleton(document, body);
+ const root = body.querySelector('.abstractin-root'), view = { doc: document, root, ctx: { paperItem: parent, dir: '/fixture' }, input: root.querySelector('.abstractin-input'), logEl: root.querySelector('.abstractin-log') };
+ p._views.set(root, view); let resume;
+ p.getContext = () => new Promise(resolve => { resume = resolve; }); p.loadHistory = async () => [];
+ const loading = p.renderContent(document, body, parent);
+ view.readingSetup = { step: 'ready', busy: true }; view.logEl.textContent = 'Getting ready to read…';
+ resume(view.ctx); await loading;
+ assert.equal(p._views.get(root), view); assert.equal(view.logEl.textContent, 'Getting ready to read…');
+});
+
+test("switching to another item cancels the old setup instead of preserving it on the new item", async () => {
+ const { plugin: p, document } = loadPlugin();
+ const body = document.createElement('div'); document.body.append(body); p.renderSkeleton(document, body);
+ const root = body.querySelector('.abstractin-root'), view = { ctx: { paperItem: { id: 9 } }, readingSetup: { step: 'ready', busy: true } }; p._views.set(root, view);
+ p.getContext = async () => null;
+ await p.renderContent(document, body, { id: 10 });
+ assert.equal(view.readingSetup, undefined);
+ assert.match(root.querySelector('.abstractin-log').textContent, /Select a paper/);
 });
