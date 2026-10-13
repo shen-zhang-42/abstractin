@@ -36,13 +36,7 @@ Object.assign(AbstractIn, {
 			}
 			let base = this.resourceURI || this.rootURI;
 			let url = this.rootURI?.startsWith("file:") ? new (Zotero.getMainWindow().URL)("../skills/english-vocabulary-tutor/SKILL.md", this.rootURI).href : base + "skills/english-vocabulary-tutor/SKILL.md";
-			if (Zotero.File.getResourceAsync) {
-				try { return await Zotero.File.getResourceAsync(url); }
-				catch (e) { /* Reader frames can fall back to the main window. */ }
-			}
-			let response = await Zotero.getMainWindow().fetch(url);
-			if (!response.ok) throw new Error("Could not load english-vocabulary-tutor/SKILL.md.");
-			return await response.text();
+			return await this.readBundledText(url);
 		})();
 		try {
 			let content = await this._vocabularyTutorSkill;
@@ -200,6 +194,21 @@ Object.assign(AbstractIn, {
 		throw new Error("Choose Book or Scientific paper.");
 	},
 
+	async readBundledText(url) {
+		// Native resource channels support chrome/jar URLs in installed XPIs.
+		// Window fetch may reject these before reading any bytes.
+		try {
+			if (Zotero.File.getResourceAsync) {
+				return await Zotero.File.getResourceAsync(url);
+			}
+			let response = await Zotero.getMainWindow().fetch(url);
+			if (!response.ok) throw new Error("Resource could not be read.");
+			return await response.text();
+		} catch (e) {
+			throw new Error("Could not load bundled reading resource: " + url + ". " + (e.message || String(e)));
+		}
+	},
+
 	async findReadingSkill(type) {
 		let name = type === "extraction" ? "scientific-information-extraction" : this.readingSkillName(type);
 		let env = Subprocess.getEnvironment();
@@ -219,7 +228,7 @@ Object.assign(AbstractIn, {
 				}
 			}
 		}
-		if (!configured && this.rootURI && Zotero.getMainWindow().fetch) {
+		if (!configured && this.rootURI && (Zotero.File.getResourceAsync || Zotero.getMainWindow().fetch)) {
 			let root = await this.installBundledReadingSkills();
 			let directory = name === "book-reading" ? "scientific-book-reading" : name;
 			let path = OS.Path.join(root, directory, "SKILL.md");
@@ -232,11 +241,7 @@ Object.assign(AbstractIn, {
 		if (!this._bundledSkills) {
 			this._bundledSkills = (async () => {
 				let win = Zotero.getMainWindow();
-				let read = async url => {
-					let response = await win.fetch(url);
-					if (!response.ok) throw new Error("Could not read bundled skill resource: " + url);
-					return response.text();
-				};
+				let read = url => this.readBundledText(url);
 				let catalog = JSON.parse(await read((this.resourceURI || this.rootURI) + "content/reading-skill-assets.json"));
 				let resources = this.rootURI.startsWith("file:") ? new win.URL("../skills/", this.rootURI).href : (this.resourceURI || this.rootURI) + "skills/";
 				let cache = OS.Path.join(this.getDataDir(), "skill-cache");

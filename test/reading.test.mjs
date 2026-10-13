@@ -1,4 +1,5 @@
 import test from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { loadPlugin } from "./load-plugin.mjs";
 import { mkdtemp, mkdir, readFile, writeFile, copyFile, readdir, stat } from "node:fs/promises";
@@ -358,4 +359,58 @@ test("a failed Zotero save keeps the answer and reports the failure instead of c
 	assert.equal(result.recordKey, undefined);
 	assert.equal(history[1].text, "An answer.");
 	assert.equal(history[1].recordWarning, result.recordWarning);
+});
+
+test("installed XPI skills use Zotero resource channels when browser fetch rejects privileged URLs", async () => {
+ const { plugin: p, window } = loadPlugin(); filesystem(window);
+ window.Zotero.DataDirectory = { dir: await mkdtemp(join(tmpdir(), 'abstractin-xpi-')) }; await mkdir(p.getDataDir());
+ p.rootURI = 'jar:file:///C:/Plugins/abstractin.xpi!/'; p.resourceURI = 'chrome://abstractin-test/content/';
+ window.Subprocess.getEnvironment = () => ({ USERPROFILE: '/nonexistent/windows-home' });
+ window.fetch = async () => { throw new Error('NetworkError when attempting to fetch resource.'); };
+ p.hashAgentText = async text => createHash("sha256").update(text).digest("hex");
+ const read = [];
+ window.Zotero.File.getResourceAsync = async url => {
+  read.push(url); assert.ok(url.startsWith(p.resourceURI));
+  const relative = url.slice(p.resourceURI.length);
+  return readFile(new URL('../' + (relative.startsWith('skills/') ? relative : 'src/' + relative), import.meta.url), 'utf8');
+ };
+ for (const type of ['book', 'paper', 'extraction']) assert.ok((await p.findReadingSkill(type)).content.trim());
+ assert.match(await p.loadVocabularyTutorSkill(), /english-vocabulary-tutor/);
+ assert.ok(read.some(url => url.endsWith('reading-skill-assets.json')));
+ assert.equal((await p.agentSkillSnapshot()).files.length > 3, true);
+});
+
+test("bundled resource errors name the failing path, clear cache and allow retry", async () => {
+ const { plugin: p, window } = loadPlugin(); p.rootURI = 'jar:file:///plugin.xpi!/'; p.resourceURI = 'chrome://plugin/content/';
+ window.Zotero.File = { getResourceAsync: async () => { throw new Error('missing resource'); } };
+ await assert.rejects(p.installBundledReadingSkills(), /Could not load bundled reading resource:.*reading-skill-assets.json/);
+ assert.equal(p._bundledSkills, null);
+ window.Zotero.File.getResourceAsync = async () => 'recovered';
+ assert.equal(await p.readBundledText(p.resourceURI + 'skills/a/SKILL.md'), 'recovered');
+});
+
+test("fresh reading setup with no local skills reaches the workflow and retains the document after rendering", async () => {
+ const { plugin: p, window, document } = loadPlugin({ prefs: { 'extensions.abstractin.onboarded': true, 'extensions.abstractin.backend': 'codex' } });
+ filesystem(window); window.Zotero.DataDirectory = { dir: await mkdtemp(join(tmpdir(), 'abstractin-start-')) };
+ p.rootURI = 'jar:file:///plugin.xpi!/'; p.resourceURI = 'chrome://plugin/content/';
+ window.Subprocess.getEnvironment = () => ({ USERPROFILE: '/nonexistent/windows-home' });
+ window.fetch = async () => { throw new Error('NetworkError when attempting to fetch resource.'); };
+ window.Zotero.File.getResourceAsync = async url => {
+  const relative = url.slice(p.resourceURI.length);
+  return readFile(new URL('../' + (relative.startsWith('skills/') ? relative : 'src/' + relative), import.meta.url), 'utf8');
+ };
+ const parent = { id: 9, key: 'ITEM0001', libraryID: 1, itemType: 'journalArticle', isRegularItem: () => true, getField: () => 'Reading fixture', getAttachments: () => [7] };
+ const attachment = { id: 7, key: 'PDF00001', parentItem: parent, isPDFAttachment: () => true, isAttachment: () => true, isFileAttachment: () => true };
+ parent.getBestAttachment = async () => attachment;
+ window.Zotero.Items = { get: () => attachment };
+ p.findBinary = async () => '/fixture/codex';
+ const body = document.createElement('div'); document.body.append(body); p.renderSkeleton(document, body);
+ const root = body.querySelector('.abstractin-root');
+ const view = { doc: document, root, ctx: await p.getContext(parent), input: root.querySelector('.abstractin-input'), logEl: root.querySelector('.abstractin-log') }; p._views.set(root, view);
+ let began = 0; p.beginReadingWorkflow = async current => { began++; assert.equal(current.ctx.reading.type, 'paper'); };
+ p.renderMessages(view, []); await p.openReadingSetup(root);
+ await p.answerReadingSetup(view, 'Reading fixture'); await p.answerReadingSetup(view, 'paper'); await p.answerReadingSetup(view, 'skip');
+ assert.equal(began, 1); assert.equal(view.readingSetup, undefined); assert.equal(root.dataset.readingIntro, 'false');
+ assert.equal((await p.getContext(parent)).reading.type, 'paper');
+ p.renderMessages(view, []); assert.equal(root.querySelector('.abstractin-start-reading'), null);
 });

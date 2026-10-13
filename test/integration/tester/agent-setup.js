@@ -37,6 +37,16 @@ exit 1
  const click = async label => { const node = button(label); if (!node || node.disabled) throw new Error('Cannot click ' + label); node.click(); await Zotero.Promise.delay(100); };
  try {
 
+  const originalEnvironment = Subprocess.getEnvironment;
+  try {
+   Subprocess.getEnvironment = () => ({ ...originalEnvironment(), HOME: plugin.getDataDir(), USERPROFILE: plugin.getDataDir() });
+   plugin.setPref('readingSkillsDir', '');
+   const skills = await Promise.all(['book', 'paper', 'extraction'].map(type => plugin.findReadingSkill(type)));
+   check('fresh install loads all bundled skills without local CLI skill directories', skills.every(skill => skill.content.trim() && skill.path.includes('skill-cache')));
+   check('bundled skill snapshot works before compatibility testing', (await plugin.agentSkillSnapshot()).files.length > 3);
+   check('bundled vocabulary skill loads through native resource channel', (await plugin.loadVocabularyTutorSkill()).includes('english-vocabulary-tutor'));
+  } finally { Subprocess.getEnvironment = originalEnvironment; }
+
   await plugin.loadClaudeModels(true);
   check('model catalog read through a real SDK-protocol child process', !plugin._claudeModelsError && plugin.modelLabel('claude', 'sonnet') === 'Sonnet from fixture', plugin._claudeModelsError);
   const sent = JSON.parse(await IOUtils.readUTF8(command + '.catalog'));

@@ -12,7 +12,8 @@ async function run() {
   await Zotero.uiReadyPromise;
   const plugin = await waitFor(() => Zotero.AbstractIn);
   results.version = Zotero.version;
-  const scope = { Zotero, Cc, Ci, PathUtils, IOUtils, check, waitFor };
+  const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+  const scope = { Zotero, Cc, Ci, PathUtils, IOUtils, Subprocess, check, waitFor };
   Services.scriptloader.loadSubScript("file://" + repo + "/test/integration/tester/agent-setup.js", scope);
   await scope.testAgentSetup(Zotero.getMainWindow(), plugin);
  } catch (error) { results.errors.push(String(error) + "\n" + error.stack); }

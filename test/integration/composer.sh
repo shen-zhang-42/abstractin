@@ -7,7 +7,12 @@ profile_root=$(mktemp -d /tmp/abstractin-composer-XXXXXX)
 out="${COMPOSER_OUT:-$repo/test/integration/out/composer}"
 mkdir -p "$profile_root/profile/extensions" "$profile_root/data" "$out"
 rm -f "$out/results.json"
-echo "${ABSTRACTIN_SOURCE:-$repo/src}" > "$profile_root/profile/extensions/abstractin@shen-zhang-42.github.io"
+plugin_source="${ABSTRACTIN_SOURCE:-$repo/src}"
+if [[ "$plugin_source" == *.xpi ]]; then
+ cp "$plugin_source" "$profile_root/profile/extensions/abstractin@shen-zhang-42.github.io.xpi"
+else
+ echo "$plugin_source" > "$profile_root/profile/extensions/abstractin@shen-zhang-42.github.io"
+fi
 echo "${ABSTRACTIN_TESTER:-$repo/test/integration/composer}" > "$profile_root/profile/extensions/abstractin-tester@shen-zhang-42.github.io"
 python3 - "$profile_root" "$out" "$repo" <<'PY'
 from pathlib import Path
