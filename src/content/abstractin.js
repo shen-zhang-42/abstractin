@@ -20,7 +20,7 @@ AbstractIn = {
 			{ label: "Assumptions and limitations", prompt: "What are the assumptions and limitations of this paper's method? If a passage is selected, focus on that part." },
 		],
 	},
-	// Agent CLIs the sidebar can drive. Each runs on the user's own subscription login.
+	// Assistants use a local CLI login or an explicitly configured API key.
 	// Codex discovers its catalog through app-server; Antigravity uses `agy models`.
 	BACKENDS: {
 		claude: {
@@ -57,6 +57,8 @@ AbstractIn = {
 			models: [{ id: "", label: "Default", desc: "Your Antigravity default" }],
 			efforts: ["", "low", "medium", "high"],
 		},
+		deepseek: { label: "DeepSeek", fullName: "DeepSeek API", api: true,
+			models: [{ id: "", label: "Default", desc: "First available DeepSeek model" }], efforts: [""], images: false },
 	},
 	EFFORTS: {
 		"": { label: "Auto", desc: "Let the model decide" },
@@ -87,7 +89,7 @@ AbstractIn = {
 	FONT_SIZES: { small: "12px", default: "13px", large: "14.5px" },
 	FONTS: { zotero: "Zotero", sans: "Sans", serif: "Serif", mono: "Mono" },
 	WIZARD_STEPS: ["welcome", "assistant", "companion", "look", "answers", "interaction", "done"],
-	BACKEND_ICONS: { claude: "sparkle", codex: "terminal", agy: "rocket" },
+	BACKEND_ICONS: { claude: "sparkle", codex: "terminal", agy: "rocket", deepseek: "sparkle" },
 	// Study buddies share the app header and appear in the empty chat and reading bar.
 	MASCOTS: {
 		marmoset: { label: "Marmoset", icon: "mascot-marmoset", header: "app" },
@@ -1402,7 +1404,7 @@ AbstractIn = {
 	async checkInstalledBackends(root) {
 		root._installed = root._installed || {};
 		for (let key of Object.keys(this.BACKENDS)) {
-			root._installed[key] = await this.probeBinary(key);
+			root._installed[key] = this.BACKENDS[key].api ? "API" : await this.probeBinary(key);
 		}
 		root.querySelector(".abstractin-menu")?.refresh?.();
 	},
@@ -1424,7 +1426,7 @@ AbstractIn = {
 			for (let [key, backend] of Object.entries(this.BACKENDS)) {
 				let installed = root._installed ? root._installed[key] : undefined;
 				this.menuSection(doc, menu, backend.fullName);
-				this.menuItem(doc, menu, { label: "Set up " + backend.fullName + "…", desc: "Local CLI, sign-in and connection test",
+				this.menuItem(doc, menu, { label: "Set up " + backend.fullName + "…", desc: backend.api ? "API key, model and connection test" : "Local CLI, sign-in and connection test",
 					onSelect: () => this.openAgentSetup(root, key, { reading: !!reading }) });
 				if (installed === null) {
 					menu.appendChild(this.el(doc, "div", "abstractin-menu-note",
@@ -1437,7 +1439,7 @@ AbstractIn = {
 						desc: model.id ? "" : model.desc,
 						checked: key === current && model.id === this.getModel(key),
 						onSelect: () => {
-							if (key !== "codex" && !this.getAgentValidation(key)?.discussion) {
+							if ((key === "deepseek" && model.id !== this.getModel(key)) || (key !== "codex" && !this.getAgentValidation(key)?.discussion)) {
 								this.openAgentSetup(root, key, { model: model.id, reading: !!reading }); return;
 							}
 							this.setPref(key + ".model", model.id);

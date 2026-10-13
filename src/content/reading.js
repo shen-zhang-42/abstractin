@@ -417,7 +417,7 @@ Object.assign(AbstractIn, {
 		view.logEl.appendChild(status);
 		try {
 			let agent = this.readingAgent();
-			await this.findBinary(agent);
+			if (!this.BACKENDS[agent]?.api) await this.findBinary(agent);
 			await this.assertAgentReadingReady(agent, this.getReadingEvidenceMode());
 			let skill = await this.findReadingSkill(state.type);
 			if (state.type === "paper") await this.findReadingSkill("extraction");

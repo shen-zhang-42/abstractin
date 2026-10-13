@@ -161,7 +161,7 @@ Context only 即使问题要求查原文也不会访问 PDF，需要查证时请
 
 XPI 可以直接发送给其他人，通过 Zotero 的“从文件安装插件”安装。使用本仓库插件 ID 和更新地址的 AbstractIn 安装可在插件管理中检查更新，也可按 Zotero 自动更新设置升级。
 
-当前版本为 **0.2.61**。原始 Zusia 使用不同的插件 ID；其用户需要先手动安装一次 AbstractIn，之后再通过本项目更新。
+当前版本为 **0.2.62**。原始 Zusia 使用不同的插件 ID；其用户需要先手动安装一次 AbstractIn，之后再通过本项目更新。
 
 ## 数据与隐私
 
@@ -213,3 +213,9 @@ node scripts/updates.mjs
 AbstractIn 基于 **[Zusia](https://github.com/firekern/zusia)** 开发，原作者为 **[Andrea Porcelli（firekern）](https://github.com/firekern)**。本项目在其基础上独立维护，发展了书籍与论文阅读流程、章节会话管理、原文查找、讨论引用、阅读记录同步和阅读伴侣等功能。
 
 本项目采用 **MIT 协议**，保留原作者版权声明和完整许可文本，见 [LICENSE](LICENSE)。第三方组件及许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，相关许可文件随安装包提供。
+
+### DeepSeek API
+
+在模型菜单选择 **Set up DeepSeek API…**，或在设置的 Assistants → DeepSeek API 点击 **Guided setup**。引导会打开官方 API Key 页面，保存密钥并刷新模型，再发送少量样例提示进行连接与阅读检查，最后启用。API 调用可能产生费用。密钥保存在 Zotero 登录管理器中，不写入插件偏好设置或聊天记录。可在引导中更换或删除密钥。
+
+无需安装本地 CLI。当前支持文本聊天和 Context only 阅读：选择或粘贴要讨论的文本；不支持图片输入或自行读取本地源文件。更换密钥或模型后需要重新测试。

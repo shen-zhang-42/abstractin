@@ -28,6 +28,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading-workflow.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reader-panel.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/agents.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/api-agents.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/agent-setup.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/chats.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/chat-tools.js");

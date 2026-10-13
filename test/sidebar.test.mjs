@@ -111,7 +111,7 @@ test("model menu lists every assistant and switches backend and model together",
 	plugin.setPref("agentValidation", JSON.stringify({ agy: { configKey: plugin.agentConfigKey("agy"), discussion: true } }));
 	root.querySelector(".abstractin-model-btn").click();
 	assert.deepEqual([...root.querySelectorAll(".abstractin-menu-section")].map(n => n.textContent),
-		["Claude Code", "OpenAI Codex", "Google Antigravity"]);
+		["Claude Code", "OpenAI Codex", "Google Antigravity", "DeepSeek API"]);
 	assert.ok(root.querySelector(".abstractin-menu").textContent.includes("Not installed"), "missing CLI is explained");
 	const gemini = [...root.querySelectorAll(".abstractin-menu-item")].find(i => i.textContent.includes("Gemini 3.1 Pro"));
 	gemini.click();

@@ -26,6 +26,7 @@
   openAgentSetup(root, id, options = {}) {
    const agent = this.agentRegistry()[id];
    if (!agent) return;
+   if (agent.api) return this.openDeepSeekSetup(root, options);
    root._agentSetup?.close();
    this.closeMenu(root);
    const doc = root.ownerDocument;

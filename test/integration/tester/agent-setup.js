@@ -66,6 +66,31 @@ exit 1
   const trigger = plugin.el(doc, 'button', null, 'trigger'); holder.append(trigger); trigger.focus();
   plugin.openAgentSetup(holder, 'codex'); await click('Close');
   check('close restores native keyboard focus', doc.activeElement === trigger);
+  const originalAPIRequest = plugin.deepSeekRequest;
+  try {
+   await plugin.saveDeepSeekKey('abstractin-native-fixture-key');
+   check('DeepSeek key stored in native login manager', plugin.deepSeekKey() === 'abstractin-native-fixture-key');
+   check('DeepSeek key absent from config fingerprint', !plugin.agentConfigKey('deepseek').includes('abstractin-native-fixture-key'));
+   let cancelled = '';
+   try { await plugin.deepSeekRequest('/models', null, { onSpawn: proc => proc.kill() }); } catch (e) { cancelled = e.message; }
+   check('DeepSeek native HTTP transport can cancel before sending', cancelled === 'DeepSeek request cancelled.', cancelled);
+   plugin.deepSeekRequest = async () => JSON.stringify({ data: [{ id: 'deepseek-flash', name: 'Fixture Flash' }] });
+   plugin.openAgentSetup(holder, 'deepseek', { reading: true });
+   check('DeepSeek opens API guide without CLI setup', holder.textContent.includes('No local CLI is required'));
+   await click('Continue');
+   check('DeepSeek key field masks input', holder.querySelector('input').type === 'password');
+   await click('Save key & refresh models'); await waitFor(() => !button('Continue').disabled);
+   const picker = holder.querySelector('select'); picker.value = 'deepseek-flash'; picker.dispatchEvent(new win.Event('change', { bubbles: true }));
+   check('DeepSeek model catalog available in native UI', picker.options[1].textContent === 'Fixture Flash');
+   await click('Continue');
+   check('DeepSeek test discloses API charges', holder.textContent.includes('may incur API charges'));
+   await click('Run connection & reading test'); await waitFor(() => !button('Continue').disabled);
+   await click('Continue'); await click('Enable DeepSeek');
+   check('DeepSeek enables only supplied-text reading', plugin.readingAgent() === 'deepseek' && plugin.getPref('readingEvidenceMode') === 'context');
+   check('DeepSeek native capability probe needs no CLI', (await plugin.queryAgentCapabilities('deepseek', {})).files === false);
+   plugin.removeDeepSeekKey();
+   check('DeepSeek key removal uses native login manager', !plugin.deepSeekKey());
+  } finally { plugin.deepSeekRequest = originalAPIRequest; plugin.removeDeepSeekKey(); holder._agentSetup?.close(); }
   const snapshot = await plugin.agentSkillSnapshot();
   const skills = snapshot.files.filter(file => file.name === 'SKILL.md').map(file => file.content).join('\n');
   const request = { ctx: { dir: plugin.getDataDir() }, question: skills + '\nExplain 中文 🐒', history: [], session: null, model: '', effort: '', onProgress() {}, onSpawn() {} };

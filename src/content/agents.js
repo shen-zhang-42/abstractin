@@ -240,10 +240,12 @@
   async runBackend(id, request) {
    const agent = this.agentRegistry()[id];
    if (!agent) throw new Error("Unknown agent: " + id);
+   if (agent.api) return this.runDeepSeek(request);
    if (!agent.custom) return nativeRun.call(this, id, request);
    return agent.protocol === "acp" ? this.runACPAgent(id, request) : this.runJSONLAgent(id, request);
   },
   async queryAgentCapabilities(id, ctx) {
+   if (this.BACKENDS[id].api) return { files: false, images: false, version: "DeepSeek API", models: this.getModels(id).filter(model => model.id), efforts: [] };
    if (!this.BACKENDS[id].custom) {
     const command = await this.findBinary(id);
     const result = await this.runAgentProcess(command, ["--version"], ctx.dir, null, null, null, 30000);
@@ -464,7 +466,7 @@ Object.assign(AbstractIn, {
     path.value = this.getPref(agent.pathPref) || "";
     path.addEventListener("change", () => { try { this.assertAgentIdle(id); this.setPref(agent.pathPref, path.value.trim()); this.clearAgentValidation(id); redraw(); } catch (e) { status.textContent = e.message; } });
     const models = this.getModels(id);
-    if (!agent.custom || models.length > 1) body.append(this.row(doc, "Model", this.select(doc, models.map(model => [model.id, model.label]), this.getModel(id), value => this.setPref(id + ".model", value))));
+    if (!agent.custom || models.length > 1) body.append(this.row(doc, "Model", this.select(doc, models.map(model => [model.id, model.label]), this.getModel(id), value => { this.setPref(id + ".model", value); if (agent.api) { this.clearAgentValidation(id); redraw(); } })));
     const efforts = this.getEfforts(id);
     if (efforts.length > 1) body.append(this.row(doc, "Reasoning effort", this.select(doc, efforts.map(value => [value, this.EFFORTS[value].label]), this.getEffort(id), value => this.setPref(id + ".effort", value))));
     if (id === "codex") {
@@ -473,7 +475,8 @@ Object.assign(AbstractIn, {
      extra.addEventListener("change", () => { this.setPref("codex.models", extra.value.trim()); redraw(); });
      body.append(this.row(doc, "Extra models", extra));
     }
-    body.append(this.row(doc, "Command path", path));
+    if (!agent.api) body.append(this.row(doc, "Command path", path));
+    else body.append(this.el(doc, "p", "abstractin-row-hint", "Uses the official DeepSeek API. Configure the API key in Guided setup. Supplied text only; no local file tools."));
     if (id === "claude") body.append(this.row(doc, "Use my Claude Code settings", this.switchControl(doc, !!this.getPref("useClaudeUserSettings"), value => { this.setPref("useClaudeUserSettings", value); this.clearAgentValidation(id); redraw(); }), "Uses your local Claude settings."));
     if (checked) body.append(this.el(doc, "p", "abstractin-row-hint", "Checked agent version: " + checked.agentVersion + ". Images: " + (checked.images ? "supported" : "not supported") + ". Checks are sample-based, not a guarantee for every answer."));
     const buttons = this.el(doc, "div", "abstractin-button-row");
