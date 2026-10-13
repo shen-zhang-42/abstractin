@@ -8,6 +8,7 @@
  Object.assign(AbstractIn, {
   _discussionLocks: new Set(),
   _discussionInitializations: new Map(),
+  _discussionIndexWrites: new Map(),
   _activeDiscussionDirs: new Map(),
   INITIALIZATION_CHAPTER: "initialization",
   discussionGroups(ctx, index) {
@@ -78,11 +79,33 @@
    catch (e) { if (await OS.File.exists(path)) throw e; return fallback; }
   },
   async writeDiscussionIndex(ctx, index) {
-   // Atomic replacement keeps interrupted updates from destroying the index.
    const path = OS.Path.join(this.discussionRoot(ctx), "discussions.json");
    const text = JSON.stringify(index, null, 2);
-   if (OS.File.writeAtomic) await OS.File.writeAtomic(path, new TextEncoder().encode(text), { tmpPath: path + ".tmp" });
-   else await Zotero.File.putContentsAsync(path, text);
+   // Queue snapshots in call order, even when a previous save failed. Each save
+   // owns its temporary file; sync clients can briefly lock the destination on Windows.
+   const previous = this._discussionIndexWrites.get(path) || Promise.resolve();
+   const pending = previous.catch(() => {}).then(async () => {
+    if (!OS.File.writeAtomic) { await Zotero.File.putContentsAsync(path, text); return; }
+    const tmpPath = path + "." + this.chatSyncID() + ".tmp";
+    try {
+     for (let attempt = 0; ; attempt++) {
+      try {
+       await OS.File.writeAtomic(path, new TextEncoder().encode(text), { tmpPath });
+       return;
+      } catch (error) {
+       const blocked = error?.becauseAccessDenied || /NS_ERROR_FILE_ACCESS_DENIED|ACCESS_DENIED|sharing violation|file is being used by another process/i.test(String(error));
+       if (!blocked || attempt >= 5) throw error;
+       await new Promise(resolve => setTimeout(resolve, 150 * 2 ** attempt));
+      }
+     }
+    } finally {
+     // Never delete the original index or another writer's temporary file.
+     if (OS.File.remove) try { await OS.File.remove(tmpPath, { ignoreAbsent: true }); } catch (_) {}
+    }
+   });
+   this._discussionIndexWrites.set(path, pending);
+   try { await pending; }
+   finally { if (this._discussionIndexWrites.get(path) === pending) this._discussionIndexWrites.delete(path); }
   },
   async discussionIndex(ctx) {
    const index = await this.readDiscussionJSON(OS.Path.join(this.discussionRoot(ctx), "discussions.json"));

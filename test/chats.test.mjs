@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, access, stat, readdir, rename } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, access, stat, readdir, rename, rm } from "node:fs/promises";
 import { join, basename, normalize } from "node:path";
 import { tmpdir } from "node:os";
 import { webcrypto } from "node:crypto";
@@ -12,6 +12,7 @@ async function setup(type = "book") {
  const data = await mkdtemp(join(tmpdir(), "abstractin-discussions-")); p.getDataDir = () => data;
  Object.defineProperty(window, "crypto", { value: webcrypto });
  window.OS = { Path: { join, basename, normalize }, File: { stat, copy: copyFile, exists: async path => { try { await access(path); return true; } catch { return false; } },
+  remove: (path) => rm(path, { force: true }),
   writeAtomic: async (path, bytes, { tmpPath }) => { await writeFile(tmpPath, bytes); await rename(tmpPath, path); } } };
  window.Zotero.File = { createDirectoryIfMissingAsync: path => mkdir(path, { recursive: true }), getContentsAsync: path => readFile(path, "utf8"), putContentsAsync: writeFile,
   iterateDirectory: async (path, callback) => { for (const entry of await readdir(path, { withFileTypes: true })) callback({ name: entry.name, path: join(path, entry.name), isDir: entry.isDirectory() }); } };
@@ -55,6 +56,61 @@ async function setup(type = "book") {
  }
  return { ...env, p, ctx, view, dir, notes, parent, attachment, toc, requests, send, setLocation: value => { location = value; } };
 }
+
+test("discussion index saves run in order with separate temporary files", async () => {
+ const { p, ctx, window } = await setup();
+ const atomic = window.OS.File.writeAtomic, paths = []; let active = 0, peak = 0;
+ window.OS.File.writeAtomic = async (...args) => {
+  peak = Math.max(peak, ++active); paths.push(args[2].tmpPath);
+  try { await new Promise(resolve => setTimeout(resolve, 10)); await atomic(...args); }
+  finally { active--; }
+ };
+ const index = await p.discussionIndex(ctx);
+ await Promise.all([p.writeDiscussionIndex(ctx, { ...index, marker: 1 }), p.writeDiscussionIndex(ctx, { ...index, marker: 2 })]);
+ assert.equal(peak, 1); assert.equal(new Set(paths).size, 2);
+ assert.equal((await p.discussionIndex(ctx)).marker, 2);
+ assert.equal(p._discussionIndexWrites.size, 0);
+});
+
+test("discussion saves retry temporary Windows access-denied errors without losing the original", async () => {
+ const { p, ctx, window } = await setup();
+ const atomic = window.OS.File.writeAtomic, index = await p.discussionIndex(ctx);
+ let calls = 0;
+ window.OS.File.writeAtomic = async (...args) => {
+  if (++calls <= 2) {
+   await writeFile(args[2].tmpPath, args[1]);
+   assert.equal((await p.discussionIndex(ctx)).active, index.active);
+   throw new Error("NotAllowedError: could not move overwrite (NS_ERROR_FILE_ACCESS_DENIED)");
+  }
+  return atomic(...args);
+ };
+ await p.writeDiscussionIndex(ctx, { ...index, marker: "saved" });
+ assert.equal(calls, 3); assert.equal((await p.discussionIndex(ctx)).marker, "saved");
+ assert.ok(!(await readdir(p.discussionRoot(ctx))).some(name => name.endsWith(".tmp")));
+});
+
+test("a failed index save preserves the original and does not block later saves", async () => {
+ const { p, ctx, window } = await setup();
+ const atomic = window.OS.File.writeAtomic, index = await p.discussionIndex(ctx);
+ const failure = new Error("disk full"); let calls = 0;
+ window.OS.File.writeAtomic = async (...args) => { calls++; await writeFile(args[2].tmpPath, args[1]); throw failure; };
+ await assert.rejects(p.writeDiscussionIndex(ctx, { ...index, marker: "lost" }), e => e === failure);
+ assert.equal(calls, 1); assert.equal((await p.discussionIndex(ctx)).marker, undefined);
+ assert.equal(p._discussionIndexWrites.size, 0);
+ assert.ok(!(await readdir(p.discussionRoot(ctx))).some(name => name.endsWith(".tmp")));
+ window.OS.File.writeAtomic = atomic;
+ await p.writeDiscussionIndex(ctx, { ...index, marker: "recovered" });
+ assert.equal((await p.discussionIndex(ctx)).marker, "recovered");
+});
+
+test("persistent access denial stops retrying and preserves the index", async () => {
+ const { p, ctx, window } = await setup();
+ const index = await p.discussionIndex(ctx), failure = new Error("NS_ERROR_FILE_ACCESS_DENIED"); let calls = 0;
+ window.OS.File.writeAtomic = async () => { calls++; throw failure; };
+ await assert.rejects(p.writeDiscussionIndex(ctx, { ...index, marker: "lost" }), e => e === failure);
+ assert.equal(calls, 6); assert.equal((await p.discussionIndex(ctx)).marker, undefined);
+ assert.equal(p._discussionIndexWrites.size, 0);
+});
 
 test("chapter routing creates independent transcripts and restores the original agent thread", async () => {
  const { p, view, send, requests } = await setup();

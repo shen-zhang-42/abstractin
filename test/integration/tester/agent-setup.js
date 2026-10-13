@@ -37,6 +37,14 @@ exit 1
  const click = async label => { const node = button(label); if (!node || node.disabled) throw new Error('Cannot click ' + label); node.click(); await Zotero.Promise.delay(100); };
  try {
 
+  const indexDir = PathUtils.join(plugin.getDataDir(), 'index-save-fixture');
+  await Zotero.File.createDirectoryIfMissingAsync(indexDir);
+  const indexContext = { dir: indexDir };
+  const baseIndex = { version: 2, active: null, chapters: [], chats: [], migrated: {} };
+  await Promise.all([plugin.writeDiscussionIndex(indexContext, { ...baseIndex, marker: 1 }), plugin.writeDiscussionIndex(indexContext, { ...baseIndex, marker: 2 })]);
+  check('native atomic index saves preserve call order', (await plugin.discussionIndex(indexContext)).marker === 2);
+  check('native atomic index write queue is cleared', plugin._discussionIndexWrites.size === 0);
+
   const originalEnvironment = Subprocess.getEnvironment;
   try {
    Subprocess.getEnvironment = () => ({ ...originalEnvironment(), HOME: plugin.getDataDir(), USERPROFILE: plugin.getDataDir() });
