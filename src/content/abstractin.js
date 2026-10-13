@@ -5937,6 +5937,17 @@ AbstractIn = {
 		if (session) {
 			args.push("--resume", session.id);
 		}
+		// Gecko's Windows subprocess quoting drops standalone empty arguments.
+		// Bind empty option values to their flags so Claude receives them intact.
+		if (Zotero.isWin) {
+			let emptyOptions = new Set(["--setting-sources", "--tools", "--allowedTools"]);
+			let safeArgs = [];
+			for (let i = 0; i < args.length; i++) {
+				if (emptyOptions.has(args[i]) && args[i + 1] === "") safeArgs.push(args[i++] + "=");
+				else safeArgs.push(args[i]);
+			}
+			return safeArgs;
+		}
 		return args;
 	},
 

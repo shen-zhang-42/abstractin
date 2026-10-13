@@ -500,3 +500,39 @@ test('incomplete stdin is never accepted as a successful request even with exit 
  processFixture(window, { stdout: 'Answer', exitCode: 0, writeError: new Error('File closed') });
  await assert.rejects(p.runProcess('/bin/agent', [], '/tmp', null, null, 'Incomplete prompt'), /before receiving the complete prompt/);
 });
+
+test('Windows Claude empty settings option survives Gecko argument serialization', async () => {
+ const { plugin: p, window } = loadPlugin(); window.Zotero.isWin = true;
+ const args = p.claudeArgs({ ...base, stdin: true, session: { id: 'thread', seen: 0 } });
+ // Both Zotero 9.0.6 and 10.0.6 use an ESR140 Windows quoteString that
+ // serializes a standalone empty string as nothing, losing the argument.
+ const received = [...args].filter(value => value !== '');
+ assert.ok(received.includes('--setting-sources='));
+ assert.ok(!received.includes('--setting-sources'), 'required value cannot disappear');
+ assert.equal(valueAfter(received, '--resume'), 'thread');
+ assert.equal(valueAfter(received, '--tools'), 'Read,Grep,Glob');
+ assert.equal(args.length, received.length, 'no standalone empty values');
+ p.findBinary = async () => 'C:\\tools\\claude.exe';
+ p.runProcess = async (_, actualArgs) => {
+  assert.ok(actualArgs.includes('--setting-sources=')); assert.ok(!actualArgs.includes(''));
+  return { exitCode: 0, stderr: '', stdout: JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'OK' }] } }) };
+ };
+ assert.equal((await p.runClaude({ ...base, onProgress() {} })).text, 'OK');
+});
+
+test('Windows Claude tutor keeps tools disabled when empty option values cannot be quoted', () => {
+ const { plugin: p, window } = loadPlugin(); window.Zotero.isWin = true;
+ const args = [...p.claudeArgs({ ...base, ctx: { ...base.ctx, reading: { vocabularyTutor: true } }, stdin: true })];
+ assert.ok(args.includes('--tools=')); assert.ok(args.includes('--allowedTools='));
+ assert.ok(args.includes('--setting-sources=')); assert.ok(!args.includes(''));
+ p.setPref('useClaudeUserSettings', true);
+ const enabled = [...p.claudeArgs({ ...base, stdin: true })];
+ assert.ok(!enabled.some(arg => arg.startsWith('--setting-sources')));
+});
+
+test('non-Windows Claude preserves existing settings and empty-tool options', () => {
+ const { plugin: p, window } = loadPlugin(); window.Zotero.isWin = false;
+ const args = p.claudeArgs({ ...base, ctx: { ...base.ctx, reading: { vocabularyTutor: true } }, stdin: true });
+ assert.equal(valueAfter(args, '--setting-sources'), '');
+ assert.equal(valueAfter(args, '--tools'), ''); assert.equal(valueAfter(args, '--allowedTools'), '');
+});
