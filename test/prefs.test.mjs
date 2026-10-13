@@ -280,10 +280,10 @@ test("appearance: reading companion selection persists alongside labels", () => 
 	const appearance = card(container, "Appearance");
 	const tile = (label, title) => [...rowControl(appearance, label).querySelectorAll(".abstractin-tile")].find(t => t.title === title);
 	assert.ok(!appearance.querySelector('.abstractin-tile[title="Cat"], .abstractin-tile[title="Owl"], .abstractin-tile[title="Robot"]'));
-	assert.equal(tile("Reading companion", "Marmoset").getAttribute("aria-checked"), "true");
-	tile("Reading companion", "White wagtail").click();
+	assert.equal(tile("Reading companion", "Ohberto").getAttribute("aria-checked"), "true");
+	tile("Reading companion", "Waggy").click();
 	assert.equal(JSON.parse(prefs[PREFIX + "appearance"]).mascot, "wagtail");
-	tile("Reading companion", "Puffin").click();
+	tile("Reading companion", "Pippin").click();
 	choose(appearance, "Button labels", "Icons + text");
 	const saved = JSON.parse(prefs[PREFIX + "appearance"]);
 	assert.equal(saved.mascot, "puffin");

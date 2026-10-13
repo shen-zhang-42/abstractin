@@ -90,19 +90,29 @@ test("composer shows the assistant, model and effort from prefs", () => {
 	const { root } = sidebar({ [PREFIX + "claude.model"]: "opus", [PREFIX + "claude.effort"]: "high" });
 	assert.equal(root.querySelector(".abstractin-model-btn .abstractin-label").textContent, "Claude · Opus");
 	assert.equal(root.querySelector(".abstractin-effort-btn .abstractin-label").textContent, "High");
-	assert.equal(root.querySelector(".abstractin-input").placeholder, "Ask Claude about this paper…");
+	assert.equal(root.querySelector(".abstractin-input").placeholder, "Ask Ohberto about this paper…");
 });
 
 test("composer hint follows material type when reading context is restored", () => {
  const { view, plugin } = sidebar();
  view.ctx.reading = { type: "book" }; plugin.updateReadingControls(view);
- assert.equal(view.input.placeholder, "Ask Codex about this book…");
+ assert.equal(view.input.placeholder, "Ask Ohberto about this book…");
  view.ctx.reading.type = "paper"; plugin.updateReadingControls(view);
- assert.equal(view.input.placeholder, "Ask Codex about this paper…");
+ assert.equal(view.input.placeholder, "Ask Ohberto about this paper…");
  delete view.ctx.reading; view.ctx.paperItem = { itemType: "book" }; plugin.updateReadingControls(view);
- assert.equal(view.input.placeholder, "Ask Claude about this book…");
+ assert.equal(view.input.placeholder, "Ask Ohberto about this book…");
  view.readingSetup = { step: "title" }; plugin.updateReadingControls(view);
- assert.equal(view.input.placeholder, "Reply to your reading companion…");
+ assert.equal(view.input.placeholder, "Reply to Ohberto…");
+ delete view.readingSetup; view.ctx.reading = { type: "paper" }; plugin.renderMessages(view, []);
+ for (const [mascot, name] of [["marmoset", "Ohberto"], ["wagtail", "Waggy"], ["puffin", "Pippin"]]) {
+  plugin.saveAppearance({ ...plugin.getAppearance(), mascot }); plugin.refreshRoot(view.root);
+  assert.equal(view.input.placeholder, "Ask " + name + " about this paper…");
+  assert.equal(view.root.querySelector(".abstractin-reading-invitation").textContent, "Ask " + name + " a question…");
+  assert.equal(view.root.querySelector(".abstractin-empty-title").textContent, "Ask " + name + " about this passage");
+  const nodes = []; plugin.renderSelectionButtons({ doc: view.doc, reader: { itemID: 1 }, params: { annotation: { text: "Selection" } }, append: node => nodes.push(node) });
+  assert.deepEqual([...nodes[0].querySelectorAll("button")].map(node => node.textContent), ["Ask " + name + " about this", "Ask " + name + " to explain language"]);
+ }
+
 });
 
 test("model menu lists every assistant and switches backend and model together", () => {
@@ -546,7 +556,7 @@ test("reader selection popup gets two buttons; empty selections get none", () =>
 	const appended = [];
 	const event = { reader: { itemID: 1 }, doc: document, params: { annotation: { text: "Lemma 3", pageLabel: "4" } }, append: n => appended.push(n) };
 	plugin.renderSelectionButtons(event);
-	assert.deepEqual([...appended[0].querySelectorAll("button")].map(b => b.textContent), ["Ask Claude about this", "Explain language"]);
+	assert.deepEqual([...appended[0].querySelectorAll("button")].map(b => b.textContent), ["Ask Ohberto about this", "Ask Ohberto to explain language"]);
 	plugin.renderSelectionButtons({ ...event, params: { annotation: { text: "  " } } });
 	assert.equal(appended.length, 1);
 });
@@ -594,7 +604,7 @@ test("reading companion stays above the composer and shortcuts move inside its h
 	const row = bar.querySelector(".abstractin-reading-assistant");
 	assert.ok(row.firstElementChild.matches(".abstractin-discussion-companion"));
 	assert.ok(row.querySelector(".abstractin-mascot[data-icon='mascot-marmoset']"));
-	assert.equal(row.querySelector(".abstractin-reading-invitation").textContent, "Ask me a question?");
+	assert.equal(row.querySelector(".abstractin-reading-invitation").textContent, "Ask Ohberto a question…");
 	assert.equal(root.querySelector(".abstractin-composer-head .abstractin-quick").hidden, false);
 	assert.equal(root.querySelector(".abstractin-empty .abstractin-mascot"), null);
 	assert.equal(row.querySelectorAll(".abstractin-pill").length, 0);
@@ -762,7 +772,7 @@ test("wizard: current settings save in the reading window and untested agents re
 	model.value = "custom-model"; model.dispatchEvent(new window.Event("change"));
 	assert.equal(prefs[PREFIX + "codex.model"], "custom-model");
 	next(); assert.equal(wizard.dataset.step, "companion");
-	tile("Puffin").click(); assert.equal(plugin.getAppearance().mascot, "puffin");
+	tile("Pippin").click(); assert.equal(plugin.getAppearance().mascot, "puffin");
 	next(); assert.equal(wizard.dataset.step, "look");
 	wizard.querySelector('.abstractin-swatch[aria-label="Violet"]').click();
 	assert.equal(plugin.getAppearance().accent, "#6d4fd6");

@@ -348,7 +348,7 @@ Object.assign(AbstractIn, {
 		if (state.attachments.length && state.step !== "ready" && !error) {
 			const field = this.el(view.doc, "input", "abstractin-reading-setup-input");
 			field.type = "text"; field.setAttribute("aria-label", "Reading setup response");
-			field.placeholder = state.step === "title" ? "Book or paper title…" : state.step === "goal" ? "Where shall we begin?" : "Your answer…";
+			field.placeholder = state.step === "title" ? "Book or paper title for " + this.companionName(view.root) + "…" : state.step === "goal" ? "Where should " + this.companionName(view.root) + " begin?" : "Reply to " + this.companionName(view.root) + "…";
 			const submit = this.el(view.doc, "button", "abstractin-reading-choice abstractin-reading-setup-submit", "Continue");
 			submit.type = "button";
 			const respond = () => this.answerReadingSetup(view, field.value);
@@ -358,7 +358,7 @@ Object.assign(AbstractIn, {
 		}
 		card.setAttribute("aria-live", "polite");
 		view.logEl.appendChild(card);
-		view.input.placeholder = state.step === "title" ? "Tell me the book or paper title…" : state.step === "type" ? "Book or scientific paper…" : state.step === "attachment" ? "Choose a PDF above, or enter its name…" : "Where shall we begin?";
+		view.input.placeholder = "Reply to " + this.companionName(view.root) + "…";
 		this.scrollToEnd(view.logEl);
 		card.querySelector(".abstractin-reading-setup-input")?.focus();
 	},

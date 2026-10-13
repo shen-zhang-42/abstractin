@@ -92,9 +92,9 @@ AbstractIn = {
 	BACKEND_ICONS: { claude: "sparkle", codex: "terminal", agy: "rocket", deepseek: "sparkle" },
 	// Study buddies share the app header and appear in the empty chat and reading bar.
 	MASCOTS: {
-		marmoset: { label: "Marmoset", icon: "mascot-marmoset", header: "app" },
-		wagtail: { label: "White wagtail", icon: "mascot-wagtail", header: "app" },
-		puffin: { label: "Puffin", icon: "mascot-puffin", header: "app" },
+		marmoset: { label: "Ohberto", icon: "mascot-marmoset", header: "app" },
+		wagtail: { label: "Waggy", icon: "mascot-wagtail", header: "app" },
+		puffin: { label: "Pippin", icon: "mascot-puffin", header: "app" },
 	},
 	// Faint background patterns behind the chat.
 	PATTERNS: {
@@ -559,6 +559,10 @@ AbstractIn = {
 		};
 	},
 
+	companionName(root = null) {
+		return this.MASCOTS[root?.dataset.mascot || this.getAppearance().mascot]?.label || this.MASCOTS.marmoset.label;
+	},
+
 	saveAppearance(appearance) {
 		let saved = Object.fromEntries(["accent", "size", "density", "font", "mascot", "labels"]
 			.map(key => [key, appearance[key]]));
@@ -614,6 +618,10 @@ AbstractIn = {
 				companion.replaceWith(this.svgIcon(root.ownerDocument, mascot.icon, companion.getAttribute("class")));
 			}
 		}
+		const invitation = root.querySelector(".abstractin-reading-invitation");
+		if (invitation) invitation.textContent = "Ask " + mascot.label + " a question…";
+		const emptyTitle = root.querySelector(".abstractin-empty:not(.abstractin-reading-welcome) .abstractin-empty-title");
+		if (emptyTitle) emptyTitle.textContent = "Ask " + mascot.label + " about this passage";
 		delete root.dataset.bg;
 		for (let property of ["--abstractin-glass-pct", "--abstractin-glass-strong-pct", "--abstractin-blur", "--abstractin-glow-strength", "--abstractin-bg-veil", "--abstractin-bg-blur"]) {
 			root.style.removeProperty(property);
@@ -1343,7 +1351,7 @@ AbstractIn = {
 		let companion = this.el(doc, "div", "abstractin-discussion-companion");
 		companion.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"));
 		let assistantRow = this.el(doc, "div", "abstractin-reading-assistant");
-		assistantRow.append(companion, this.el(doc, "span", "abstractin-reading-invitation", "Ask me a question?"));
+		assistantRow.append(companion, this.el(doc, "span", "abstractin-reading-invitation", "Ask " + this.companionName(root) + " a question…"));
 		readingBar.prepend(assistantRow);
 		let statusBar = this.el(doc, "div", "abstractin-reading-statusbar");
 		statusBar.append(this.el(doc, "span", "abstractin-reading-status", ""), this.el(doc, "span", "abstractin-reading-source-status", ""));
@@ -1371,12 +1379,11 @@ AbstractIn = {
 	updateComposerPlaceholder(root) {
 		const input = root.querySelector(".abstractin-input"); if (!input) return;
 		const view = this._views.get(root);
-		if (view?.readingSetup) { input.placeholder = "Reply to your reading companion…"; return; }
+		if (view?.readingSetup) { input.placeholder = "Reply to " + this.companionName(root) + "…"; return; }
 		const item = view?.ctx.paperItem;
 		const type = view?.ctx.reading?.type || item?.itemType || (item?.itemTypeID ? Zotero.ItemTypes?.getName(item.itemTypeID) : null);
 		const material = type === "book" || type === "bookSection" ? "book" : "paper";
-		const backend = view?.ctx.reading ? this.readingAgent() : this.getBackend();
-		input.placeholder = "Ask " + this.BACKENDS[backend].label + " about this " + material + "…";
+		input.placeholder = "Ask " + this.companionName(root) + " about this " + material + "…";
 	},
 
 	updateControls(root) {
@@ -2183,7 +2190,7 @@ AbstractIn = {
 			start.setLabel("Let's start reading!");
 			empty.appendChild(start);
 		}
-		if (view.ctx?.reading) empty.appendChild(this.el(doc, "div", "abstractin-empty-title", "Ask about this passage"));
+		if (view.ctx?.reading) empty.appendChild(this.el(doc, "div", "abstractin-empty-title", "Ask " + this.companionName(view.root) + " about this passage"));
 		let title = view.ctx && view.ctx.paperItem ? this.safeField(view.ctx.paperItem, "title") : "";
 		if (title) {
 			empty.appendChild(this.el(doc, "div", "abstractin-empty-paper", title));
@@ -2683,7 +2690,7 @@ AbstractIn = {
 		if (!annotation || !String(annotation.text || "").trim()) {
 			return;
 		}
-		let label = this.BACKENDS[this.getBackend()].label;
+		let label = this.companionName();
 		let container = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
 		container.className = "abstractin-selection-actions";
 		container.style.cssText = "display: flex; flex-direction: column; gap: 2px;";
@@ -2702,7 +2709,7 @@ AbstractIn = {
 			});
 			return el;
 		};
-		container.append(button("Ask " + label + " about this", false), button("Explain language", true));
+		container.append(button("Ask " + label + " about this", false), button("Ask " + label + " to explain language", true));
 		append(container);
 	},
 
