@@ -150,7 +150,7 @@ Settings include colors, fonts, font size, spacing, button labels, answer langua
 
 Codex is the default assistant. The plugin also retains built-in Claude Code and Antigravity adapters and supports configurable ACP v1 or AbstractIn JSONL assistants. Custom assistants must pass compatibility checks before use for reading. Source access, images, models, and reasoning options are enabled according to actual capabilities. Passing compatibility checks does not guarantee success on every task.
 
-Choosing Claude or another unconfigured assistant in the model menu opens a four-step local CLI guide: find the installation, sign in through the official CLI in your terminal, test connection and reading support, then choose a model and enable. **Guided setup** in Settings reopens the guide. AbstractIn never collects passwords. Tests send sample prompts to the provider and may use plan allowance; the current paper is not sent. Failed or cancelled setup does not enable the new assistant. See [assistant adapters](docs/agent-adapters.md) for configuration.
+Choosing Claude or another unconfigured assistant in the model menu opens a four-step local CLI guide: find the installation, sign in through the official CLI in your terminal, test connection and reading support, then choose a model and enable. **Guided setup** in Settings reopens the guide. Claude and Codex both offer **Refresh … models** in the model menu to read the supported model catalog from the local CLI. Claude also offers refresh in Settings and the final setup step. Refresh sends no reading question and preserves the previous list and current selection on failure. AbstractIn never collects passwords. Tests send sample prompts to the provider and may use plan allowance; the current paper is not sent. Failed or cancelled setup does not enable the new assistant. See [assistant adapters](docs/agent-adapters.md) for configuration.
 
 ## Installation packages and updates
 
@@ -161,7 +161,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.60**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.61**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

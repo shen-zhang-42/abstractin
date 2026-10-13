@@ -488,6 +488,17 @@ Object.assign(AbstractIn, {
     const guide = this.el(doc, "button", "abstractin-button", "Guided setup"); guide.type = "button";
     guide.addEventListener("click", () => this.openAgentSetup(card, id, { reading: true, onComplete: redraw }));
     buttons.append(guide, test);
+    if (id === "claude") {
+     const refresh = this.el(doc, "button", "abstractin-button", "Refresh Claude models"); refresh.type = "button";
+     refresh.disabled = !!this._claudeModelsPromise;
+     refresh.addEventListener("click", async () => {
+      refresh.disabled = true; status.textContent = "Loading Claude models…";
+      await this.loadClaudeModels(true);
+      status.textContent = this._claudeModelsError || "Claude models refreshed from your local CLI.";
+      redraw();
+     });
+     buttons.append(refresh);
+    }
     if (agent.custom) {
      const edit = this.el(doc, "button", "abstractin-button", "Edit"); edit.type = "button"; edit.addEventListener("click", () => editAgent(agent));
      const remove = this.el(doc, "button", "abstractin-button", "Remove"); remove.type = "button"; remove.addEventListener("click", () => { try { this.removeAgent(id); redraw(); } catch (e) { status.textContent = e.message; } });

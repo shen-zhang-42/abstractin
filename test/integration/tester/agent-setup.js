@@ -10,6 +10,11 @@ async function testAgentSetup(win, plugin) {
 if [ "$1" = "--version" ]; then echo "fixture-cli 1.0"; exit 0; fi
 if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo '{"loggedIn":true}'; exit 0; fi
 for arg in "$@"; do
+ if [ "$arg" = "--input-format" ]; then
+  exec python3 -c 'import sys,json; request=json.loads(sys.stdin.readline()); open(sys.argv[1]+".catalog","w").write(json.dumps(request)); print(json.dumps({"type":"control_response","response":{"subtype":"success","request_id":request["request_id"],"response":{"models":[{"value":"default","displayName":"Default from fixture"},{"value":"sonnet","displayName":"Sonnet from fixture"}]}}}),flush=True); sys.stdin.read()' "$0"
+ fi
+done
+for arg in "$@"; do
  if [ "$arg" = "fixture-startup-error" ]; then echo 'Fixture CLI initialization failed before reading input' >&2; exit 1; fi
 done
 if [ "$1" = "-p" ]; then
@@ -31,6 +36,12 @@ exit 1
  const button = label => [...holder.querySelectorAll('button')].find(n => n.textContent === label);
  const click = async label => { const node = button(label); if (!node || node.disabled) throw new Error('Cannot click ' + label); node.click(); await Zotero.Promise.delay(100); };
  try {
+
+  await plugin.loadClaudeModels(true);
+  check('model catalog read through a real SDK-protocol child process', !plugin._claudeModelsError && plugin.modelLabel('claude', 'sonnet') === 'Sonnet from fixture', plugin._claudeModelsError);
+  const sent = JSON.parse(await IOUtils.readUTF8(command + '.catalog'));
+  check('model refresh sends only initialize, never a user turn', sent.type === 'control_request' && sent.request.subtype === 'initialize');
+  check('CLI default option appears only once', plugin.getModels('claude').filter(model => model.id === '').length === 1);
   plugin.openAgentSetup(holder, 'claude', { reading: true, model: 'sonnet' });
   await Zotero.Promise.delay(200);
   const overlay = holder.querySelector('.abstractin-agent-setup');

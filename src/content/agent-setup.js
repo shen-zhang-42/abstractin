@@ -151,6 +151,10 @@
      note(validation?.source ? "Ready for discussion and reading local sources." : "Ready for discussion. Reading will use Context only because local source access was not verified.");
      if (!this.getModels(id).some(item => item.id === model)) model = "";
      body.append(this.row(doc, "Model", this.select(doc, this.getModels(id).map(item => [item.id, item.label]), model, value => { model = value; })));
+     if (id === "claude") body.append(button("Refresh Claude models", () => task(async () => {
+      await this.loadClaudeModels(true);
+      if (this._claudeModelsError) throw new Error(this._claudeModelsError);
+     }, () => { render(); status.textContent = "Claude models refreshed."; })));
      const efforts = this.getEfforts(id);
      if (!efforts.includes(effort)) effort = "";
      if (efforts.length > 1) body.append(this.row(doc, "Reasoning effort", this.select(doc, efforts.map(value => [value, this.EFFORTS[value]?.label || value || "Auto"]), effort, value => { effort = value; })));

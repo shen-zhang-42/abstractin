@@ -1027,3 +1027,20 @@ test("reading menus expose unconfigured agents and selecting Claude opens guided
  assert.equal(root.querySelector(".abstractin-menu"), null);
  root.disposeUI(); assert.equal(root.querySelector(".abstractin-agent-setup"), null);
 });
+
+test('Claude menu refresh updates real catalog options and retains current selection', async () => {
+ const { plugin, root, view } = sidebar(); view.ctx.reading = { type: 'paper' };
+ plugin.setPref('agentValidation', JSON.stringify({ claude: { configKey: plugin.agentConfigKey('claude'), discussion: true } }));
+ plugin.selectReadingAgent('claude'); plugin.setPref('claude.model', 'sonnet'); plugin.getDataDir = () => '/tmp/catalog';
+ plugin.findBinary = async () => '/bin/claude';
+ let finish; plugin.queryClaudeModels = () => new Promise(resolve => { finish = resolve; });
+ plugin.openModelMenu(root, root.querySelector('.abstractin-model-btn'));
+ [...root.querySelectorAll('.abstractin-menu-item')].find(n => n.textContent.includes('Refresh Claude models')).click();
+ assert.match(root.querySelector('.abstractin-menu').textContent, /Loading Claude models/);
+ await new Promise(resolve => setImmediate(resolve)); finish([{ value: 'opus', displayName: 'Local Opus' }]);
+ await new Promise(resolve => setImmediate(resolve));
+ assert.ok(menuLabels(root).includes('Local Opus')); assert.equal(plugin.getModel('claude'), 'sonnet');
+ [...root.querySelectorAll('.abstractin-menu-item')].find(n => n.textContent.includes('Local Opus')).click();
+ assert.equal(plugin.readingAgent(), 'claude'); assert.equal(plugin.getModel('claude'), 'opus');
+ assert.equal(root.querySelector('.abstractin-menu'), null);
+});

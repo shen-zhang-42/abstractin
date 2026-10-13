@@ -317,6 +317,10 @@ AbstractIn = {
 	// Keep local defaults and manually entered IDs alongside the CLI catalog.
 	getModels(backend) {
 		let models = this.BACKENDS[backend].models.slice();
+		if (backend === "claude" && this._claudeModelsKey === this.agentConfigKey("claude") && Array.isArray(this._claudeModels)) {
+			models = this._claudeModels.slice();
+			if (!models.some(model => model.id === "")) models.unshift(this.BACKENDS.claude.models[0]);
+		}
 		if (backend === "codex") {
 			models.push(...(this._codexModels || []));
 			for (let id of (this.getPref("codex.models") || "").split(/[,\n]/).map(m => m.trim()).filter(Boolean)) {
@@ -411,6 +415,90 @@ AbstractIn = {
 			try { await proc.stdin.close(); } catch {}
 			try { proc.kill(); } catch {}
 			await Promise.allSettled([proc.wait(), stderr]);
+		}
+	},
+
+	async loadClaudeModels(force = false) {
+		let key = this.agentConfigKey("claude");
+		if (this._claudeModelsPromise) return this._claudeModelsPromise;
+		if (!force && this._claudeModelsKey === key && this._claudeModels && Date.now() - this._claudeModelsLoadedAt < 300000) return this._claudeModels;
+		this._claudeModelsError = null;
+		let task = (async () => {
+			try {
+				let command = await this.findBinary("claude");
+				await Zotero.File.createDirectoryIfMissingAsync(this.getDataDir());
+				let catalog = await this.queryClaudeModels(command, this.getDataDir());
+				let models = [], ids = new Set();
+				for (let item of catalog) {
+					if (typeof item?.value !== "string" || !item.value.trim() || /[\r\n\0]/.test(item.value) || item.value.length > 512) continue;
+					let id = item.value === "default" ? "" : item.value;
+					if (ids.has(id)) continue;
+					ids.add(id);
+					models.push({ id, label: typeof item.displayName === "string" ? item.displayName : item.value,
+						desc: typeof item.description === "string" ? item.description : "" });
+				}
+				if (!models.length) throw new Error("Claude returned no supported models.");
+				if (key !== this.agentConfigKey("claude")) throw new Error("Claude configuration changed. Refresh again.");
+				this._claudeModels = models; this._claudeModelsKey = key; this._claudeModelsLoadedAt = Date.now();
+			}
+			catch (e) {
+				this._claudeModelsError = "Could not read Claude models: " + (e.message || String(e)) + " Update Claude Code or check its sign-in, then refresh. The previous list and selected model remain available.";
+				this.log("Could not list Claude models: " + e);
+			}
+			return this._claudeModelsKey === key ? this._claudeModels || [] : [];
+		})();
+		this._claudeModelsPromise = task;
+		try { return await task; } finally { this._claudeModelsPromise = null; }
+	},
+
+	// Claude Agent SDK's initialize response contains supportedModels().
+	// No user message is sent, so this never starts a model generation turn.
+	async queryClaudeModels(command, workdir) {
+		let args = this.claudeArgs({ ctx: { dir: workdir }, history: [], session: null, stdin: true });
+		args.push("--input-format", "stream-json", "--no-session-persistence");
+		let proc = await Subprocess.call({ command, arguments: args,
+			environment: this.buildChildEnvironment(), workdir, stderr: "pipe" });
+		let win = Zotero.getMainWindow(), timer, done = false, stderrText = "";
+		let requestID = "abstractin-models-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+		let readStderr = (async () => { let chunk; while ((chunk = await proc.stderr.readString())) stderrText = (stderrText + chunk).slice(-4000); })().catch(() => {});
+		let read = (async () => {
+			let buffer = "";
+			while (!done) {
+				let chunk = await proc.stdout.readString();
+				if (!chunk) throw new Error("Claude closed before returning its model catalog.");
+				buffer += chunk;
+				let lines = buffer.split("\n"); buffer = lines.pop();
+				for (let line of lines) {
+					if (!line.trim()) continue;
+					let message; try { message = JSON.parse(line); } catch { continue; }
+					if (message.type === "result" && message.is_error) throw new Error(message.result || (message.errors || []).join("\n") || "Claude initialization failed.");
+					if (message.type !== "control_response" || message.response?.request_id !== requestID) continue;
+					if (message.response.subtype === "error") throw new Error(message.response.error || "Claude catalog request failed.");
+					let models = message.response.response?.models;
+					if (message.response.subtype !== "success" || !Array.isArray(models)) throw new Error("Invalid Claude model catalog. Update Claude Code.");
+					done = true; return models;
+				}
+			}
+		})();
+		let send = (async () => proc.stdin.write(new TextEncoder().encode(JSON.stringify({ type: "control_request", request_id: requestID,
+			request: { subtype: "initialize", hooks: {} } }) + "\n").buffer))();
+		try {
+			let [catalog] = await Promise.race([Promise.all([read, send]), new Promise((_, reject) => {
+				timer = win.setTimeout(() => reject(new Error("Claude model catalog timed out.")), 30000);
+			})]);
+			return catalog;
+		}
+		catch (e) {
+			// Drain the CLI's actual startup error before replacing a pipe failure.
+			try { proc.kill(); } catch {}
+			await readStderr;
+			throw new Error(stderrText.trim() || e.message || String(e));
+		}
+		finally {
+			done = true; win.clearTimeout(timer);
+			try { await proc.stdin.close(); } catch {}
+			try { proc.kill(); } catch {}
+			await Promise.allSettled([proc.wait(), readStderr, read, send]);
 		}
 	},
 
@@ -1360,6 +1448,12 @@ AbstractIn = {
 						},
 					});
 				}
+				if (key === "claude") {
+					if (this._claudeModelsPromise) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading Claude models…"));
+					if (this._claudeModelsError) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", this._claudeModelsError));
+					this.menuItem(doc, menu, { label: "Refresh Claude models", desc: "Read supported models from your local Claude Code",
+						onSelect: () => { let task = this.loadClaudeModels(true); menu.refresh(); task.then(() => { if (menu.isConnected) { menu.refresh(); this.updateControls(root); } }); } });
+				}
 				if (key === "codex") {
 					if (this._codexModelsPromise) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading Codex models…"));
 					if (this._codexModelsError) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", this._codexModelsError));
@@ -1376,6 +1470,10 @@ AbstractIn = {
 				}
 			}
 		});
+		if (menu && root._installed?.claude !== null && this.getAgentValidation("claude")?.discussion) {
+			let task = this.loadClaudeModels(); menu.refresh();
+			task.then(() => { if (menu.isConnected) { menu.refresh(); this.updateControls(root); } });
+		}
 		if (menu && root._installed?.codex !== null) {
 			let task = this.loadCodexModels(); menu.refresh();
 			task.then(() => { if (menu.isConnected) { menu.refresh(); this.updateControls(root); } });
