@@ -2709,7 +2709,7 @@ AbstractIn = {
 			});
 			return el;
 		};
-		container.append(button("Ask " + label + " about this", false), button("Ask " + label + " to explain language", true));
+		container.append(button("Ask " + label + " about this", false), button("Explain language", true));
 		append(container);
 	},
 

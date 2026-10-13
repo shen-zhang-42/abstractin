@@ -110,7 +110,7 @@ test("composer hint follows material type when reading context is restored", () 
   assert.equal(view.root.querySelector(".abstractin-reading-invitation").textContent, "Ask " + name + " a question…");
   assert.equal(view.root.querySelector(".abstractin-empty-title").textContent, "Ask " + name + " about this passage");
   const nodes = []; plugin.renderSelectionButtons({ doc: view.doc, reader: { itemID: 1 }, params: { annotation: { text: "Selection" } }, append: node => nodes.push(node) });
-  assert.deepEqual([...nodes[0].querySelectorAll("button")].map(node => node.textContent), ["Ask " + name + " about this", "Ask " + name + " to explain language"]);
+  assert.deepEqual([...nodes[0].querySelectorAll("button")].map(node => node.textContent), ["Ask " + name + " about this", "Explain language"]);
  }
 
 });
@@ -556,7 +556,7 @@ test("reader selection popup gets two buttons; empty selections get none", () =>
 	const appended = [];
 	const event = { reader: { itemID: 1 }, doc: document, params: { annotation: { text: "Lemma 3", pageLabel: "4" } }, append: n => appended.push(n) };
 	plugin.renderSelectionButtons(event);
-	assert.deepEqual([...appended[0].querySelectorAll("button")].map(b => b.textContent), ["Ask Ohberto about this", "Ask Ohberto to explain language"]);
+	assert.deepEqual([...appended[0].querySelectorAll("button")].map(b => b.textContent), ["Ask Ohberto about this", "Explain language"]);
 	plugin.renderSelectionButtons({ ...event, params: { annotation: { text: "  " } } });
 	assert.equal(appended.length, 1);
 });
