@@ -3110,3 +3110,26 @@
 }
 .abstractin-composer-frame[hidden],
 .abstractin-input[hidden] { display: none !important; }
+
+/* Local CLI setup uses a separate dialog so closing it preserves onboarding. */
+.abstractin-agent-setup {
+ position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center;
+ justify-content: center; padding: 16px; background: rgba(0, 0, 0, .22);
+ font: 13px/1.5 system-ui, sans-serif; color: var(--abstractin-text, CanvasText);
+}
+.abstractin-root .abstractin-agent-setup { position: absolute; padding: 10px; }
+.abstractin-agent-setup-panel {
+ width: 100%; max-width: 520px; max-height: 100%; overflow-y: auto; box-sizing: border-box;
+ background: var(--abstractin-ground, Canvas); border: 1px solid var(--abstractin-border, GrayText);
+ border-radius: 14px; padding: 18px; box-shadow: 0 10px 35px rgba(0, 0, 0, .18);
+}
+.abstractin-agent-setup-head, .abstractin-agent-setup-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.abstractin-agent-setup-steps { display: flex; gap: 8px; padding: 0; list-style-position: inside; font-size: 11px; color: GrayText; }
+.abstractin-agent-setup-steps li { flex: 1; }
+.abstractin-agent-setup-steps .is-current { color: var(--abstractin-accent, Highlight); font-weight: 600; }
+.abstractin-agent-setup-body h3 { font-size: 17px; margin: 16px 0 10px; }
+.abstractin-agent-setup-body p { margin: 10px 0; }
+.abstractin-agent-setup-body > button { margin: 5px 6px 5px 0; }
+.abstractin-agent-setup-body input, .abstractin-agent-setup-body select { min-width: 0; width: 100%; box-sizing: border-box; }
+.abstractin-agent-setup-command { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; background: rgba(128, 128, 128, .1); border-radius: 8px; user-select: text; }
+.abstractin-agent-setup-status { min-height: 24px; margin: 14px 0; overflow-wrap: anywhere; }

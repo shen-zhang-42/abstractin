@@ -108,6 +108,7 @@ test("composer hint follows material type when reading context is restored", () 
 test("model menu lists every assistant and switches backend and model together", () => {
 	const { root, prefs, plugin } = sidebar();
 	plugin._agyModels = [{ id: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)" }];
+	plugin.setPref("agentValidation", JSON.stringify({ agy: { configKey: plugin.agentConfigKey("agy"), discussion: true } }));
 	root.querySelector(".abstractin-model-btn").click();
 	assert.deepEqual([...root.querySelectorAll(".abstractin-menu-section")].map(n => n.textContent),
 		["Claude Code", "OpenAI Codex", "Google Antigravity"]);
@@ -1011,4 +1012,18 @@ test("selection language action carries an explicit tutor flag while Ask stays o
  assert.equal(calls.length, 1);
  plugin.sendText(view, view.input.value + 'Why does the theorem follow?', []);
  assert.equal(calls[1].options.vocabularyTutor, false);
+});
+
+
+test("reading menus expose unconfigured agents and selecting Claude opens guided setup", () => {
+ const { plugin, root, view } = sidebar();
+ view.ctx.reading = { type: "paper" };
+ const original = plugin.readingAgent();
+ plugin.openModelMenu(root, root.querySelector(".abstractin-model-btn"));
+ assert.ok([...root.querySelectorAll(".abstractin-menu-section")].some(n => n.textContent === "Claude Code"));
+ [...root.querySelectorAll(".abstractin-menu-item")].find(n => n.textContent.includes("Sonnet")).click();
+ assert.ok(root.querySelector(".abstractin-agent-setup"));
+ assert.equal(plugin.readingAgent(), original);
+ assert.equal(root.querySelector(".abstractin-menu"), null);
+ root.disposeUI(); assert.equal(root.querySelector(".abstractin-agent-setup"), null);
 });

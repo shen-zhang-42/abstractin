@@ -447,7 +447,7 @@ Object.assign(AbstractIn, {
    const registry = this.agentRegistry();
    const select = this.select(doc, Object.entries(registry).map(([id, agent]) => [id, agent.fullName]), this.readingAgent(), id => {
     try { this.selectReadingAgent(id); status.textContent = "Reading agent selected."; redraw(); }
-    catch (e) { status.textContent = e.message; select.value = this.readingAgent(); }
+    catch (e) { status.textContent = e.message; select.value = this.readingAgent(); this.openAgentSetup(card, id, { reading: true, onComplete: redraw }); }
    });
    list.append(this.row(doc, "Reading agent", select));
    for (const [id, agent] of Object.entries(registry)) {
@@ -485,7 +485,9 @@ Object.assign(AbstractIn, {
      } catch (e) { status.textContent = "Check failed: " + (e.message || e); }
      finally { redraw(); }
     });
-    buttons.append(test);
+    const guide = this.el(doc, "button", "abstractin-button", "Guided setup"); guide.type = "button";
+    guide.addEventListener("click", () => this.openAgentSetup(card, id, { reading: true, onComplete: redraw }));
+    buttons.append(guide, test);
     if (agent.custom) {
      const edit = this.el(doc, "button", "abstractin-button", "Edit"); edit.type = "button"; edit.addEventListener("click", () => editAgent(agent));
      const remove = this.el(doc, "button", "abstractin-button", "Remove"); remove.type = "button"; remove.addEventListener("click", () => { try { this.removeAgent(id); redraw(); } catch (e) { status.textContent = e.message; } });

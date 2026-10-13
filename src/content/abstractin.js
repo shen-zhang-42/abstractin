@@ -1150,7 +1150,7 @@ AbstractIn = {
 		let root = this.el(doc, "div", "abstractin-root");
 		if (body.closest(".abstractin-reader-panel")) root.dataset.readingTheme = "neutral";
 		let cleanup = [];
-		root.disposeUI = () => { for (let dispose of cleanup.splice(0)) dispose(); };
+		root.disposeUI = () => { root._agentSetup?.close(); for (let dispose of cleanup.splice(0)) dispose(); };
 		// Background image, veil and glow, behind everything else (see .abstractin-backdrop).
 		let backdrop = this.el(doc, "div", "abstractin-backdrop");
 		backdrop.setAttribute("aria-hidden", "true");
@@ -1334,12 +1334,13 @@ AbstractIn = {
 			let reading = this._views.get(root)?.ctx.reading;
 			let current = reading ? this.readingAgent() : this.getBackend();
 			for (let [key, backend] of Object.entries(this.BACKENDS)) {
-				if (reading && key !== "codex" && !this.getAgentValidation(key)?.discussion) continue;
 				let installed = root._installed ? root._installed[key] : undefined;
 				this.menuSection(doc, menu, backend.fullName);
+				this.menuItem(doc, menu, { label: "Set up " + backend.fullName + "…", desc: "Local CLI, sign-in and connection test",
+					onSelect: () => this.openAgentSetup(root, key, { reading: !!reading }) });
 				if (installed === null) {
 					menu.appendChild(this.el(doc, "div", "abstractin-menu-note",
-						"Not installed. Install the " + backend.command + " CLI or set its path in Settings."));
+						"Not installed. Choose Set up " + backend.fullName + " to install or locate its local CLI."));
 					continue;
 				}
 				for (let model of this.getModels(key)) {
@@ -1348,6 +1349,9 @@ AbstractIn = {
 						desc: model.id ? "" : model.desc,
 						checked: key === current && model.id === this.getModel(key),
 						onSelect: () => {
+							if (key !== "codex" && !this.getAgentValidation(key)?.discussion) {
+								this.openAgentSetup(root, key, { model: model.id, reading: !!reading }); return;
+							}
 							this.setPref(key + ".model", model.id);
 							if (reading) this.selectReadingAgent(key);
 							else this.setPref("backend", key);
@@ -3111,7 +3115,7 @@ AbstractIn = {
 			};
 			let agents = this.select(doc, Object.entries(this.agentRegistry()).map(([id, agent]) => [id, agent.fullName]), this.readingAgent(), id => {
 				try { this.selectReadingAgent(id); status.textContent = ""; renderModels(); this.updateControls(root); }
-				catch (e) { agents.value = this.readingAgent(); status.textContent = e.message || String(e); }
+				catch (e) { agents.value = this.readingAgent(); status.textContent = e.message || String(e); this.openAgentSetup(root, id, { reading: true, onComplete: () => { agents.value = this.readingAgent(); status.textContent = "Agent enabled."; renderModels(); } }); }
 			});
 			agents.setAttribute("aria-label", "Reading agent");
 			section("Agent", agents); renderModels(); section("Model settings", models);
