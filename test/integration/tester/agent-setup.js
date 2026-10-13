@@ -6,7 +6,17 @@ async function testAgentSetup(win, plugin) {
  (doc.body || doc.documentElement).append(holder);
  const command = PathUtils.join(plugin.getDataDir(), 'setup-fixture-cli');
  await Zotero.File.createDirectoryIfMissingAsync(plugin.getDataDir());
- await IOUtils.writeUTF8(command, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "fixture-cli 1.0"; exit 0; fi\nif [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo \'{"loggedIn":true}\'; exit 0; fi\nexit 1\n');
+ await IOUtils.writeUTF8(command, String.raw`#!/bin/sh
+if [ "$1" = "--version" ]; then echo "fixture-cli 1.0"; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo '{"loggedIn":true}'; exit 0; fi
+if [ "$1" = "-p" ]; then
+ printf '%s\n' "$@" > "$0.args"
+ cat > "$0.prompt"
+ echo '{"type":"assistant","message":{"content":[{"type":"text","text":"fixture answer"}]}}'
+ exit 0
+fi
+exit 1
+`);
  await IOUtils.setPermissions(command, 0o755);
  plugin.setPref('claudePath', command); plugin.setPref('readingAgent', 'codex');
  const originalTest = plugin.testAndAdaptAgent;
@@ -42,5 +52,15 @@ async function testAgentSetup(win, plugin) {
   const trigger = plugin.el(doc, 'button', null, 'trigger'); holder.append(trigger); trigger.focus();
   plugin.openAgentSetup(holder, 'codex'); await click('Close');
   check('close restores native keyboard focus', doc.activeElement === trigger);
+  const snapshot = await plugin.agentSkillSnapshot();
+  const skills = snapshot.files.filter(file => file.name === 'SKILL.md').map(file => file.content).join('\n');
+  const request = { ctx: { dir: plugin.getDataDir() }, question: skills + '\nExplain 中文 🐒', history: [], session: null, model: '', effort: '', onProgress() {}, onSpawn() {} };
+  check('original skill fixture exceeds Windows command-line limit', plugin.claudeArgs(request).join(' ').length > 32767);
+  const answer = await plugin.runClaude(request);
+  check('Claude long-prompt process runs and parses reply in native Zotero', answer.text === 'fixture answer', answer);
+  const piped = await IOUtils.readUTF8(command + '.prompt');
+  const argv = await IOUtils.readUTF8(command + '.args');
+  check('all original skills and Unicode reach the child stdin intact', piped === plugin.claudePrompt(request), { received: piped.length, expected: plugin.claudePrompt(request).length });
+  check('child command stays below Windows argument limit', argv.length < 10000 && !argv.includes(skills), argv.length);
  } finally { plugin.testAndAdaptAgent = originalTest; holder._agentSetup?.close(); holder.remove(); }
 }

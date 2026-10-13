@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { loadPlugin } from "./load-plugin.mjs";
 
 const { plugin } = loadPlugin();
@@ -412,5 +413,41 @@ test("Codex model RPC releases the process on protocol errors and timeouts", asy
   if (timeout) window.setTimeout = fn => { queueMicrotask(fn); return 1; };
   await assert.rejects(p.queryCodexModels('/bin/codex', '/tmp/catalog'), timeout ? /timed out/ : /Unavailable/);
   assert.deepEqual(fake.cleanup(), { killed: 1, closed: 1 });
+ }
+});
+
+
+test("Claude compatibility skills exceed Windows argv limits but are passed intact on stdin", async () => {
+ const { plugin: p, window } = loadPlugin();
+ window.Zotero.isWin = true;
+ const skills = ["scientific-book-reading", "scientific-paper-reading", "scientific-information-extraction"].map(name =>
+  readFileSync(new URL("../skills/" + name + "/SKILL.md", import.meta.url), "utf8")).join("\n");
+ const request = { ...base, question: "Map the reading skills:\n" + skills, model: "sonnet", effort: "high", onProgress() {}, onSpawn() {} };
+ assert.ok(p.claudeArgs(request).join(" ").length > 32767, "regression fixture reproduces an oversized command");
+ p.findBinary = async () => "C:\\tools\\claude.exe";
+ let launched = false;
+ p.runProcess = async (command, args, dir, onEvent, onSpawn, stdin) => {
+  assert.ok(args.join(" ").length < 10000, "command stays comfortably within Windows limit");
+  assert.equal(args[0], "-p"); assert.equal(args[1], "--output-format", "print mode reads the piped prompt");
+  assert.equal(stdin, p.claudePrompt(request)); assert.ok(stdin.includes(skills), "all three original skills arrive intact");
+  assert.equal(valueAfter(args, "--model"), "sonnet"); assert.equal(valueAfter(args, "--effort"), "high");
+  assert.equal(valueAfter(args, "--allowedTools"), "Read,Grep,Glob");
+  launched = true;
+  return { stdout: JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "Passed" }] } }), stderr: "", exitCode: 0 };
+ };
+ assert.equal((await p.runClaude(request)).text, "Passed"); assert.equal(launched, true);
+});
+
+test("Claude stdin preserves Unicode history, resumed prompts and formatting", async () => {
+ const { plugin: p } = loadPlugin(); p.findBinary = async () => "/bin/claude";
+ for (const session of [null, { id: "session-1", seen: 0 }]) {
+  const request = { ...base, question: "解释 \(\\alpha\) 中文 🐒\n".repeat(6000), history: [{ role: "user", text: "Earlier question" }, { role: "assistant", text: "Earlier answer" }], session, onProgress() {} };
+  p.runProcess = async (_, args, __, ___, ____, stdin) => {
+   assert.equal(stdin, p.claudePrompt(request)); assert.ok(stdin.includes(request.question));
+   assert.ok(stdin.includes(p.formattingReminder())); assert.ok(!args.includes(request.question));
+   if (session) assert.equal(valueAfter(args, "--resume"), session.id);
+   return { stdout: JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "OK" }] } }), stderr: "", exitCode: 0 };
+  };
+  assert.equal((await p.runClaude(request)).text, "OK");
  }
 });

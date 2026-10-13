@@ -5781,7 +5781,7 @@ AbstractIn = {
 		if (onSpawn) {
 			onSpawn(proc);
 		}
-		// Codex reads prompts from stdin, avoiding Windows command-line length limits.
+		// Claude and Codex read prompts from stdin, avoiding command-line length limits.
 		try {
 			if (stdinText !== null) await proc.stdin.write(new TextEncoder().encode(stdinText).buffer);
 		}
@@ -5892,9 +5892,13 @@ AbstractIn = {
 
 	// Flags shared by every run of a backend: model, effort and anything else
 	// chosen in the composer. Kept separate so tests can check them.
-	claudeArgs({ ctx, question, history, session, model, effort }) {
+	claudePrompt({ ctx, question, history, session }) {
+		return this.transcriptFor(history, session) + question + this.formattingReminder(ctx?.reading?.vocabularyTutor ? "English" : this.getLanguage());
+	},
+
+	claudeArgs({ ctx, question, history, session, model, effort, stdin = false }) {
 		let args = [
-			"-p", this.transcriptFor(history, session) + question + this.formattingReminder(ctx?.reading?.vocabularyTutor ? "English" : this.getLanguage()),
+			"-p", ...(stdin ? [] : [this.claudePrompt({ ctx, question, history, session })]),
 			"--output-format", "stream-json",
 			"--verbose",
 			"--include-partial-messages",
@@ -5969,7 +5973,8 @@ AbstractIn = {
 	async runClaude(request) {
 		let { ctx, onProgress, onSpawn } = request;
 		let command = await this.findBinary("claude");
-		let args = this.claudeArgs(request);
+		// Skills and history can exceed Windows CreateProcess command-line limits.
+		let args = this.claudeArgs({ ...request, stdin: true });
 
 		let text = "";
 		let blocks = new Map();
@@ -6019,7 +6024,7 @@ AbstractIn = {
 			}
 		};
 
-		let { stdout, stderr, exitCode } = await this.runProcess(command, args, ctx.dir, onEvent, onSpawn);
+		let { stdout, stderr, exitCode } = await this.runProcess(command, args, ctx.dir, onEvent, onSpawn, this.claudePrompt(request));
 		if (exitCode !== 0) {
 			return {
 				text: "",
