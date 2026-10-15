@@ -803,7 +803,14 @@
    let excerpt = "", allowed = [];
    const nativePages = new Map();
    if (ctx.reading.action === "contents") excerpt = this.contentsExcerpt(full);
-   else if (ctx.reading.action === "summary" && ctx.reading.type === "paper") excerpt = full;
+   else if (ctx.reading.type === "paper" && (ctx.reading.action === "summary" ||
+       !Number.isInteger(ctx.reading.selectedPageIndex ?? ctx.reading.currentPage?.pageIndex))) {
+    // A paper is one reading unit. Library-pane questions have no active PDF
+    // page and must still receive the paper's original text. Book discussions
+    // retain their chapter/page boundaries below.
+    excerpt = full;
+    if (source.pageMapping) allowed = Array.from({ length: source.totalPages }, (_, page) => page);
+   }
    else {
     if (!source.pageMapping) return this.unmappedDiscussionSource(ctx, source, full);
     const index = await this.discussionIndex(ctx); await this.refreshDiscussionChapters(ctx, index);

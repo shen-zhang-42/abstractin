@@ -141,6 +141,27 @@ exit 1
     check('native linked PDF exports searchable original text', diskSource.status === 'ready' && diskSource.accessMethod === 'file', diskSource);
     const copied = await IOUtils.read(PathUtils.join(linkedCtx.dir, 'source.pdf'));
     check('native linked PDF copy matches external original bytes', copied.length === originalBytes.length && copied.every((byte, index) => byte === originalBytes[index]));
+    const article = new Zotero.Item('journalArticle'); article.setField('title', 'Linked paper without a reader location'); await article.saveTx();
+    const articlePDF = await Zotero.Attachments.linkFromFile({ file: linkedPath, parentItemID: article.id, contentType: 'application/pdf' });
+    const articlePath = articlePDF.attachmentPath;
+    const articleDir = PathUtils.join(plugin.getDataDir(), 'linked-paper-discussion-fixture'); await IOUtils.makeDirectory(articleDir, { ignoreExisting: true });
+    const articleCtx = await plugin.ensureDiscussion({ dir: articleDir, paperItem: article, attachmentItem: articlePDF,
+     reading: { type: 'paper', evidenceMode: 'source', action: 'discuss', currentPage: null, sourceQuestion: 'What problem does this paper aim to solve?' } });
+    const articleSource = await plugin.exportReadingSource(articleCtx);
+    check('native Dropbox linked paper prepares source without a selected page or open reader', articleSource.status === 'ready' && articleSource.scoped, articleSource);
+    articleCtx.reading.pdfSource = articleSource;
+    const articleText = await IOUtils.readUTF8(PathUtils.join(articleCtx.dir, 'source-text.md'));
+    check('native paper discussion receives original text while the complete PDF stays private', articleText.length > 100 && !await IOUtils.exists(PathUtils.join(articleCtx.dir, 'source.pdf')));
+    const originalValidation = plugin.getAgentValidation, skills = await plugin.agentSkillSnapshot();
+    try {
+     plugin.getAgentValidation = () => ({ skillFingerprint: skills.fingerprint, discussion: true, source: true });
+     const inline = await plugin.agentReadingContext('claude', articleCtx);
+     const paperRequest = { ctx: articleCtx, question: 'What problem does this paper aim to solve?\n' + inline, history: [], session: null, model: '', effort: '', onProgress() {}, onSpawn() {} };
+     const reply = await plugin.runClaude(paperRequest);
+     const received = await IOUtils.readUTF8(command + '.prompt');
+     check('native Claude process receives authorized original paper text through stdin', reply.text === 'fixture answer' && inline.includes('<authorized-source-excerpt>') && inline.includes(articleText.slice(0, 100)) && received === plugin.claudePrompt(paperRequest));
+    } finally { plugin.getAgentValidation = originalValidation; }
+    check('native paper source preparation preserves its relative external attachment path', articlePDF.attachmentPath === articlePath && await articlePDF.getFilePathAsync() === linkedPath);
     linkedReader = await Zotero.Reader.open(linked.id);
     linkedCtx.reader = linkedReader;
     await waitFor(() => plugin.readingPDFApplication(linkedCtx)?.pdfDocument?.getData, 15000);

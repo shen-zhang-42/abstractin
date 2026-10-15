@@ -236,3 +236,18 @@ test('knowledge identity does not read an open PDF when source access was not re
  ctx.attachmentItem.getFilePathAsync = async () => false;
  assert.equal((await p.knowledgeReadingSource(ctx)).status, 'context-only'); assert.equal(loaded.byteReads, 0); assert.equal(loaded.pageReads, 0);
 });
+
+test('a linked paper discussion can use the exact reader snapshot without a selected page when cloud path access fails', async () => {
+ const { p, window, ctx } = await setup();
+ ctx.documentDir = ctx.dir; ctx.dir = join(ctx.dir, 'discussions', 'paper'); await mkdir(ctx.dir, { recursive: true });
+ ctx.discussion = { id: 'paper' }; ctx.reading = { type: 'paper', action: 'discuss', evidenceMode: 'source', currentPage: null };
+ ctx.attachmentItem.getFilePathAsync = async () => false;
+ await attachLoadedPDF(window, ctx, { texts: ['Paper abstract and research problem.', 'Experimental evidence and conclusion.'] });
+ const source = await p.exportReadingSource(ctx);
+ assert.equal(source.status, 'ready'); assert.equal(source.accessMethod, 'reader-snapshot'); assert.equal(source.scoped, true);
+ assert.deepEqual(Array.from(source.allowedPages), [0, 1]);
+ const text = await readFile(join(ctx.dir, 'source-text.md'), 'utf8');
+ assert.match(text, /Paper abstract/); assert.match(text, /Experimental evidence/);
+ assert.equal(await window.OS.File.exists(join(ctx.dir, 'source.pdf')), false);
+ assert.equal(await window.OS.File.exists(join(ctx.documentDir, 'source.pdf')), true);
+});

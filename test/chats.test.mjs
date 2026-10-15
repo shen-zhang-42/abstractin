@@ -299,6 +299,56 @@ test("scoped source files expose only the selected chapter page and explicit cro
  assert.equal(ctx.discussion.chapterID, "ch-01");
 });
 
+test('a Dropbox linked paper can answer from its original text without an open reader or selected page', async () => {
+ const { p, ctx, window, attachment, setLocation } = await setup('paper');
+ setLocation(null);
+ const external = await mkdtemp(join(tmpdir(), 'Dropbox 用户文档 '));
+ const path = join(external, 'Deep Learning (论文).pdf'); await writeFile(path, '%PDF linked original');
+ attachment.getFilePathAsync = async () => path;
+ attachment.attachmentPath = 'attachments:Deep Learning (论文).pdf';
+ const original = await readFile(path);
+ const pages = ['Abstract: This paper addresses learning useful representations.', 'Experiments verify the proposed method.'];
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 2, extractedPages: 2, text: pages.join('\f') }) };
+ p.assertAgentReadingReady = async () => {};
+ p.agentSkillSnapshot = async () => ({ fingerprint: 'fixture', files: [] });
+ p.getAgentValidation = () => ({ skillFingerprint: 'fixture', discussion: true, source: true });
+ let delivered;
+ p.runBackend = async (backend, request) => {
+  assert.equal(backend, 'claude'); delivered = request;
+  return { text: 'The paper studies representation learning.\n<abstractin-record>{"title":"Research problem","summary":"Representation learning","openQuestions":[],"sources":[{"pageIndex":0,"quote":"This paper addresses learning useful representations."}]}</abstractin-record>' };
+ };
+ const result = await p.ask(ctx, 'What problem does this paper aim to solve?', { backend: 'claude', answerMode: 'source', currentPage: null, progress() {} });
+ assert.equal(result.error, undefined); assert.ok(delivered);
+ assert.match(delivered.question, /<authorized-source-excerpt>/);
+ for (const page of pages) assert.ok(delivered.question.includes(page));
+ assert.equal(delivered.ctx.reading.pdfSource.status, 'ready');
+ assert.deepEqual(Array.from(delivered.ctx.reading.pdfSource.allowedPages), [0, 1]);
+ assert.equal(await window.OS.File.exists(join(ctx.dir, 'source.pdf')), false);
+ assert.deepEqual(await readFile(path), original); assert.equal(attachment.attachmentPath, 'attachments:Deep Learning (论文).pdf');
+});
+
+test('whole-paper questions with unverified page boundaries use text without inventing page indices', async () => {
+ const { p, ctx, window, setLocation } = await setup('paper'); setLocation(null);
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 3, extractedPages: 3, text: 'Abstract and conclusions without reliable page separators.' }) };
+ ctx.reading = { ...ctx.reading, action: 'discuss', evidenceMode: 'source', currentPage: null };
+ const source = await p.exportReadingSource(ctx);
+ assert.equal(source.status, 'ready'); assert.equal(source.pageMapping, false);
+ assert.deepEqual(Array.from(source.allowedPages), []);
+ assert.match(await readFile(join(ctx.dir, 'source-text.md'), 'utf8'), /Abstract and conclusions/);
+});
+
+test('selected-page paper questions and book discussions retain their original scope', async () => {
+ for (const type of ['paper', 'book']) {
+  const { p, ctx, window } = await setup(type);
+  window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 3, extractedPages: 3, text: 'PAGE-ZERO\fPAGE-ONE\fPAGE-TWO' }) };
+  ctx.reading = { ...ctx.reading, action: 'discuss', evidenceMode: 'source', selectedPageIndex: 1, currentPage: null };
+  const source = await p.exportReadingSource(ctx);
+  assert.equal(source.status, 'ready'); assert.deepEqual(Array.from(source.allowedPages), [1]);
+  const text = await readFile(join(ctx.dir, 'source-text.md'), 'utf8');
+  assert.match(text, /PAGE-ONE/); assert.doesNotMatch(text, /PAGE-ZERO|PAGE-TWO/);
+ }
+});
+
 test("unmapped full text still verifies the selected theorem through native reader pages", async () => {
  const { p, view, send, requests, window, attachment, setLocation } = await setup();
  setLocation({ pageIndex: 6 });

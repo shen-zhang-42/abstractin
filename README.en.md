@@ -27,6 +27,8 @@ New documents require reading initialization before the composer and chat manage
 
 This version requires **Zotero 10**; Zotero 9 compatibility is no longer maintained. Settings use the native Settings → AbstractIn pane, and the marmoset uses animated WebP.
 
+Linked PDFs maintained in Dropbox or another external folder use Zotero's resolved file path and do not need to be moved into Zotero storage. Whole-paper questions from the library pane can use the paper's original text without opening its PDF or selecting a page. If the cloud path is temporarily unreadable, the plugin can use the exact attachment already loaded in Zotero. Original files and attachment links remain unchanged. Context only and explicit no-source requests still prevent PDF access.
+
 ## Reading and asking questions
 
 ### Separate workflows for books and papers
@@ -163,7 +165,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.76**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.77**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 
