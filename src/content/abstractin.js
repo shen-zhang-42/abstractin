@@ -4348,24 +4348,23 @@ AbstractIn = {
 	// Collects a \begin{env} … \end{env} block, honouring nested blocks of the same env.
 	collectEnvironment(lines, start, env) {
 		let escaped = env.replace(/[*]/g, "\\*");
-		let beginRe = new RegExp("\\\\begin\\{" + escaped + "\\}", "g");
-		let endRe = new RegExp("\\\\end\\{" + escaped + "\\}", "g");
+		let tags = new RegExp("\\\\(begin|end)\\{" + escaped + "\\}", "g");
 		let depth = 0;
-		let collected = [];
-		let i = start;
-		for (; i < lines.length; i++) {
-			collected.push(lines[i]);
-			depth += (lines[i].match(beginRe) || []).length;
-			depth -= (lines[i].match(endRe) || []).length;
-			if (depth <= 0) {
-				break;
+		for (let i = start; i < lines.length; i++) {
+			if (i > start && this.MATH_ENVS.has(env) && /^\s*(?:#{1,6}\s|```)/.test(lines[i])) break;
+			tags.lastIndex = 0;
+			let match;
+			while ((match = tags.exec(lines[i]))) {
+				depth += match[1] === "begin" ? 1 : -1;
+				if (depth === 0) {
+					let source = [...lines.slice(start, i), lines[i].slice(0, tags.lastIndex)].join("\n");
+					let open = new RegExp("^\\s*\\\\begin\\{" + escaped + "\\}").exec(source);
+					return { source, inner: source.slice(open[0].length, -match[0].length), end: i, closed: true, after: lines[i].slice(tags.lastIndex) };
+				}
 			}
 		}
-		let source = collected.join("\n");
-		let inner = source
-			.replace(new RegExp("^\\s*\\\\begin\\{" + escaped + "\\}"), "")
-			.replace(new RegExp("\\\\end\\{" + escaped + "\\}[^]*$"), "");
-		return { source, inner, end: Math.min(i, lines.length - 1) };
+		// A missing closing tag must not turn every subsequent paragraph into TeX.
+		return { source: lines[start], inner: "", end: start, closed: false, after: "" };
 	},
 
 	// Splits a Markdown table row on "|", ignoring pipes inside `code` and $maths$
@@ -4464,6 +4463,15 @@ AbstractIn = {
 			container.appendChild(node);
 		};
 		let currentItem = () => (lists.length ? lists[lists.length - 1].el.lastElementChild : null);
+		const appendListText = (li, text) => {
+			let span = li.lastElementChild;
+			if (!span?.classList.contains("abstractin-list-text")) {
+				span = this.el(doc, "span", "abstractin-list-text"); li.appendChild(span); span._markdown = "";
+			}
+			span._markdown += (span._markdown ? "\n" : "") + text;
+			span.textContent = "";
+			this.renderInline(doc, span, span._markdown);
+		};
 		// A block that belongs to the list item above it (indented, or directly after it).
 		let blockInList = (node) => {
 			let item = currentItem();
@@ -4478,11 +4486,16 @@ AbstractIn = {
 			let line = lines[i];
 			let trimmed = line.trim();
 			let indent = line.length - line.trimStart().length;
-			let previous = paragraph.join("\n");
-			let inlineOpen = previous.lastIndexOf("\\(") > previous.lastIndexOf("\\)") ||
-				previous.lastIndexOf("\\[") > previous.lastIndexOf("\\]") ||
-				(previous.replace(/\\\$/g, "").match(/\$/g) || []).length % 2 === 1;
-			if (inlineOpen) { paragraph.push(line); continue; }
+			let previous = paragraph.join("\n").replace(/`[^`]*`/g, "");
+			let pendingClose = previous.lastIndexOf("\\(") > previous.lastIndexOf("\\)") ? "\\)" :
+				previous.lastIndexOf("\\[") > previous.lastIndexOf("\\]") ? "\\]" :
+				(previous.replace(/\\\$/g, "").match(/\$/g) || []).length % 2 === 1 &&
+				!/(?:^|[^\\])\$\d+(?:[.,]\d+)?(?:\s|$)/.test(previous) ? "$" : null;
+			if (pendingClose && trimmed && !/^\s*(?:#{1,6}\s|```)/.test(line)) {
+				let boundary = lines.findIndex((next, at) => at >= i && (!next.trim() || /^\s*(?:#{1,6}\s|```)/.test(next)));
+				let remainder = lines.slice(i, boundary < 0 ? undefined : boundary).join("\n");
+				if (remainder.includes(pendingClose)) { paragraph.push(line); continue; }
+			}
 			let continuesList = lists.length && (indent >= 2 || lastLineWasListItem);
 			let wasListItem = lastLineWasListItem;
 			lastLineWasListItem = false;
@@ -4543,6 +4556,10 @@ AbstractIn = {
 				}
 				else {
 					let { collected, end } = this.collectUntil(lines, i + 1, l => l.includes(close));
+					if (end === lines.length || collected.some(l => /^\s*(?:#{1,6}\s|```)/.test(l))) {
+						block(this.renderCodeBlock(doc, line, "latex"));
+						continue;
+					}
 					let last = end < lines.length ? lines[end] : "";
 					let lastCut = last.indexOf(close);
 					tex = [rest, ...collected, lastCut >= 0 ? last.slice(0, lastCut) : last].join("\n");
@@ -4568,8 +4585,10 @@ AbstractIn = {
 				let env = begin[1];
 				let bare = env.replace(/\*$/, "");
 				if (this.MATH_ENVS.has(env) || this.BOX_ENVS[bare] || bare === "itemize" || bare === "enumerate") {
-					let { source, inner, end } = this.collectEnvironment(lines, i, env);
+					let { source, inner, end, closed, after } = this.collectEnvironment(lines, i, env);
+					if (!closed) { block(this.renderCodeBlock(doc, source, "latex")); continue; }
 					i = end;
+					if (after.trim()) lines.splice(i + 1, 0, after);
 					let node;
 					if (this.MATH_ENVS.has(env)) {
 						node = this.renderMath(doc, this.normalizeMathEnv(env, source, inner), true);
@@ -4649,7 +4668,7 @@ AbstractIn = {
 					lists.push({ indent, el: list });
 				}
 				let li = doc.createElementNS("http://www.w3.org/1999/xhtml", "li");
-				this.renderInline(doc, li, item[4]);
+				appendListText(li, item[4]);
 				lists[lists.length - 1].el.appendChild(li);
 				lastLineWasListItem = true;
 				continue;
@@ -4673,8 +4692,7 @@ AbstractIn = {
 			// An indented line (or one directly under an item) continues that list item.
 			if (continuesList && currentItem()) {
 				let li = currentItem();
-				li.appendChild(doc.createElementNS("http://www.w3.org/1999/xhtml", "br"));
-				this.renderInline(doc, li, trimmed);
+				appendListText(li, trimmed);
 				lastLineWasListItem = true;
 				continue;
 			}
@@ -4732,17 +4750,25 @@ AbstractIn = {
 		if (rawSvg >= 0 && text.indexOf("</svg>", rawSvg) < 0 && /(^|\n)[ \t]*$/.test(text.slice(0, rawSvg))) {
 			return text.slice(0, rawSvg) + "```svg-pending\n```";
 		}
-		let openDisplay = (text.match(/\$\$/g) || []).length % 2 === 1;
+		// Code and escaped dollars never open a math region. Keep source offsets
+		// stable so truncation applies only to a formula still arriving at the tail.
+		let mathText = text.replace(/```[^\n]*\n[\s\S]*?(?:```|$)/g, m => " ".repeat(m.length))
+			.replace(/`[^`\n]*`/g, m => " ".repeat(m.length)).replace(/\\\$/g, "  ");
+		let tailOnly = start => /\n\s*\n|\n\s*(?:#{1,6}\s|```|\d+[.)]\s)/.test(text.slice(start)) ? text : text.slice(0, start);
+		let openDisplay = (mathText.match(/\$\$/g) || []).length % 2 === 1;
 		if (openDisplay) {
-			return text.slice(0, text.lastIndexOf("$$"));
+			return tailOnly(mathText.lastIndexOf("$$"));
 		}
-		let lastLine = text.slice(text.lastIndexOf("\n") + 1);
-		let dollars = (lastLine.replace(/\\\$/g, "").match(/\$/g) || []).length;
+		let lastLine = mathText.slice(mathText.lastIndexOf("\n") + 1);
+		let dollars = (lastLine.match(/\$/g) || []).length;
 		if (dollars % 2 === 1) {
-			return text.slice(0, text.length - lastLine.length + lastLine.lastIndexOf("$"));
+			let start = text.length - lastLine.length + lastLine.lastIndexOf("$");
+			if (!/^\$\d+(?:[.,]\d+)?(?:\s|[.,;:!?]|$)/.test(text.slice(start))) return text.slice(0, start);
 		}
-		let openBracket = text.lastIndexOf("\\[") > text.lastIndexOf("\\]");
-		return openBracket ? text.slice(0, text.lastIndexOf("\\[")) : text;
+		for (const [open, close] of [["\\[", "\\]"], ["\\(", "\\)"]]) {
+			if (mathText.lastIndexOf(open) > mathText.lastIndexOf(close)) return tailOnly(mathText.lastIndexOf(open));
+		}
+		return text;
 	},
 
 	renderCodeBlock(doc, code, language) {
@@ -5281,24 +5307,57 @@ AbstractIn = {
 		return list;
 	},
 
+	inlineDelimiterEnd(text, start, marker, preferFirst = false) {
+		if (!text[start + marker.length] || /\s/.test(text[start + marker.length])) return -1;
+		for (let i = start + marker.length; i < text.length;) {
+			let rest = text.slice(i);
+			// Delimiters inside code, escaped text and complete math are literal.
+			if (rest[0] === "`") {
+				let ticks = /^`+/.exec(rest)[0], end = text.indexOf(ticks, i + ticks.length);
+				if (end >= 0) { i = end + ticks.length; continue; }
+			}
+			if (rest.startsWith("\\(") || rest.startsWith("\\[")) {
+				let end = text.indexOf(rest[1] === "(" ? "\\)" : "\\]", i + 2);
+				if (end >= 0) { i = end + 2; continue; }
+			}
+			if (rest[0] === "\\") { i += 2; continue; }
+			if (rest[0] === "$") {
+				let math = /^(?:\$\$[^]*?\$\$|\$(?=[^\s$])(?:[^$\\]|\\.)+?(?<=[^\s\\]|\\[,;!| ])\$(?!\d))/.exec(rest);
+				if (math) { i += math[0].length; continue; }
+			}
+			if (rest[0] === marker[0]) {
+				let run = 1; while (text[i + run] === marker[0]) run++;
+				if (marker.length === 2 && run >= 2) return i + (preferFirst ? 0 : run - 2) + 2;
+				if (marker.length === 1 && run >= 2) {
+					let nested = this.inlineDelimiterEnd(text, i, marker + marker, true);
+					if (nested >= 0) { i = nested; continue; }
+				}
+				if (marker.length === 1 && run === 1 && !/\s/.test(text[i - 1]) && !/[\w]/.test(text[i + 1] || "")) return i + 1;
+				i += run; continue;
+			}
+			i++;
+		}
+		return -1;
+	},
+
 	renderInline(doc, parent, text) {
 		let pattern = new RegExp([
+			"\\\\[\\\\*_$]",
 			"`[^`]+`",
 			"\\$\\$[^$]+\\$\\$",
 			"\\\\\\([\\s\\S]+?\\\\\\)",
 			"\\\\\\[[\\s\\S]+?\\\\\\]",
 			// $…$ that does not open or close on a space, so prices like "$5 and $10" stay text.
 			"\\$(?=[^\\s$])(?:[^$\\\\]|\\\\.)+?(?<=[^\\s\\\\]|\\\\[,;!| ])\\$(?!\\d)",
-			"\\*\\*(?:[^*$]|\\$[^$]*\\$)+\\*\\*",
-			"__(?:[^_$]|\\$[^$]*\\$)+__",
+			"\\*\\*|__",
 			"\\\\textbf\\{[^{}]*\\}",
 			"\\\\(?:emph|textit)\\{[^{}]*\\}",
 			"\\\\texttt\\{[^{}]*\\}",
 			"\\\\cite[pt]?\\{[^{}]*\\}",
 			"\\\\(?:ref|eqref|cref|Cref|autoref|nameref)\\{[^{}]*\\}",
 			"\\\\label\\{[^{}]*\\}",
-			"(?<![\\w*])\\*[^*\\s](?:[^*$]|\\$[^$]*\\$)*?(?<!\\s)\\*(?![\\w*])",
-			"(?<!\\w)_[^_\\s](?:[^_$]|\\$[^$]*\\$)*?(?<!\\s)_(?!\\w)",
+			"(?<![\\w*])\\*(?=[^*\\s])",
+			"(?<![\\w_])_(?=[^_\\s])",
 			"\\[[^\\]]+\\]\\([^)\\s]+\\)",
 		].join("|"), "g");
 		let appendText = value => {
@@ -5320,7 +5379,18 @@ AbstractIn = {
 				appendText(text.slice(last, match.index));
 			}
 			let token = match[0];
-			if (token.startsWith("`")) {
+			if (["**", "__", "*", "_"].includes(token)) {
+				let end = this.inlineDelimiterEnd(text, match.index, token);
+				if (end >= 0) {
+					wrap(token.length === 2 ? "strong" : "em", text.slice(match.index + token.length, end - token.length));
+					token = text.slice(match.index, end);
+				}
+				else appendText(token);
+			}
+			else if (token[0] === "\\" && token.length === 2) {
+				parent.appendChild(doc.createTextNode(token[1]));
+			}
+			else if (token.startsWith("`")) {
 				parent.appendChild(this.el(doc, "code", null, token.slice(1, -1)));
 			}
 			else if (token.startsWith("$$")) {
@@ -5380,6 +5450,7 @@ AbstractIn = {
 				wrap("em", token.slice(1, -1));
 			}
 			last = match.index + token.length;
+			pattern.lastIndex = last;
 		}
 		if (last < text.length) {
 			appendText(text.slice(last));

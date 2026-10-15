@@ -306,3 +306,86 @@ test("copying selected rendered answers keeps TeX once and does not intercept co
  const input = root.querySelector('.abstractin-input'); selection.removeAllRanges();
  const composerEvent = new window.Event('copy', { bubbles: true, cancelable: true }); input.dispatchEvent(composerEvent); assert.equal(composerEvent.defaultPrevented, false);
 });
+
+test('reported examples render italic sentences containing bold words and About as label', () => {
+ const c = render(env, [
+  '### Examples',
+  '- **Type 1:** *The weather **adversely** affected the harvest.* → *...**unfavorably** affected...*',
+  '- **Type 2:** *We **postponed** the meeting to Friday.* → *We **rescheduled** the meeting to Friday.*',
+  '- **Written:** *The meeting **may have to be postponed**, as the manager **might not be able to attend**.*',
+  '  Using *may* in one clause and *might* in the other avoids repeating the same word.',
+  '',
+  '**About *as*:** *as* meaning "because" is correct and common in writing.',
+ ].join('\n'));
+ assert.equal(c.querySelectorAll('li').length, 3);
+ assert.ok(c.querySelector('li em strong'));
+ assert.ok([...c.querySelectorAll('strong em')].some(n => n.textContent === 'as'));
+ assert.ok([...c.querySelectorAll('em')].some(n => n.textContent === 'The weather adversely affected the harvest.'));
+ assert.deepEqual(leftoverMarkup(c), []);
+});
+
+test('list soft wrapping keeps Chinese strong emphasis and nested formulas in one inline segment', () => {
+ const c = render(env, '1. **个人在两个任务之间的变化，\n   大部分是个体特有的。** 群体的变化与 $x_i$ 有关。\n2. **风险偏好 *并不稳定*，需要解释 $a*b$。**');
+ assert.equal(c.querySelectorAll('li').length, 2);
+ assert.ok(c.querySelector('li strong').textContent.includes('大部分是个体特有的'));
+ assert.ok(c.querySelector('li strong em')); assert.ok(c.querySelector('li strong math'));
+ assert.deepEqual(leftoverMarkup(c), []);
+});
+
+test('emphasis protects code, escaped markers, currency, stars in math and triple delimiters', () => {
+ const c = render(env, String.raw`**Use \*literal\* and $a**b$ plus \(x*y\) and ` + '`**code**`' + String.raw` here**.
+
+***Both*** and ___also both___. **The price is $5.**`);
+ assert.ok(c.querySelector('strong code'));
+ assert.equal(c.querySelector('strong code').textContent, '**code**');
+ assert.equal(c.querySelectorAll('strong math').length, 2);
+ assert.equal(c.querySelectorAll('strong > em').length, 2);
+ assert.ok(c.textContent.includes('*literal*')); assert.ok(c.textContent.includes('The price is $5.'));
+ assert.equal(texErrors(c).length, 0);
+});
+
+test('closed math environments keep same-line trailing text and nested environments intact', () => {
+ const c = render(env, String.raw`\begin{equation}x=1\end{equation} **After equation** and *normal prose*.
+
+\begin{aligned}
+a&=\begin{aligned}b&=c\end{aligned}\\
+d&=e
+\end{aligned} **After nested environment**
+
+## Following heading
+1. **Following point**`);
+ assert.equal(c.querySelectorAll('.abstractin-math-block').length, 2);
+ assert.ok([...c.querySelectorAll('strong')].some(n => n.textContent === 'After equation'));
+ assert.ok([...c.querySelectorAll('strong')].some(n => n.textContent === 'After nested environment'));
+ assert.ok(c.querySelector('ol li strong')); assert.deepEqual(texErrors(c), []);
+ assert.deepEqual(leftoverMarkup(c), []);
+});
+
+for (const opening of [String.raw`\begin{equation}`, String.raw`\begin{align*}`, '$$', String.raw`\[`]) {
+ test(`unclosed ${opening} does not swallow subsequent Markdown paragraphs`, () => {
+  const c = render(env, opening + '\nx = 1\n\n## Still a heading\n1. **Still bold** and *still italic*.\n\nFinal paragraph.');
+  assert.ok(c.querySelector('.abstractin-h').textContent.includes('Still a heading'));
+  assert.equal(c.querySelector('ol li strong').textContent, 'Still bold');
+  assert.ok(c.querySelector('ol li em')); assert.ok(c.textContent.includes('Final paragraph.'));
+  assert.equal(c.querySelectorAll('.abstractin-math-block').length, 0);
+ });
+}
+
+test('currency and code dollar signs do not disable headings and list parsing', () => {
+ for (const lead of ['The cost is $5.', 'Use `$name` for the variable.', String.raw`An escaped \$ costs money.`]) {
+  const c = render(env, lead + '\n\n## Heading\n1. **Point** with $x$');
+  assert.ok(c.querySelector('.abstractin-h')); assert.ok(c.querySelector('ol li strong'));
+  assert.equal(c.querySelectorAll('math').length, 1);
+ }
+});
+
+test('streaming math guard leaves code, currency and paragraphs after malformed displays visible', () => {
+ const cut = t => env.plugin.withoutIncompleteMath(t);
+ for (const text of ['Costs $5 so far.', 'Use `$variable` here.', '```js\nconst marker = "$$";\n```\n\n**After code**', String.raw`Use \$5 here.`]) assert.equal(cut(text), text);
+ for (const open of ['$$', String.raw`\[`]) {
+  const text = open + '\nx = 1\n\n## Later heading\n**Later text**';
+  assert.equal(cut(text), text);
+  assert.ok(render(env, cut(text)).querySelector('strong'));
+ }
+ assert.equal(cut(String.raw`Intro \(x +`), 'Intro ');
+});

@@ -37,6 +37,15 @@ exit 1
  const click = async label => { const node = button(label); if (!node || node.disabled) throw new Error('Cannot click ' + label); node.click(); await Zotero.Promise.delay(100); };
  try {
 
+  const rendered = plugin.el(doc, 'div');
+  plugin.renderMarkdown(doc, rendered, '- *The weather **adversely** affected the harvest.*\n\n**About *as*:** *as* means because.\n\n\\begin{equation}x=1\\end{equation} **After equation**');
+  check('native Markdown renders italic text containing bold words', !!rendered.querySelector('li em strong') && rendered.querySelector('li em').textContent === 'The weather adversely affected the harvest.');
+  check('native Markdown renders About as nested emphasis', [...rendered.querySelectorAll('strong em')].some(n => n.textContent === 'as'));
+  check('native equation keeps trailing emphasis and MathML', !!rendered.querySelector('math') && [...rendered.querySelectorAll('strong')].some(n => n.textContent === 'After equation'));
+  rendered.textContent = '';
+  plugin.renderMarkdown(doc, rendered, '\\begin{align*}\nx=1\n\n## Later heading\n1. **Later point**');
+  check('native malformed math does not swallow later headings and lists', !!rendered.querySelector('.abstractin-h') && rendered.querySelector('ol li strong')?.textContent === 'Later point');
+
   const indexDir = PathUtils.join(plugin.getDataDir(), 'index-save-fixture');
   await Zotero.File.createDirectoryIfMissingAsync(indexDir);
   const indexContext = { dir: indexDir };
