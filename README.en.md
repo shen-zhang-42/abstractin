@@ -86,6 +86,8 @@ Vocabulary tutoring respects all three answer modes: Balanced can use language k
 
 ## Chat management
 
+Use **Export reading summary** in the reading header to export a book or paper digest. Books are organized by chapter; equivalent questions across chats and related explanations are consolidated. Verified original numbering is preserved where possible; supplementary points receive separate S numbers. The selected agent can request original passages to verify uncertainty and fill relevant gaps, marking unresolved claims. Generation discloses plan/API usage and provides a Markdown preview and save dialog. Existing chats and notes remain unchanged.
+
 **Chats** at the top right combines browsing, management, search, and navigation.
 
 Initialization output belongs to the **Initialization** group, which contains one chat by default. Reinitialization or an updated paper summary reuses that chat. Ordinary questions and new discussions do not append to it. The Move discussion destination list includes Initialization; manually moved chats remain separate and can later be moved to another chapter. Initialization turns previously stored in Unassigned are organized automatically when the document opens. Ordinary questions and answers remain in their original chats, and the original records are backed up before migration.
@@ -161,7 +163,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.67**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.68**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

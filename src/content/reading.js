@@ -493,7 +493,7 @@ Object.assign(AbstractIn, {
 		view.root.dataset.readingReady = String(ready);
 		view.root.dataset.readingIntro = String(!ready);
 		view.root.querySelector(".abstractin-composer").hidden = !ready;
-		for (const button of view.root.querySelectorAll(".abstractin-history, .abstractin-new-chat")) {
+		for (const button of view.root.querySelectorAll(".abstractin-history, .abstractin-new-chat, .abstractin-export-reading")) {
 			button.disabled = !ready || this._pending.has(view.ctx.dir);
 		}
 	},

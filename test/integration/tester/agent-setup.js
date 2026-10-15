@@ -138,6 +138,25 @@ exit 1
    check('native parent restores selected nondefault PDF from disk', restored.attachmentItem.id === selected.id && restored.reading?.type === 'paper');
    await plugin.renderContent(doc, documentBody, item);
    check('native refresh after activation retains reading state', plugin._views.get(root)?.ctx.attachmentItem.id === selected.id && !root.querySelector('.abstractin-start-reading'));
+   const exportView = plugin._views.get(root);
+   check('reading export button is available in native Zotero', !!root.querySelector('.abstractin-export-reading') && !root.querySelector('.abstractin-export-reading').disabled);
+   plugin.openReadingExport(root);
+   check('native export dialog explains source supplementation and charges', root.querySelector('.abstractin-reading-export')?.textContent.includes('fill relevant gaps') && root.querySelector('.abstractin-reading-export')?.textContent.includes('allowance'));
+   const nativeRun = plugin.runBackend;
+   try {
+    await plugin.saveHistory(exportView.ctx.dir, [{ role: 'user', text: 'Explain the main result' }, { role: 'assistant', text: 'Earlier reading discussion.' }]);
+    plugin.runBackend = async (_, request) => {
+     const input = JSON.parse(request.question.split('\nDATA:\n')[1].split('\nLOOKUP RESULTS:\n')[0]);
+     return { text: JSON.stringify(input.records ? { points: [{ title: 'Main result', body: 'Combined reading discussion.', chapterID: null, originalNumber: '', quote: '', refs: input.records.map(r => r.id) }] } : { groups: [] }) };
+    };
+    const job = { backend: 'codex', model: '', effort: '', progress() {}, cancelled: false };
+    const exported = await plugin.generateReadingExport(exportView.ctx, job);
+    check('native installed XPI exports a numbered paper digest', exported.markdown.includes('### paper.S1 Main result'));
+    check('native export source preparation reads the actual PDF', !!job.source.text, job.source.error);
+    check('native export keeps current conversation untouched', (await plugin.loadHistory(exportView.ctx.dir)).length === 2);
+   } finally { plugin.runBackend = nativeRun; }
+   [...root.querySelector('.abstractin-reading-export').querySelectorAll('button')].find(b => b.textContent === 'Close').click();
+   check('native export dialog closes without leaving a job lock', !plugin._readingExports.size);
   } finally { plugin.findBinary = originalFind; plugin.beginReadingWorkflow = originalBegin; documentBody.querySelector('.abstractin-root')?.disposeUI?.(); documentBody.remove(); }
   const snapshot = await plugin.agentSkillSnapshot();
   const skills = snapshot.files.filter(file => file.name === 'SKILL.md').map(file => file.content).join('\n');
