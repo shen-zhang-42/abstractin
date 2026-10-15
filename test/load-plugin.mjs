@@ -37,6 +37,7 @@ export function loadPlugin({ prefs = {} } = {}) {
 	window.eval(read("src/content/chat-tools.js"));
 	window.eval(read("src/content/history-browser.js"));
 	window.eval(read("src/content/reading-export.js"));
+	window.eval(read("src/content/notein.js"));
 	const plugin = window.AbstractIn;
 	plugin.rootURI = "./";
 	return { window, document: window.document, plugin, prefs };

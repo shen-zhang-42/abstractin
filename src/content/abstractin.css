@@ -3133,3 +3133,6 @@
 .abstractin-agent-setup-body input, .abstractin-agent-setup-body select { min-width: 0; width: 100%; box-sizing: border-box; }
 .abstractin-agent-setup-command { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; background: rgba(128, 128, 128, .1); border-radius: 8px; user-select: text; }
 .abstractin-agent-setup-status { min-height: 24px; margin: 14px 0; overflow-wrap: anywhere; }
+
+/* NoteIn keeps native note records while grouping their rows visually. */
+.abstractin-notein-row .cell.primary .cell-text { font-weight: 600; }

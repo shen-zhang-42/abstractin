@@ -34,6 +34,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(resourceURI + "content/chat-tools.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/history-browser.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading-export.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/notein.js");
 	AbstractIn.init({ id, version, rootURI, resourceURI });
 	// Load the bundled renderer immediately, before any answer needs it.
 	AbstractIn.getKatex();
@@ -47,6 +48,7 @@ async function startup({ id, version, rootURI }) {
 	AbstractIn.restoreReaderToolbarEntries();
 	AbstractIn.watchPrefs();
 	await AbstractIn.registerPrefsPane();
+	AbstractIn.startNoteIn();
 
 	log("Startup complete");
 }
@@ -67,6 +69,7 @@ function shutdown() {
 		return;
 	}
 	AbstractIn.closeSettings();
+	AbstractIn.stopNoteIn();
 	AbstractIn.unwatchPrefs();
 	AbstractIn.stopReadingPositionTracking();
 	AbstractIn.removeAllReaderPanels();
