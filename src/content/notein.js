@@ -79,6 +79,35 @@
     this.el(doc, 'pre', null, JSON.stringify({ format: 'abstractin-notein-v1', itemKey: parent.key, legacyKeys: [...legacyKeys] })));
    return body.outerHTML;
   },
+  noteInCollectionRows(view) {
+   return view.collectionTreeRows || view.rowProvider?.collectionTreeRows || (view.collectionTreeRow ? [view.collectionTreeRow] : []);
+  },
+  noteInViewReason(view) {
+   if (view.props?.regularOnly) return 'This list hides notes.';
+   const rows = this.noteInCollectionRows(view);
+   if (rows.some(row => row.isTrash?.())) return 'The trash shows notes individually.';
+   if (rows.some(row => row.searchText || row.advancedSearch || row.type === 'search') ||
+       (!rows.some(row => row.type) && (view._searchMode || view.rowProvider?._searchMode))) return 'Search results show notes individually.';
+   return '';
+  },
+  async showNoteIn(parentID) {
+   const group = this._noteInGroups.get(parentID);
+   if (!group) throw new Error('No NoteIn group was found for this document.');
+   const win = Zotero.getMainWindow(), pane = win.ZoteroPane;
+   await pane.collectionsView.selectLibrary(group.parent.libraryID);
+   await this.waitNoteInWindow(win);
+   await pane.clearQuicksearch?.();
+   pane.tagSelector?.clearTagSelection?.();
+   const view = pane.itemsView;
+   await view.setFilter('search', ''); await view.setFilter('tags', new Set());
+   await this.waitNoteInWindow(win);
+   await view.selectItems([group.anchor.id]);
+   const state = this._noteInWindows.get(win);
+   state?.adapter?.opened.delete(group.anchor.id); state?.adapter?.refresh();
+   const index = (view.rowProvider || view)._rows.findIndex(row => row.ref?.id === group.anchor.id);
+   if (!state?.adapter || index < 0 || this.noteInViewReason(view)) throw new Error('NoteIn could not be displayed in this list. Please restart Zotero and try again.');
+   view.ensureRowsAreVisible?.([index]);
+  },
   async groupNoteInManually(parentID = null) {
    await this._noteInReady;
    const parents = new Set();
@@ -91,29 +120,35 @@
      if (note?.parentID && !note.deleted) parents.add(note.parentID);
     }
    }
-   let documents = 0, count = 0, skipped = 0;
+   let documents = 0, count = 0, skipped = 0; const documentIDs = [];
    for (const id of parents) {
     const parent = await Zotero.Items.getAsync(id);
     if (!parent?.isRegularItem?.() || parent.deleted) continue;
     if (!parent.isEditable()) { skipped++; continue; }
     await this.organizeNoteInParent(id, true);
     const group = this._noteInGroups.get(id);
-    if (group?.notes.length) { documents++; count += group.notes.length; }
+    if (group?.notes.length) { documents++; count += group.notes.length; documentIDs.push(id); }
    }
-   for (const state of this._noteInWindows.values()) {
+   for (const win of this._noteInWindows.keys()) {
+    const state = await this.waitNoteInWindow(win);
     // A selected child cannot stay selected once hidden. Select its NoteIn
     // index before native refresh, or Zotero 9 restores and reopens the child.
     const selected = state.view?.getSelectedItems?.(true) || [];
     const mapped = selected.map(id => {
-     const group = this._noteInGroups.get(this._noteInNoteParents.get(id));
+     const group = this._noteInGroups.get(id) || this._noteInGroups.get(this._noteInNoteParents.get(id));
      return group && parents.has(group.parent.id) ? group.anchor.id : id;
     });
-    if (mapped.some((id, i) => id !== selected[i])) await state.view.selectItems([...new Set(mapped)]);
+    const canDisplay = state.adapter && !this.noteInViewReason(state.view);
+    if (canDisplay && mapped.some((id, i) => id !== selected[i])) await state.view.selectItems([...new Set(mapped)]);
     for (const id of parents) { const group = this._noteInGroups.get(id); if (group) state.adapter?.opened.delete(group.anchor.id); }
     await state.view?.refreshAndMaintainSelection?.();
+    if (canDisplay && mapped.length) await state.view.selectItems([...new Set(mapped)]);
    }
    this.refreshNoteInWindows();
-   return { documents, count, skipped };
+   const views = [...this._noteInWindows.values()].filter(state => state.view);
+   const displayed = views.some(state => state.adapter && !this.noteInViewReason(state.view) && state.adapter.provider._rows.some(row => this._noteInAnchors.has(row.ref?.id) && parents.has(this._noteInAnchors.get(row.ref.id).parent.id)));
+   const reason = views.map(state => this.noteInViewReason(state.view) || (!state.adapter ? 'The NoteIn list adapter is not connected.' : '')).find(Boolean);
+   return { documents, count, skipped, documentIDs, displayed, reason };
   },
   buildNoteInCard(doc) {
    const card = this.card(doc, 'NoteIn', 'Group AbstractIn notes under each document. Includes older notes whose titles start with “AbstractIn — ”. Original notes keep their content and storage location.');
@@ -123,10 +158,21 @@
    card.body.append(button, status); return card;
   },
   async runNoteInButton(button, status, parentID = null) {
+   status.parentElement.querySelector('.abstractin-notein-show')?.remove();
    button.disabled = true; status.textContent = 'Grouping notes…';
    try {
     const result = await this.groupNoteInManually(parentID);
-    status.textContent = result.count ? `Grouped ${result.count} notes in ${result.documents} documents. Expand the document to see NoteIn. Clear the library search to see the group.` : 'No matching AbstractIn notes found. Ordinary Zotero notes were left in place.';
+    status.textContent = result.count ? `Grouped ${result.count} notes in ${result.documents} documents. ` + (result.displayed ? 'NoteIn is now visible in the document list.' : 'Grouping was saved, but NoteIn is not visible in the current list. ' + (result.reason || 'Click Show NoteIn to open the group.')) : 'No matching AbstractIn notes found. Ordinary Zotero notes were left in place.';
+    if (result.documentIDs?.length) {
+     const show = this.el(button.ownerDocument, 'button', 'abstractin-button abstractin-notein-show', 'Show NoteIn'); show.type = 'button';
+     show.onclick = async () => {
+      show.disabled = true;
+      try { await this.showNoteIn(parentID || result.documentIDs[0]); status.textContent = 'NoteIn is now visible and selected in the library.'; }
+      catch (e) { status.textContent = 'Could not display NoteIn: ' + (e.message || e); }
+      finally { show.disabled = false; }
+     };
+     status.after(show);
+    }
     if (result.skipped) status.textContent += ` Skipped ${result.skipped} documents in read-only libraries.`;
     return result;
    } catch (e) { this.logError('NoteIn manual grouping', e); status.textContent = 'Could not group notes: ' + (e.message || e); }
@@ -213,14 +259,35 @@
    const state = {}; this._noteInWindows.set(win, state);
    const connect = () => {
     if (!this._noteInRunning || win.closed || !this._noteInWindows.has(win)) return;
-    const view = win.ZoteroPane.itemsView;
-    if (state.adapter && (state.view !== view || state.provider !== (view?.rowProvider || view) || state.tree !== view?.tree)) { state.adapter.dispose(); state.adapter = null; }
-    if (view?.tree && view.getRow && (view.rowProvider?._rows || view._rows)) {
-     if (!state.adapter) try { state.adapter = this.installNoteInTree(view); state.view = view; state.provider = view.rowProvider || view; state.tree = view.tree; } catch (e) { this.logError('NoteIn item tree', e); }
-    }
+    this.connectNoteInWindow(win);
     state.timer = win.setTimeout(connect, 500);
    };
    connect();
+  },
+  connectNoteInWindow(win) {
+   const state = this._noteInWindows.get(win); if (!state) return;
+   const view = win.ZoteroPane?.itemsView;
+   if (state.adapter && (state.view !== view || state.provider !== (view?.rowProvider || view) || state.tree !== view?.tree)) {
+    try { state.adapter.dispose(); } catch (e) { this.logError('NoteIn old list cleanup', e); }
+    state.adapter = null; state.view = null;
+   }
+   if (view?.tree && view.getRow && (view.rowProvider?._rows || view._rows) && !state.adapter) {
+    try { state.adapter = this.installNoteInTree(view); state.view = view; state.provider = view.rowProvider || view; state.tree = view.tree; }
+    catch (e) { this.logError('NoteIn item tree', e); }
+   }
+   return state;
+  },
+  async waitNoteInWindow(win) {
+   for (let attempt = 0; attempt < 160; attempt++) {
+    if (win.closed || this._noteInRunning === false) break;
+    const state = this.connectNoteInWindow(win);
+    if (state?.adapter && state.view === win.ZoteroPane?.itemsView) {
+     await state.view.waitForLoad?.();
+     if (state.view === win.ZoteroPane?.itemsView && state.tree === state.view.tree && state.provider === (state.view.rowProvider || state.view)) return state;
+    }
+    await Zotero.Promise.delay(25);
+   }
+   throw new Error('The document list is not ready. Switch to the library and try Show NoteIn again.');
   },
   detachNoteInWindow(win) {
    const state = this._noteInWindows.get(win); if (!state) return;
@@ -239,7 +306,9 @@
     object[name] = replacement;
     undo.push(() => { if (object[name] === replacement) { if (own) Object.defineProperty(object, name, own); else delete object[name]; } });
    };
-   const enabled = () => active && !provider._searchMode && !view._searchMode && !view.props.regularOnly && !view.collectionTreeRow?.isTrash?.();
+   // Zotero's search mode also covers Unfiled Items and tag filters. These
+   // still show an ordinary document hierarchy and must support NoteIn.
+   const enabled = () => active && !plugin.noteInViewReason(view);
    const groupAt = index => enabled() ? plugin._noteInAnchors.get(provider._rows[index]?.ref?.id) : null;
    const create = (ref, level) => modern ? provider.createRow(ref, level, false) : { ref, id: ref.treeViewID, level, isOpen: false, getField: (field, plain) => ref.getField(field, plain, true), numNotes: () => 0 };
    const transform = () => {

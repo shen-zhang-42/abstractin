@@ -1,13 +1,13 @@
 {
 	"manifest_version": 2,
 	"name": "AbstractIn",
-	"version": "0.2.74",
+	"version": "0.2.75",
 	"description": "Read books and scientific papers in Zotero with local Codex and specialized reading skills.",
 	"applications": {
 		"zotero": {
 			"id": "abstractin@shen-zhang-42.github.io",
 			"update_url": "https://github.com/shen-zhang-42/abstractin/releases/latest/download/updates.json",
-			"strict_min_version": "6.999",
+			"strict_min_version": "10.0",
 			"strict_max_version": "10.*"
 		}
 	}

@@ -135,3 +135,48 @@ test('settings and document buttons run the correct grouping scope and show comp
  await p.runNoteInButton(all, card.querySelector('[role=status]'));
  assert.match(card.textContent, /Could not group notes: Read failed/); assert.equal(all.disabled, false);
 });
+
+for (const type of ['unfiled', 'library', 'collection']) test(`Zotero 10 ${type} view groups notes even when Zotero internally uses search mode`, async () => {
+ const f = fixture(true), { p, view, provider } = f;
+ await p.organizeNoteInParent(1); f.populate();
+ view.collectionTreeRows = [{ type, searchText: '', tags: new Set(['AbstractIn']) }]; delete view.collectionTreeRow;
+ provider._searchMode = true;
+ const adapter = p.installNoteInTree(view);
+ const anchor = p._noteInGroups.get(1).anchor;
+ assert.ok(provider._rows.some(row => row.ref === anchor));
+ assert.ok(!provider._rows.some(row => row.ref === f.chat));
+ adapter.toggle(provider._rows.findIndex(row => row.ref === anchor));
+ assert.ok(provider._rows.some(row => row.ref === f.chat && row.level === 2));
+ adapter.dispose();
+});
+
+test('a real text query stays flat and the grouping button offers a verified Show NoteIn action', async () => {
+ const f = fixture(true), { p, view, provider, document } = f;
+ await p.organizeNoteInParent(1); f.populate();
+ view.collectionTreeRow.type = 'library'; view.collectionTreeRow.searchText = 'Earlier'; provider._searchMode = true;
+ const adapter = p.installNoteInTree(view);
+ assert.ok(provider._rows.some(row => row.ref === f.chat));
+ p.groupNoteInManually = async () => ({ count: 2, documents: 1, skipped: 0, documentIDs: [1], displayed: false, reason: p.noteInViewReason(view) });
+ let shown = null; p.showNoteIn = async id => { shown = id; };
+ const card = p.buildNoteInCard(document); document.body.append(card);
+ await p.runNoteInButton(card.querySelector('button'), card.querySelector('[role=status]'));
+ assert.match(card.textContent, /not visible in the current list/);
+ await card.querySelector('.abstractin-notein-show').onclick();
+ assert.equal(shown, 1); assert.match(card.textContent, /now visible and selected/);
+ adapter.dispose();
+});
+
+test('switching Zotero 10 lists reconnects the adapter before grouping is displayed', async () => {
+ const first = fixture(true), second = fixture(true), { p, window } = first;
+ await p.organizeNoteInParent(1); first.populate();
+ const anchor = p._noteInGroups.get(1).anchor; second.items.set(anchor.id, anchor); second.populate();
+ const oldAdapter = p.installNoteInTree(first.view);
+ p._noteInWindows.set(window, { adapter: oldAdapter, view: first.view, provider: first.provider, tree: first.view.tree });
+ window.ZoteroPane = { itemsView: second.view };
+ const state = await p.waitNoteInWindow(window);
+ assert.equal(state.view, second.view); assert.notEqual(state.adapter, oldAdapter);
+ assert.ok(first.provider._rows.some(row => row.ref.id === first.chat.id), 'old list returns to native rows');
+ assert.ok(!second.provider._rows.some(row => row.ref.id === first.chat.id), 'new list hides grouped notes');
+ assert.ok(second.provider._rows.some(row => row.ref.id === anchor.id));
+ state.adapter.dispose(); p._noteInWindows.clear();
+});
