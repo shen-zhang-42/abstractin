@@ -856,7 +856,7 @@ test("Chats lists turns and preserves drafts and agent sessions across discussio
  const turns = view.root.querySelector('.abstractin-history-row-turns[data-discussion-id="' + source.id + '"]');
  turns.click();
  for (let i = 0; i < 50 && !view.root.querySelector(".abstractin-chat-turn"); i++) await new Promise(r => setTimeout(r, 10));
- assert.match(view.root.querySelector(".abstractin-chat-turn").textContent, /Turn 1.*Original question/);
+ assert.equal(view.root.querySelector(".abstractin-chat-turn-heading").textContent, "Turn 1 Original question");
  view.root.querySelector(".abstractin-chat-turn").click();
  for (let i = 0; i < 50 && !view.logEl.querySelector(".abstractin-user.abstractin-flash"); i++) await new Promise(r => setTimeout(r, 10));
  assert.equal(view.ctx.discussion.id, source.id);

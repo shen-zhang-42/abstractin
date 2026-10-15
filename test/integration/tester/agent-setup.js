@@ -157,6 +157,24 @@ exit 1
    const nativeRun = plugin.runBackend;
    try {
     await plugin.saveHistory(exportView.ctx.dir, [{ role: 'user', text: 'Explain the main result' }, { role: 'assistant', text: 'Earlier reading discussion.' }]);
+    const layout = plugin.el(doc, 'div', 'abstractin-history-browser'); root.append(layout);
+    try {
+     const chapter = plugin.el(doc, 'section', 'abstractin-history-chapter');
+     const head = plugin.el(doc, 'button', 'abstractin-history-chapter-head');
+     const label = plugin.el(doc, 'span', 'abstractin-history-chapter-label');
+     label.append(plugin.svgIcon(doc, 'chevronRight', 'abstractin-history-chapter-chevron'), plugin.el(doc, 'h3', null, 'chap-01 · Chapter 1: Probability Models'));
+     head.append(label); chapter.append(head); layout.append(chapter);
+     for (const width of [220, 460]) {
+      layout.style.width = width + 'px';
+      const box = head.getBoundingClientRect(), content = label.getBoundingClientRect();
+      check('chapter label stays vertically centered at width ' + width, Math.abs((box.top + box.bottom - content.top - content.bottom) / 2) < 1 && box.height >= content.height + 18, { box: box.toJSON(), content: content.toJSON() });
+     }
+     const turns = plugin.el(doc, 'div', 'abstractin-chat-turns'); layout.append(turns);
+     await plugin.showManagedTurns({ ...exportView, historyBrowser: {} }, exportView.ctx.discussion, turns);
+     const turn = turns.querySelector('.abstractin-chat-turn'), turnHead = turn.querySelector('.abstractin-chat-turn-heading');
+     check('native turn label has an explicit space before the question', turnHead.textContent === 'Turn 1 Explain the main result');
+     check('native turn answer appears below its question', win.getComputedStyle(turn).display === 'flex' && turn.lastElementChild.getBoundingClientRect().top >= turnHead.getBoundingClientRect().bottom + 4);
+    } finally { layout.remove(); }
     plugin.runBackend = async (_, request) => {
      const input = JSON.parse(request.question.split('\nDATA:\n')[1].split('\nLOOKUP RESULTS:\n')[0]);
      return { text: JSON.stringify(input.records ? { points: [{ title: 'Main result', body: 'Combined reading discussion.', chapterID: null, originalNumber: '', quote: '', refs: input.records.map(r => r.id) }] } : { groups: [] }) };

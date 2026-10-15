@@ -3070,7 +3070,7 @@
 .abstractin-history-row-turns, .abstractin-history-row-rename { font-size: 11px; flex: 0 0 auto; }
 .abstractin-chat-turns { padding: 12px; border-top: 1px solid var(--abstractin-line); background: var(--abstractin-raised); }
 .abstractin-chat-turns[hidden], .abstractin-chat-search-results[hidden], .abstractin-history-browser-body[hidden] { display: none !important; }
-.abstractin-history-browser .abstractin-chat-turn, .abstractin-history-browser .abstractin-chat-search-result { display: flex; flex-direction: column; gap: 6px; width: 100%; margin: 0 0 8px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.abstractin-root .abstractin-history-browser .abstractin-chat-turn, .abstractin-root .abstractin-history-browser .abstractin-chat-search-result { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; margin: 0 0 8px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .abstractin-chat-turn > span, .abstractin-chat-search-result > span { line-height: 1.5; font-size: 12px; }
 .abstractin-chat-search-result > strong { font-size: 13px; }
 .abstractin-chat-turns > .abstractin-field { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
@@ -3091,13 +3091,13 @@
 .abstractin-history-meta { margin: 0 0 4px; font-size: 12px; font-weight: 700; color: var(--abstractin-accent-ink); }
 .abstractin-history-topic { font-size: 12px; font-weight: 400; color: var(--abstractin-text); }
 .abstractin-history-current { font-size: 10px; font-weight: 500; }
-.abstractin-root .abstractin-history-chapter-head { appearance: none; display: flex; width: 100%; gap: 8px; padding: 10px 8px; margin: 0 0 8px; border: 0; border-radius: 7px; background: var(--abstractin-raised); text-align: start; }
+.abstractin-root .abstractin-history-chapter-head { appearance: none; display: flex; align-items: center; box-sizing: border-box; width: 100%; min-height: 40px; height: auto; max-height: none; gap: 8px; padding: 10px 8px; margin: 0 0 8px; border: 0; border-radius: 7px; background: var(--abstractin-raised); text-align: start; line-height: 1.4; }
 .abstractin-history-chapter h3 { font-size: 14px; font-weight: 700; color: var(--abstractin-text); }
 .abstractin-history-chapter-head .abstractin-history-chapter-chevron { width: 14px; height: 14px; transform: rotate(-90deg); }
 .abstractin-history-chapter-head[aria-expanded="true"] .abstractin-history-chapter-chevron { transform: rotate(0deg); }
 .abstractin-history-chapter-body[hidden] { display: none !important; }
-.abstractin-root .abstractin-history-chapter-head { display: block; }
-.abstractin-history-chapter-label { display: flex; gap: 8px; align-items: center; }
+.abstractin-history-chapter-label { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; }
+.abstractin-root .abstractin-history-chapter-label h3 { margin: 0; padding: 0; line-height: 1.4; }
 
 /* The HTML iframe gives CodeMirror a regular Gecko editing document. */
 .abstractin-composer-frame {

@@ -97,7 +97,9 @@
    for (const [number, turn] of turns.entries()) {
     const message = turn.question || turn.answers[0], button = this.el(view.doc, "button", "abstractin-btn abstractin-chat-turn"); button.type = "button";
     const plain = text => String(text || "").replace(/\s+/g, " ").trim().slice(0, 180);
-    button.append(this.el(view.doc, "strong", null, "Turn " + (number + 1)), this.el(view.doc, "span", null, plain(message.text)));
+    const heading = this.el(view.doc, "span", "abstractin-chat-turn-heading");
+    heading.append(this.el(view.doc, "strong", null, "Turn " + (number + 1)), view.doc.createTextNode(" "), this.el(view.doc, "span", null, plain(message.text)));
+    button.append(heading);
     if (turn.question) button.append(this.el(view.doc, "span", "abstractin-menu-note", turn.answers.length ? "Answer: " + plain(turn.answers.map(answer => answer.text).join(" ")) : "Awaiting an answer"));
     button.onclick = async () => { try { await this.jumpToDiscussionContent(view, chat, turn.at, { kind: turn.question ? "Question" : "Answer", id: message.referenceID }); } catch (e) { this.appendError(view, e.message); } };
     container.append(button);
