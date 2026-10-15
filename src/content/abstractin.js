@@ -5381,6 +5381,13 @@ AbstractIn = {
 			let token = match[0];
 			if (["**", "__", "*", "_"].includes(token)) {
 				let end = this.inlineDelimiterEnd(text, match.index, token);
+				// ***Now** rest* opens outer emphasis plus inner strong. Prefer
+				// that outer span when it extends beyond the first strong closure;
+				// symmetric ***both*** and ***Now* rest** keep strong outermost.
+				if (token.length === 2 && text[match.index + 2] === token[0] && text[match.index + 3] !== token[0]) {
+					let outerEnd = this.inlineDelimiterEnd(text, match.index, token[0]);
+					if (outerEnd > end) { token = token[0]; end = outerEnd; }
+				}
 				if (end >= 0) {
 					wrap(token.length === 2 ? "strong" : "em", text.slice(match.index + token.length, end - token.length));
 					token = text.slice(match.index, end);

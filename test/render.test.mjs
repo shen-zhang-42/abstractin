@@ -389,3 +389,22 @@ test('streaming math guard leaves code, currency and paragraphs after malformed 
  }
  assert.equal(cut(String.raw`Intro \(x +`), 'Intro ');
 });
+
+test('triple opening delimiters can begin an italic sentence whose first word is bold', () => {
+ for (const [strong, em] of [['**', '*'], ['__', '_']]) {
+  const text = '- ' + em + 'He may have to withdraw from this project ' + strong + 'after all' + strong + '.' + em + '\n' +
+   '- ' + em + strong + 'Now' + strong + ' he may have to withdraw from this project.' + em + ' This means things have changed.';
+  const c = render(env, text), second = c.querySelectorAll('li')[1];
+  assert.equal(second.querySelector('em strong')?.textContent, 'Now');
+  assert.equal(second.querySelector('em')?.textContent, 'Now he may have to withdraw from this project.');
+  assert.ok(second.textContent.endsWith(' This means things have changed.'));
+  assert.deepEqual(leftoverMarkup(c), []);
+ }
+});
+
+test('triple opening delimiters still allow a bold sentence whose first word is italic', () => {
+ const c = render(env, '**' + '*Now* he may have to withdraw.** Then normal text.');
+ assert.equal(c.querySelector('strong em')?.textContent, 'Now');
+ assert.equal(c.querySelector('strong')?.textContent, 'Now he may have to withdraw.');
+ assert.deepEqual(leftoverMarkup(c), []);
+});

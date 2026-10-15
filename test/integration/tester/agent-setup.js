@@ -41,6 +41,9 @@ exit 1
   plugin.renderMarkdown(doc, rendered, '- *The weather **adversely** affected the harvest.*\n\n**About *as*:** *as* means because.\n\n\\begin{equation}x=1\\end{equation} **After equation**');
   check('native Markdown renders italic text containing bold words', !!rendered.querySelector('li em strong') && rendered.querySelector('li em').textContent === 'The weather adversely affected the harvest.');
   check('native Markdown renders About as nested emphasis', [...rendered.querySelectorAll('strong em')].some(n => n.textContent === 'as'));
+  const triple = plugin.el(doc, 'div');
+  plugin.renderMarkdown(doc, triple, '- ***Now** he may have to withdraw from this project.* This means things have changed.');
+  check('native triple delimiter opener keeps bold first word inside italic sentence', triple.querySelector('li em strong')?.textContent === 'Now' && triple.querySelector('li em')?.textContent === 'Now he may have to withdraw from this project.' && !triple.textContent.includes('*'));
   check('native equation keeps trailing emphasis and MathML', !!rendered.querySelector('math') && [...rendered.querySelectorAll('strong')].some(n => n.textContent === 'After equation'));
   rendered.textContent = '';
   plugin.renderMarkdown(doc, rendered, '\\begin{align*}\nx=1\n\n## Later heading\n1. **Later point**');
