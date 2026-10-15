@@ -91,3 +91,47 @@ test('read-only libraries do not create directory records or change existing not
  await f.p.organizeNoteInParent(1);
  assert.equal(f.items.size, before); assert.equal(f.p._noteInGroups.size, 0);
 });
+
+test('manual grouping includes title-only legacy notes and remembers their keys without editing them', async () => {
+ const f = fixture(), { p, parent } = f;
+ const legacy = f.note('', '<h1>AbstractIn — De Finetti 表示与几乎必然</h1><p>Earlier answer</p>');
+ const before = [legacy, f.ordinary, f.collision].map(n => [n.id, n.parentID, n.getNote(), [...n.tags]]);
+ await p.organizeNoteInParent(1);
+ assert.ok(!p._noteInGroups.get(1).notes.includes(legacy));
+ const result = await p.groupNoteInManually(parent.id);
+ assert.equal(result.count, 3); assert.equal(result.documents, 1);
+ const anchor = p._noteInGroups.get(1).anchor;
+ assert.ok(anchor.getNote().includes(legacy.key));
+ p._noteInGroups.clear(); p._noteInAnchors.clear(); p._noteInNoteParents.clear();
+ await p.organizeNoteInParent(1);
+ assert.ok(p._noteInGroups.get(1).notes.includes(legacy), 'startup recognizes explicitly grouped legacy notes');
+ await p.groupNoteInManually(1);
+ assert.equal(p._noteInGroups.get(1).anchor.id, anchor.id);
+ assert.deepEqual([legacy, f.ordinary, f.collision].map(n => [n.id, n.parentID, n.getNote(), [...n.tags]]), before);
+ const wrong = f.note('AbstractIn:Chat', '<h1>AbstractIn — Wrong document</h1><pre>{"format":"abstractin-chat-v1","itemKey":"OTHER"}</pre>');
+ await p.groupNoteInManually(1);
+ assert.ok(!p._noteInGroups.get(1).notes.includes(wrong));
+});
+
+test('verifiable ownership metadata works even when a legacy note has lost its tag', async () => {
+ const f = fixture(); f.chat.tags = []; f.reading.tags = [];
+ await f.p.organizeNoteInParent(1);
+ assert.deepEqual(Array.from(f.p._noteInGroups.get(1).notes, n => n.id), [f.chat.id, f.reading.id]);
+});
+
+test('settings and document buttons run the correct grouping scope and show completion or failure', async () => {
+ const f = fixture(), { p, document } = f;
+ const calls = [];
+ p.groupNoteInManually = async id => { calls.push(id); return { count: 3, documents: 1, skipped: 0 }; };
+ const card = p.buildNoteInCard(document); document.body.append(card);
+ const all = card.querySelector('button'); all.click();
+ await new Promise(resolve => setImmediate(resolve));
+ assert.equal(calls[0], null); assert.match(card.textContent, /Grouped 3 notes/); assert.equal(all.disabled, false);
+ const root = document.createElement('div'); document.body.append(root); p._views.set(root, { ctx: { paperItem: f.parent } });
+ p.openNoteInGrouping(root); root.querySelector('.abstractin-notein-group-current').click();
+ await new Promise(resolve => setImmediate(resolve));
+ assert.equal(calls[1], f.parent.id); assert.match(root.textContent, /Grouped 3 notes/);
+ p.groupNoteInManually = async () => { throw new Error('Read failed'); };
+ await p.runNoteInButton(all, card.querySelector('[role=status]'));
+ assert.match(card.textContent, /Could not group notes: Read failed/); assert.equal(all.disabled, false);
+});

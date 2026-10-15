@@ -89,7 +89,7 @@ test("Zotero 9 standalone document loads the shared settings renderer and styles
 	window.eval(source("prefs-window.js"));
 	window.dispatchEvent(new window.Event("load"));
 	assert.equal(document.querySelector('link[rel="stylesheet"]').getAttribute("href"), plugin.stylesheetURL);
-	assert.equal(document.querySelectorAll(".abstractin-card").length, 4);
+	assert.equal(document.querySelectorAll(".abstractin-card").length, 5);
 });
 
 const PREFIX = "extensions.abstractin.";
@@ -111,7 +111,7 @@ const change = (window, el, value) => {
 test("settings pane renders its cards", () => {
 	const { container } = pane();
 	assert.deepEqual([...container.querySelectorAll(".abstractin-card-title")].map(h => h.textContent),
-		["Assistants", "Chat", "Appearance", "Behaviour"]);
+		["Assistants", "Chat", "NoteIn", "Appearance", "Behaviour"]);
 	assert.equal(container.querySelectorAll(".abstractin-agent").length, 4);
 });
 

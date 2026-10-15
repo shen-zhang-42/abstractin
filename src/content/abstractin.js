@@ -1270,6 +1270,7 @@ AbstractIn = {
 			identity,
 			this.iconButton(doc, "abstractin-history abstractin-chats", "Chats", "chatManager", () => this.openHistoryMenu(root)),
 			this.iconButton(doc, "abstractin-export-reading", "Export reading summary", "save", () => this.openReadingExport(root)),
+			this.iconButton(doc, "abstractin-group-notein", "Group notes into NoteIn", "paper", () => this.openNoteInGrouping(root)),
 			this.iconButton(doc, "abstractin-open-settings", "Settings", "settings", () => this.openSettings()),
 		);
 
@@ -3987,6 +3988,7 @@ AbstractIn = {
 		prefs.append(
 			this.buildAssistantsCard(doc),
 			this.buildChatCard(doc),
+			this.buildNoteInCard(doc),
 			this.buildAppearanceCard(doc, prefs),
 			this.buildBehaviourCard(doc),
 		);

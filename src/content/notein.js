@@ -5,47 +5,66 @@
  Object.assign(AbstractIn, {
   _noteInGroups: new Map(), _noteInAnchors: new Map(), _noteInNoteParents: new Map(), _noteInWindows: new Map(),
   _noteInPending: new Set(), _noteInQueue: Promise.resolve(), _noteInOrganizing: new Map(),
-  noteInMetadata(note, parent) {
+  noteInMetadata(note, parent, legacy = false) {
    if (!note?.isNote?.() || note.deleted || note.parentID !== parent.id || note.libraryID !== parent.libraryID) return null;
    const tags = note.getTags().map(t => t.tag);
-   if (!tags.includes('AbstractIn')) return null;
    const template = this.el(Zotero.getMainWindow().document, 'template'); template.innerHTML = note.getNote();
    for (const pre of template.content.querySelectorAll('pre')) {
     try {
      const data = JSON.parse(pre.textContent);
+     if (['abstractin-notein-v1', 'abstractin-chat-v1'].includes(data.format) && data.itemKey !== parent.key) return null;
      if (data.format === 'abstractin-notein-v1' && tags.includes('AbstractIn:NoteIn') && data.itemKey === parent.key) return 'anchor';
-     if (data.format === 'abstractin-chat-v1' && tags.includes('AbstractIn:Chat') && data.itemKey === parent.key) return 'note';
+     if (data.format === 'abstractin-chat-v1' && data.itemKey === parent.key) return 'note';
     } catch (_) {}
    }
    const title = template.content.querySelector('h1')?.textContent || '';
    const owner = [...template.content.querySelectorAll('p')].some(p => p.textContent.startsWith('Zotero item: ' + parent.key + '; attachment: '));
-   return title.startsWith('AbstractIn — ') && owner ? 'note' : null;
+   if (title.startsWith('AbstractIn — ') && owner) return 'note';
+   // Only an explicit manual action may claim title-only legacy notes.
+   return legacy && title.startsWith('AbstractIn — ') && ![...template.content.querySelectorAll('p')].some(p => /^Zotero item: /.test(p.textContent)) ? 'note' : null;
   },
-  async organizeNoteInParent(id) {
-   if (this._noteInOrganizing.has(id)) return this._noteInOrganizing.get(id);
-   const request = this._organizeNoteInParent(id); this._noteInOrganizing.set(id, request);
+  async organizeNoteInParent(id, manual = false) {
+   if (this._noteInOrganizing.has(id)) {
+    await this._noteInOrganizing.get(id);
+    if (!manual) return;
+    return this.organizeNoteInParent(id, true);
+   }
+   const request = this._organizeNoteInParent(id, manual); this._noteInOrganizing.set(id, request);
    try { return await request; } finally { if (this._noteInOrganizing.get(id) === request) this._noteInOrganizing.delete(id); }
   },
-  async _organizeNoteInParent(id) {
+  async _organizeNoteInParent(id, manual) {
    const epoch = this._noteInEpoch;
    const parent = await Zotero.Items.getAsync(id);
    if (!parent?.isRegularItem?.() || parent.deleted) { this._noteInGroups.delete(id); return; }
    if (typeof parent.loadChildItems === 'function') await parent.loadChildItems();
    const notes = await Zotero.Items.getAsync(parent.getNotes());
    if (epoch !== this._noteInEpoch || this._noteInRunning === false) return;
-   const owned = [], anchors = [];
-   for (const note of notes) {
-    const kind = this.noteInMetadata(note, parent);
-    if (kind) { this._noteInNoteParents.set(note.id, id); (kind === 'anchor' ? anchors : owned).push(note); }
+   const anchors = notes.filter(note => this.noteInMetadata(note, parent) === 'anchor').sort((a, b) => a.id - b.id);
+   const legacyKeys = new Set();
+   for (const index of anchors) {
+    const template = this.el(Zotero.getMainWindow().document, 'template'); template.innerHTML = index.getNote();
+    for (const pre of template.content.querySelectorAll('pre')) try {
+     const data = JSON.parse(pre.textContent);
+     if (data.format === 'abstractin-notein-v1' && data.itemKey === parent.key && Array.isArray(data.legacyKeys)) {
+      for (const key of data.legacyKeys) if (typeof key === 'string') legacyKeys.add(key);
+     }
+    } catch (_) {}
    }
-   anchors.sort((a, b) => a.id - b.id);
+   const owned = [];
+   for (const note of notes) {
+    const strict = this.noteInMetadata(note, parent);
+    if (strict === 'note' || this.noteInMetadata(note, parent, manual || legacyKeys.has(note.key)) === 'note') {
+     owned.push(note); if (!strict) legacyKeys.add(note.key);
+    }
+    if (strict || owned.includes(note)) this._noteInNoteParents.set(note.id, id);
+   }
    let anchor = anchors[0];
    if (!anchor && owned.length && parent.isEditable()) {
     anchor = new Zotero.Item('note'); anchor.libraryID = parent.libraryID; anchor.parentID = id;
-    const doc = Zotero.getMainWindow().document, body = this.el(doc, 'div');
-    body.append(this.el(doc, 'h1', null, 'NoteIn'), this.el(doc, 'p', null, 'Expand NoteIn in the document list to see AbstractIn reading notes and conversations. Notes keep their original parent, content and sync identity. This directory is managed by AbstractIn.'),
-     this.el(doc, 'pre', null, JSON.stringify({ format: 'abstractin-notein-v1', itemKey: parent.key })));
-    anchor.setNote(body.outerHTML); anchor.addTag('AbstractIn'); anchor.addTag('AbstractIn:NoteIn'); await anchor.saveTx();
+    anchor.setNote(this.noteInIndexHTML(parent, legacyKeys)); anchor.addTag('AbstractIn'); anchor.addTag('AbstractIn:NoteIn'); await anchor.saveTx();
+   } else if (anchor && manual && parent.isEditable()) {
+    const html = this.noteInIndexHTML(parent, legacyKeys);
+    if (anchor.getNote() !== html) { anchor.setNote(html); await anchor.saveTx(); }
    }
    const previous = this._noteInGroups.get(id);
    if (previous) this._noteInAnchors.delete(previous.anchor.id);
@@ -54,15 +73,90 @@
    this._noteInGroups.set(id, group); this._noteInAnchors.set(anchor.id, group);
    this._noteInNoteParents.set(anchor.id, id);
   },
+  noteInIndexHTML(parent, legacyKeys) {
+   const doc = Zotero.getMainWindow().document, body = this.el(doc, 'div');
+   body.append(this.el(doc, 'h1', null, 'NoteIn'), this.el(doc, 'p', null, 'Expand NoteIn in the document list to see AbstractIn reading notes and conversations. Notes keep their original parent, content and sync identity. This directory is managed by AbstractIn.'),
+    this.el(doc, 'pre', null, JSON.stringify({ format: 'abstractin-notein-v1', itemKey: parent.key, legacyKeys: [...legacyKeys] })));
+   return body.outerHTML;
+  },
+  async groupNoteInManually(parentID = null) {
+   await this._noteInReady;
+   const parents = new Set();
+   if (parentID) parents.add(parentID);
+   else for (const library of Zotero.Libraries.getAll()) {
+    const search = new Zotero.Search(); search.libraryID = library.libraryID;
+    search.addCondition('itemType', 'is', 'note');
+    const ids = await search.search();
+    for (let at = 0; at < ids.length; at += 100) for (const note of await Zotero.Items.getAsync(ids.slice(at, at + 100))) {
+     if (note?.parentID && !note.deleted) parents.add(note.parentID);
+    }
+   }
+   let documents = 0, count = 0, skipped = 0;
+   for (const id of parents) {
+    const parent = await Zotero.Items.getAsync(id);
+    if (!parent?.isRegularItem?.() || parent.deleted) continue;
+    if (!parent.isEditable()) { skipped++; continue; }
+    await this.organizeNoteInParent(id, true);
+    const group = this._noteInGroups.get(id);
+    if (group?.notes.length) { documents++; count += group.notes.length; }
+   }
+   for (const state of this._noteInWindows.values()) {
+    // A selected child cannot stay selected once hidden. Select its NoteIn
+    // index before native refresh, or Zotero 9 restores and reopens the child.
+    const selected = state.view?.getSelectedItems?.(true) || [];
+    const mapped = selected.map(id => {
+     const group = this._noteInGroups.get(this._noteInNoteParents.get(id));
+     return group && parents.has(group.parent.id) ? group.anchor.id : id;
+    });
+    if (mapped.some((id, i) => id !== selected[i])) await state.view.selectItems([...new Set(mapped)]);
+    for (const id of parents) { const group = this._noteInGroups.get(id); if (group) state.adapter?.opened.delete(group.anchor.id); }
+    await state.view?.refreshAndMaintainSelection?.();
+   }
+   this.refreshNoteInWindows();
+   return { documents, count, skipped };
+  },
+  buildNoteInCard(doc) {
+   const card = this.card(doc, 'NoteIn', 'Group AbstractIn notes under each document. Includes older notes whose titles start with “AbstractIn — ”. Original notes keep their content and storage location.');
+   const button = this.el(doc, 'button', 'abstractin-button abstractin-notein-group-all', 'Group notes into NoteIn'); button.type = 'button';
+   const status = this.el(doc, 'p', 'abstractin-notein-status'); status.setAttribute('role', 'status');
+   button.addEventListener('click', () => this.runNoteInButton(button, status));
+   card.body.append(button, status); return card;
+  },
+  async runNoteInButton(button, status, parentID = null) {
+   button.disabled = true; status.textContent = 'Grouping notes…';
+   try {
+    const result = await this.groupNoteInManually(parentID);
+    status.textContent = result.count ? `Grouped ${result.count} notes in ${result.documents} documents. Expand the document to see NoteIn. Clear the library search to see the group.` : 'No matching AbstractIn notes found. Ordinary Zotero notes were left in place.';
+    if (result.skipped) status.textContent += ` Skipped ${result.skipped} documents in read-only libraries.`;
+    return result;
+   } catch (e) { this.logError('NoteIn manual grouping', e); status.textContent = 'Could not group notes: ' + (e.message || e); }
+   finally { button.disabled = false; }
+  },
+  openNoteInGrouping(root) {
+   const view = this._views.get(root), parent = view?.ctx?.paperItem;
+   if (!parent?.isRegularItem?.()) return;
+   root.querySelector('.abstractin-notein-dialog')?.remove();
+   const doc = root.ownerDocument, panel = this.el(doc, 'div', 'abstractin-panel abstractin-notein-dialog');
+   panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Group notes into NoteIn');
+   panel.style.cssText = 'position:absolute;inset:12px;z-index:30;overflow:auto;padding:16px;background:var(--abstractin-bg,Canvas);color:var(--abstractin-text,CanvasText)';
+   panel.append(this.el(doc, 'h2', null, 'Group notes into NoteIn'), this.el(doc, 'p', null, 'Group notes for this document, including older notes whose titles start with “AbstractIn — ”. Original content, IDs and storage locations stay unchanged.'));
+   const button = this.el(doc, 'button', 'abstractin-button abstractin-notein-group-current', 'Group this document’s notes'); button.type = 'button';
+   const close = this.el(doc, 'button', 'abstractin-button', 'Close'); close.type = 'button'; close.onclick = () => panel.remove();
+   const status = this.el(doc, 'p', 'abstractin-notein-status'); status.setAttribute('role', 'status');
+   button.onclick = () => this.runNoteInButton(button, status, parent.id);
+   panel.append(button, close, status); root.append(panel);
+  },
   async scanNoteIn() {
    const parents = new Set();
    for (const library of Zotero.Libraries.getAll()) {
     if (!this._noteInRunning) break;
     const search = new Zotero.Search(); search.libraryID = library.libraryID;
-    search.addCondition('itemType', 'is', 'note'); search.addCondition('tag', 'is', 'AbstractIn');
+    search.addCondition('itemType', 'is', 'note');
     const ids = await search.search();
     for (let at = 0; at < ids.length && this._noteInRunning; at += 100) {
-     for (const note of await Zotero.Items.getAsync(ids.slice(at, at + 100))) if (note?.parentID && !note.deleted) parents.add(note.parentID);
+     for (const note of await Zotero.Items.getAsync(ids.slice(at, at + 100))) {
+      if (note?.parentID && !note.deleted && (note.getTags().some(t => t.tag === 'AbstractIn') || /abstractin-chat-v1|Zotero item: /.test(note.getNote()))) parents.add(note.parentID);
+     }
     }
    }
    for (const id of parents) { if (!this._noteInRunning) break; await this.organizeNoteInParent(id); }
