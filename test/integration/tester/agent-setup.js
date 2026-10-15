@@ -124,6 +124,37 @@ exit 1
   const documentBody = plugin.el(doc, 'div'); (doc.body || doc.documentElement).append(documentBody);
   const originalFind = plugin.findBinary, originalBegin = plugin.beginReadingWorkflow;
   try {
+   const linkedBook = new Zotero.Item('book'); linkedBook.setField('title', 'Externally maintained linked PDF'); await linkedBook.saveTx();
+   const external = PathUtils.join(PathUtils.parent(Zotero.DataDirectory.dir), 'Dropbox 用户文档');
+   await IOUtils.makeDirectory(external, { ignoreExisting: true });
+   const linkedPath = PathUtils.join(external, 'Probability Models (第一章).pdf');
+   await IOUtils.copy(PathUtils.join(repo, 'test', 'integration', 'assets', 'test-paper.pdf'), linkedPath);
+   const oldBase = Zotero.Prefs.get('baseAttachmentPath') || '', oldRelative = !!Zotero.Prefs.get('saveRelativeAttachmentPath');
+   let linkedReader;
+   try {
+    Zotero.Prefs.set('baseAttachmentPath', external); Zotero.Prefs.set('saveRelativeAttachmentPath', true);
+    const linked = await Zotero.Attachments.linkFromFile({ file: linkedPath, parentItemID: linkedBook.id, contentType: 'application/pdf' });
+    const originalPath = linked.attachmentPath, originalBytes = await IOUtils.read(linkedPath);
+    const linkedCtx = { dir: PathUtils.join(plugin.getDataDir(), 'linked-source-fixture'), paperItem: linkedBook, attachmentItem: linked, reading: { type: 'book' } };
+    check('native linked attachment uses a relative base directory outside Zotero data', originalPath.startsWith('attachments:') && await linked.getFilePathAsync() === linkedPath);
+    const diskSource = await plugin.exportReadingSource(linkedCtx);
+    check('native linked PDF exports searchable original text', diskSource.status === 'ready' && diskSource.accessMethod === 'file', diskSource);
+    const copied = await IOUtils.read(PathUtils.join(linkedCtx.dir, 'source.pdf'));
+    check('native linked PDF copy matches external original bytes', copied.length === originalBytes.length && copied.every((byte, index) => byte === originalBytes[index]));
+    linkedReader = await Zotero.Reader.open(linked.id);
+    linkedCtx.reader = linkedReader;
+    await waitFor(() => plugin.readingPDFApplication(linkedCtx)?.pdfDocument?.getData, 15000);
+    const originalAsync = linked.getFilePathAsync, originalSync = linked.getFilePath;
+    try {
+     linked.getFilePathAsync = async () => false; linked.getFilePath = () => false;
+     const snapshot = await plugin.exportReadingSource(linkedCtx);
+     check('native exact open reader rescues unavailable linked PDF paths', snapshot.status === 'ready' && snapshot.accessMethod === 'reader-snapshot' && snapshot.pageMapping, snapshot);
+     const again = await plugin.exportReadingSource(linkedCtx);
+     check('native reader snapshot cache is keyed to the original PDF bytes', again.status === 'ready' && again.signature === snapshot.signature);
+    } finally { linked.getFilePathAsync = originalAsync; linked.getFilePath = originalSync; }
+    const unchanged = await IOUtils.read(linkedPath);
+    check('native linked source keeps external bytes and Zotero attachment link unchanged', linked.attachmentPath === originalPath && unchanged.length === originalBytes.length && unchanged.every((byte, index) => byte === originalBytes[index]));
+   } finally { linkedReader?.close(); Zotero.Prefs.set('baseAttachmentPath', oldBase); Zotero.Prefs.set('saveRelativeAttachmentPath', oldRelative); }
    const item = new Zotero.Item('journalArticle'); item.setField('title', 'Reading refresh fixture'); await item.saveTx();
    const file = PathUtils.join(repo, 'test', 'integration', 'assets', 'test-paper.pdf');
    const first = await Zotero.Attachments.importFromFile({ file, parentItemID: item.id });

@@ -163,9 +163,11 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.71**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.72**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
+
+Linked PDFs in user-managed folders such as Dropbox are supported, including relative paths resolved through Zotero’s linked attachment base directory. Original files and attachment links are preserved. If direct file access fails, AbstractIn can use the exact attachment already loaded in Zotero as a source snapshot; this does not establish that it is the latest cloud revision. Online-only files must be available locally or already loaded in the reader. Workspace write errors identify the separate workspace directory.
 
 AbstractIn's local workspace lives in `abstractin/` under the Zotero data directory. It contains chat caches, document copies, extracted text, images, and reading state. The plugin reads copies and caches without modifying the original PDF attachments.
 

@@ -112,15 +112,61 @@ Object.assign(AbstractIn, {
 		catch (e) { this.logError("cached current page", e); }
 	},
 
+	async readingFileInfo(attachment) {
+		let path;
+		try { path = await attachment.getFilePathAsync(); }
+		catch (e) { this.logError("resolve attachment path", e); }
+		// Both APIs resolve linked-attachment base directories inside Zotero.
+		// Never interpret attachmentPath as a path relative to storage/ ourselves.
+		if (!path && typeof attachment.getFilePath === "function") path = attachment.getFilePath();
+		if (!path) throw new Error("The selected PDF is not available locally. Download it in Zotero or repair its linked-file path.");
+		const stat = typeof IOUtils !== "undefined" ? await IOUtils.stat(path) : await OS.File.stat(path);
+		return { path, size: stat.size, modified: new Date(stat.lastModified ?? stat.lastModificationDate ?? stat.mtime).getTime() };
+	},
+	readingSourceSignature(ctx, info) {
+		return JSON.stringify([ctx.paperItem.libraryID, ctx.attachmentItem.key, info.path, info.size, info.modified]);
+	},
+	async cachedReadingSource(ctx, signature) {
+		try {
+			const cached = JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-manifest.json")));
+			const exists = path => typeof IOUtils !== "undefined" ? IOUtils.exists(path) : OS.File.exists(path);
+			if (cached.signature === signature && cached.status === "ready" && await exists(OS.Path.join(ctx.dir, "source-text.md")) && await exists(OS.Path.join(ctx.dir, "source.pdf"))) return cached;
+		} catch (_) { /* Rebuild derived source files when no complete cache exists. */ }
+		return null;
+	},
+	async writeReadingPDFBytes(path, bytes) {
+		const options = { tmpPath: path + "." + this.chatSyncID() + ".tmp" };
+		if (typeof IOUtils !== "undefined") await IOUtils.write(path, bytes, options);
+		else await OS.File.writeAtomic(path, bytes, options);
+	},
+	async readerReadingSource(ctx) {
+		// readingPDFApplication only returns a reader matching this attachment ID.
+		const pdf = this.unwrapReadingValue(this.readingPDFApplication(ctx)?.pdfDocument);
+		if (!pdf?.getData || !pdf.getPage || !Number.isInteger(pdf.numPages) || pdf.numPages < 1) throw new Error("Open the selected PDF in Zotero to use its loaded original-source snapshot.");
+		const data = this.unwrapReadingValue(await this.unwrapReadingValue(pdf.getData()));
+		const bytes = new Uint8Array(data);
+		if (!bytes.length) throw new Error("The open Zotero reader returned an empty PDF.");
+		const hash = await Zotero.getMainWindow().crypto.subtle.digest("SHA-256", bytes);
+		const digest = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join("");
+		const signature = JSON.stringify([ctx.paperItem.libraryID, ctx.attachmentItem.key, "reader-snapshot", digest]);
+		const cached = await this.cachedReadingSource(ctx, signature);
+		if (cached) return { cached };
+		await this.writeReadingPDFBytes(OS.Path.join(ctx.dir, "source.pdf"), bytes);
+		const pages = [];
+		for (let index = 0; index < pdf.numPages; index++) {
+			const page = this.unwrapReadingValue(await this.unwrapReadingValue(pdf.getPage(index + 1)));
+			const content = this.unwrapReadingValue(await this.unwrapReadingValue(page.getTextContent()));
+			pages.push(content.items.filter(item => typeof item.str === "string").map(item => item.str + (item.hasEOL ? "\n" : " ")).join("").trim());
+		}
+		return { signature, accessMethod: "reader-snapshot", result: { text: pages.join("\f"), extractedPages: pages.length, totalPages: pdf.numPages } };
+	},
 	async knowledgeReadingSource(ctx) {
 		// Validate identity without extracting the entire document again.
 		let signature = "knowledge:" + ctx.attachmentItem.key;
 		try {
-			let path = await ctx.attachmentItem.getFilePathAsync();
-			if (path && await OS.File.exists(path)) {
-				let stat = await OS.File.stat(path);
-				signature = JSON.stringify([ctx.paperItem.libraryID, ctx.attachmentItem.key, path, stat.size,
-					new Date(stat.lastModificationDate || stat.mtime).getTime()]);
+			let info = await this.readingFileInfo(ctx.attachmentItem);
+			if (info) {
+				signature = this.readingSourceSignature(ctx, info);
 				try {
 					let cached = JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-manifest.json")));
 					if (cached.signature === signature && cached.status === "ready") return cached;
@@ -134,38 +180,53 @@ Object.assign(AbstractIn, {
 
 	async exportReadingSource(ctx) {
 		let attachment = ctx.attachmentItem;
+		let stage = "prepare reading workspace";
 		try {
 			if (!attachment?.isPDFAttachment?.()) throw new Error("Choose a PDF attachment in Start Reading.");
-			let path = await attachment.getFilePathAsync();
-			if (!path || !(await OS.File.exists(path))) throw new Error("The selected PDF is not available locally. Download it in Zotero or repair its linked-file path.");
-			let stat = await OS.File.stat(path);
-			let signature = JSON.stringify([ctx.paperItem.libraryID, attachment.key, path, stat.size,
-				new Date(stat.lastModificationDate || stat.mtime).getTime()]);
+			await Zotero.File.createDirectoryIfMissingAsync(ctx.dir);
 			let manifestPath = OS.Path.join(ctx.dir, "source-manifest.json");
+			let prepared;
 			try {
-				let cached = JSON.parse(await Zotero.File.getContentsAsync(manifestPath));
-				if (cached.signature === signature && cached.status === "ready" &&
-					await OS.File.exists(OS.Path.join(ctx.dir, "source-text.md")) && await OS.File.exists(OS.Path.join(ctx.dir, "source.pdf"))) return cached;
+				stage = "resolve and inspect original PDF";
+				const info = await this.readingFileInfo(attachment);
+				const signature = this.readingSourceSignature(ctx, info);
+				const cached = await this.cachedReadingSource(ctx, signature); if (cached) return cached;
+				stage = "copy original PDF to reading workspace";
+				const destination = OS.Path.join(ctx.dir, "source.pdf");
+				if (typeof IOUtils !== "undefined") {
+					try { await IOUtils.copy(info.path, destination); }
+					catch (_) { await this.writeReadingPDFBytes(destination, await IOUtils.read(info.path)); }
+				}
+				else await OS.File.copy(info.path, destination);
+				stage = "extract original PDF text";
+				if (!Zotero.PDFWorker?.getFullText) throw new Error("This Zotero version does not expose PDF text extraction.");
+				const result = await Zotero.PDFWorker.getFullText(attachment.id, null, true);
+				const after = await this.readingFileInfo(attachment);
+				if (this.readingSourceSignature(ctx, after) !== signature) {
+					const error = new Error("The PDF changed during extraction. Please try again."); error.readingSourceChanged = true; throw error;
+				}
+				prepared = { signature, result, accessMethod: "file" };
+			} catch (fileError) {
+				if (fileError.readingSourceChanged) throw fileError;
+				this.logError("PDF file access; trying exact Zotero reader", fileError);
+				const fileStage = stage; stage = "read the selected PDF from Zotero's open reader";
+				try { prepared = await this.readerReadingSource(ctx); }
+				catch (readerError) { throw new Error(fileStage + ": " + (fileError.message || fileError) + " Reader fallback: " + (readerError.message || readerError)); }
 			}
-			catch (e) { /* No reusable source cache. */ }
-			if (!Zotero.PDFWorker?.getFullText) throw new Error("This Zotero version does not expose PDF text extraction.");
-			await OS.File.copy(path, OS.Path.join(ctx.dir, "source.pdf"));
-			let result = await Zotero.PDFWorker.getFullText(attachment.id, null, true);
+			if (prepared.cached) return prepared.cached;
+			const { signature, result, accessMethod } = prepared;
 			if (!Number.isInteger(result?.totalPages) || result.totalPages < 1 || result.extractedPages !== result.totalPages) throw new Error("PDF text extraction did not cover every page. Try again or provide the relevant passage.");
 			if (typeof result?.text !== "string" || !result.text.trim()) throw new Error("The PDF has no extractable text. It may be a scanned document; run OCR or attach the relevant page image.");
-			let after = await OS.File.stat(path);
-			if (after.size !== stat.size || new Date(after.lastModificationDate || after.mtime).getTime() !== new Date(stat.lastModificationDate || stat.mtime).getTime()) {
-				throw new Error("The PDF changed during extraction. Please try again.");
-			}
 			let pages = result.text.split("\f");
 			let pageMapping = Number.isInteger(result.extractedPages) && pages.length === result.extractedPages;
 			let text = "# Extracted PDF text\n\nAttachment: " + attachment.key + "\n\n" +
 				"Physical PDF pages and zero-based pageIndex are separate from printed page labels. Printed labels must be verified in the source.\n\n";
 			text += pageMapping ? pages.map((page, index) => "## PDF page " + (index + 1) + "; pageIndex " + index + "\n\n" + (page.trim() || "[No extractable text on this page]")).join("\n\n") :
 				"Page boundaries could not be verified. Do not infer page indices from this text.\n\n" + result.text;
+			stage = "save extracted text in reading workspace";
 			await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "source-text.md"), text);
 			let source = { status: "ready", signature, attachmentKey: attachment.key,
-				totalPages: result.totalPages, extractedPages: result.extractedPages, pageMapping,
+				totalPages: result.totalPages, extractedPages: result.extractedPages, pageMapping, accessMethod,
 				pdf: "source.pdf", text: "source-text.md" };
 			await Zotero.File.putContentsAsync(manifestPath, JSON.stringify(source));
 			this.log("PDF source ready: " + attachment.key + ", " + result.extractedPages + "/" + result.totalPages + " pages, " + result.text.length + " characters");
@@ -173,7 +234,7 @@ Object.assign(AbstractIn, {
 		}
 		catch (e) {
 			this.logError("exportReadingSource", e);
-			return { status: "unavailable", attachmentKey: attachment?.key, error: String(e.message || e) };
+			return { status: "unavailable", attachmentKey: attachment?.key, error: "Could not " + stage + ". " + String(e.message || e) + " Reading workspace: " + ctx.dir };
 		}
 	},
 
@@ -550,6 +611,7 @@ Object.assign(AbstractIn, {
 		let reading = ctx.reading;
 		if (reading.vocabularyTutor) return this.vocabularyTutorPrompt(ctx, selection);
 		let introduction = "Reader-confirmed title and reading goal (context, not source evidence): " + JSON.stringify({ title: reading.title || "", goal: reading.goal || "" }) + ". ";
+		if (reading.pdfSource?.accessMethod === "reader-snapshot") introduction += "The original-source excerpt comes from this exact attachment currently loaded in Zotero. It may precede later changes in the cloud-synced file; do not claim it is the latest synced revision. ";
 		if (reading.evidenceMode === "knowledge" && (!reading.action || reading.action === "discuss")) {
 			let suppliedOnly = reading.answerMode === "context" || reading.answerMode === "source";
 			return (suppliedOnly ? "AbstractIn " + this.READING_ANSWER_MODES[reading.answerMode].label + ". " : "AbstractIn Balanced (Knowledge discussion context pass). ") + introduction + this.languageInstruction() +

@@ -135,3 +135,104 @@ test("a disagreement with the reader never repairs page offsets", async () => {
  window.Zotero.Reader = { _readers: [{ itemID: 7, type: 'pdf', _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfDocument: { numPages: 2, getPage: async n => ({ getTextContent: async () => ({ items: [{ str: n === 1 ? '' : 'Changed text' }] }) }) } } } } } }] };
  assert.equal((await p.recoverReadingPageMapping(ctx, await p.exportReadingSource(ctx))).pageMapping, false);
 });
+
+async function attachLoadedPDF(window, ctx, { texts = ['Reader first page', 'Reader second page'], bytes = new TextEncoder().encode('%PDF-reader-snapshot'), itemID = ctx.attachmentItem.id } = {}) {
+ const { webcrypto } = await import('node:crypto');
+ Object.defineProperty(window, 'crypto', { value: webcrypto });
+ let pageReads = 0, byteReads = 0;
+ const pdf = { numPages: texts.length, getData: async () => { byteReads++; return bytes; }, getPage: async number => {
+  pageReads++; return { getTextContent: async () => ({ items: [{ str: texts[number - 1], hasEOL: true }] }) };
+ } };
+ ctx.reader = { itemID, type: 'pdf', _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfDocument: pdf } } } } };
+ window.OS.File.writeAtomic = async (path, data) => writeFile(path, data);
+ return { pdf, get pageReads() { return pageReads; }, get byteReads() { return byteReads; } };
+}
+
+async function modernFiles(window) {
+ window.IOUtils = {
+  stat: async path => { const s = await stat(path); return { size: s.size, lastModified: s.mtimeMs }; },
+  exists: window.OS.File.exists, copy: copyFile, read: readFile, write: (path, bytes) => writeFile(path, bytes),
+ };
+}
+
+test('externally managed linked PDF with spaces and Unicode uses resolved path and modern file access', async () => {
+ const { p, window, ctx, path } = await setup();
+ const folder = join(ctx.dir, '..', 'Dropbox', '我的书库 A'); await mkdir(folder, { recursive: true });
+ const linked = join(folder, 'Probability (第一章).pdf'); await copyFile(path, linked);
+ ctx.attachmentItem.attachmentPath = 'attachments:我的书库 A/Probability (第一章).pdf';
+ ctx.attachmentItem.getFilePathAsync = async () => false;
+ ctx.attachmentItem.getFilePath = () => linked;
+ await modernFiles(window);
+ window.OS.File.copy = window.OS.File.stat = window.OS.File.exists = async () => { throw new Error('Legacy file access denied'); };
+ window.Zotero.PDFWorker = { getFullText: async () => ({ text: 'Linked PDF original text', extractedPages: 1, totalPages: 1 }) };
+ const before = await readFile(linked);
+ const source = await p.exportReadingSource(ctx);
+ assert.equal(source.status, 'ready'); assert.equal(source.accessMethod, 'file');
+ assert.ok(source.signature.includes('Probability (第一章).pdf'));
+ assert.deepEqual(await readFile(join(ctx.dir, 'source.pdf')), before);
+ assert.deepEqual(await readFile(linked), before); assert.ok(ctx.attachmentItem.attachmentPath.startsWith('attachments:'));
+});
+
+test('cloud copy failure can read bytes and keep the original linked PDF untouched', async () => {
+ const { p, window, ctx, path } = await setup(); await modernFiles(window);
+ window.IOUtils.copy = async () => { throw new Error('Cloud placeholder copy failed'); };
+ window.Zotero.PDFWorker = { getFullText: async () => ({ text: 'Hydrated text', extractedPages: 1, totalPages: 1 }) };
+ assert.equal((await p.exportReadingSource(ctx)).status, 'ready');
+ assert.deepEqual(await readFile(join(ctx.dir, 'source.pdf')), await readFile(path));
+});
+
+test('exact open reader supplies bytes and every physical page when the filesystem path is unavailable', async () => {
+ const { p, window, ctx } = await setup(); ctx.attachmentItem.getFilePathAsync = async () => false;
+ const loaded = await attachLoadedPDF(window, ctx);
+ const source = await p.exportReadingSource(ctx);
+ assert.equal(source.status, 'ready'); assert.equal(source.accessMethod, 'reader-snapshot'); assert.equal(source.pageMapping, true);
+ assert.equal(source.totalPages, 2); assert.equal(loaded.pageReads, 2);
+ assert.equal(await readFile(join(ctx.dir, 'source.pdf'), 'utf8'), '%PDF-reader-snapshot');
+ assert.match(await readFile(join(ctx.dir, 'source-text.md'), 'utf8'), /PDF page 2; pageIndex 1\n\nReader second page/);
+ await p.exportReadingSource(ctx); assert.equal(loaded.pageReads, 2, 'identical bytes reuse a complete reader cache');
+ loaded.pdf.getData = async () => new TextEncoder().encode('%PDF-reader-new-revision');
+ await p.exportReadingSource(ctx); assert.equal(loaded.pageReads, 4, 'different bytes invalidate reader cache');
+ ctx.reading.pdfSource = source;
+ assert.match(p.readingPrompt(ctx), /currently loaded in Zotero/);
+});
+
+test('PDFWorker failure uses the matching loaded PDF, never another open attachment', async () => {
+ const { p, window, ctx } = await setup(); await attachLoadedPDF(window, ctx);
+ window.Zotero.PDFWorker = { getFullText: async () => { throw new Error('Linked source is temporarily locked'); } };
+ assert.equal((await p.exportReadingSource(ctx)).accessMethod, 'reader-snapshot');
+ const wrong = await attachLoadedPDF(window, ctx, { itemID: 999 });
+ ctx.attachmentItem.getFilePathAsync = async () => false;
+ const failed = await p.exportReadingSource(ctx);
+ assert.equal(failed.status, 'unavailable'); assert.equal(wrong.byteReads, 0);
+ assert.match(failed.error, /Open the selected PDF/);
+});
+
+test('incomplete reader extraction cannot create a ready manifest and can be retried', async () => {
+ const { p, window, ctx } = await setup(); ctx.attachmentItem.getFilePathAsync = async () => false;
+ const loaded = await attachLoadedPDF(window, ctx), getPage = loaded.pdf.getPage;
+ loaded.pdf.getPage = async n => { if (n === 2) throw new Error('Page unavailable'); return getPage(n); };
+ assert.equal((await p.exportReadingSource(ctx)).status, 'unavailable');
+ await assert.rejects(readFile(join(ctx.dir, 'source-manifest.json')));
+ loaded.pdf.getPage = getPage; assert.equal((await p.exportReadingSource(ctx)).status, 'ready');
+});
+
+test('a changed disk file is not silently replaced by a potentially older reader snapshot', async () => {
+ const { p, window, ctx, path } = await setup(); const loaded = await attachLoadedPDF(window, ctx);
+ window.Zotero.PDFWorker = { getFullText: async () => { await writeFile(path, '%PDF-changed-during-extraction'); return { text: 'Old text', extractedPages: 1, totalPages: 1 }; } };
+ const source = await p.exportReadingSource(ctx);
+ assert.equal(source.status, 'unavailable'); assert.match(source.error, /changed during extraction/); assert.equal(loaded.byteReads, 0);
+});
+
+test('workspace permission failures are identified separately from original attachment access', async () => {
+ const { p, window, ctx } = await setup(); let paths = 0;
+ ctx.attachmentItem.getFilePathAsync = async () => { paths++; return false; };
+ window.Zotero.File.createDirectoryIfMissingAsync = async () => { throw new Error('Access denied'); };
+ const source = await p.exportReadingSource(ctx);
+ assert.match(source.error, /prepare reading workspace/); assert.ok(source.error.includes(ctx.dir)); assert.equal(paths, 0);
+});
+
+test('knowledge identity does not read an open PDF when source access was not requested', async () => {
+ const { p, window, ctx } = await setup(); const loaded = await attachLoadedPDF(window, ctx);
+ ctx.attachmentItem.getFilePathAsync = async () => false;
+ assert.equal((await p.knowledgeReadingSource(ctx)).status, 'context-only'); assert.equal(loaded.byteReads, 0); assert.equal(loaded.pageReads, 0);
+});
