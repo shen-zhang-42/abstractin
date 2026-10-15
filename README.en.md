@@ -82,9 +82,9 @@ Vocabulary tutoring respects all three answer modes: Balanced can use language k
 
 ## Chat management
 
-**NoteIn** is a collapsed virtual group under each document for identifiable AbstractIn reading notes and chat sync records. Existing plugin notes are organized on startup, and new notes join the same group. Original note IDs, contents and parent relationships stay intact; ordinary notes remain in place. A small generated NoteIn index note serves as the group entry, rather than a real child folder. Search and trash use Zotero’s native view, and disabling the plugin restores flat note rows. Ambiguous unmarked legacy notes are left alone; no index is created in a read-only library.
+**NoteIn** is a collapsed virtual group under each document. On startup, AbstractIn automatically organizes its existing reading notes and saved conversations; newly saved notes join the same group. Legacy plugin notes whose titles start with `AbstractIn — ` are also organized automatically, without a button. Original note IDs, content, parent items and storage locations remain unchanged, and ordinary Zotero notes stay in place. One small NoteIn index note provides the group entry rather than a real subfolder. Notes explicitly marked as belonging to another document are excluded, and read-only libraries receive no index changes.
 
-For older notes that were not grouped automatically, click **Group notes into NoteIn** at the top of the sidebar, then **Group this document’s notes**. To organize all libraries, use **Settings → AbstractIn → NoteIn → Group notes into NoteIn**. Manual grouping also includes legacy notes whose titles start with `AbstractIn — ` and reports the number grouped. Membership is remembered in the NoteIn index without changing the original note content, IDs or storage locations. Unfiled Items and tag filters also support grouping. Actual text searches keep the native result layout. The grouping action checks whether NoteIn is visible and provides **Show NoteIn** to clear filters, open the library and select the group.
+Expand the document and then **NoteIn** to view the notes. Unfiled Items and tag filters support grouping; actual text search results and trash retain Zotero's native layout. Disabling AbstractIn restores the flat note list.
 
 Use **Export reading summary** in the reading header to export a book or paper digest. Books are organized by chapter; equivalent questions across chats and related explanations are consolidated. Verified original numbering is preserved where possible; supplementary points receive separate S numbers. The selected agent can request original passages to verify uncertainty and fill relevant gaps, marking unresolved claims. Generation discloses plan/API usage and provides a Markdown preview and save dialog. Existing chats and notes remain unchanged.
 
@@ -163,7 +163,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.75**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.76**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

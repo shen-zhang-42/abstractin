@@ -92,24 +92,23 @@ test('read-only libraries do not create directory records or change existing not
  assert.equal(f.items.size, before); assert.equal(f.p._noteInGroups.size, 0);
 });
 
-test('manual grouping includes title-only legacy notes and remembers their keys without editing them', async () => {
+test('automatic grouping includes title-only legacy notes and remembers their keys without editing them', async () => {
  const f = fixture(), { p, parent } = f;
  const legacy = f.note('', '<h1>AbstractIn — De Finetti 表示与几乎必然</h1><p>Earlier answer</p>');
  const before = [legacy, f.ordinary, f.collision].map(n => [n.id, n.parentID, n.getNote(), [...n.tags]]);
  await p.organizeNoteInParent(1);
- assert.ok(!p._noteInGroups.get(1).notes.includes(legacy));
- const result = await p.groupNoteInManually(parent.id);
- assert.equal(result.count, 3); assert.equal(result.documents, 1);
+ assert.ok(p._noteInGroups.get(1).notes.includes(legacy));
+ assert.equal(p._noteInGroups.get(1).notes.length, 3);
  const anchor = p._noteInGroups.get(1).anchor;
  assert.ok(anchor.getNote().includes(legacy.key));
  p._noteInGroups.clear(); p._noteInAnchors.clear(); p._noteInNoteParents.clear();
  await p.organizeNoteInParent(1);
  assert.ok(p._noteInGroups.get(1).notes.includes(legacy), 'startup recognizes explicitly grouped legacy notes');
- await p.groupNoteInManually(1);
+ await p.organizeNoteInParent(1);
  assert.equal(p._noteInGroups.get(1).anchor.id, anchor.id);
  assert.deepEqual([legacy, f.ordinary, f.collision].map(n => [n.id, n.parentID, n.getNote(), [...n.tags]]), before);
  const wrong = f.note('AbstractIn:Chat', '<h1>AbstractIn — Wrong document</h1><pre>{"format":"abstractin-chat-v1","itemKey":"OTHER"}</pre>');
- await p.groupNoteInManually(1);
+ await p.organizeNoteInParent(1);
  assert.ok(!p._noteInGroups.get(1).notes.includes(wrong));
 });
 
@@ -117,23 +116,6 @@ test('verifiable ownership metadata works even when a legacy note has lost its t
  const f = fixture(); f.chat.tags = []; f.reading.tags = [];
  await f.p.organizeNoteInParent(1);
  assert.deepEqual(Array.from(f.p._noteInGroups.get(1).notes, n => n.id), [f.chat.id, f.reading.id]);
-});
-
-test('settings and document buttons run the correct grouping scope and show completion or failure', async () => {
- const f = fixture(), { p, document } = f;
- const calls = [];
- p.groupNoteInManually = async id => { calls.push(id); return { count: 3, documents: 1, skipped: 0 }; };
- const card = p.buildNoteInCard(document); document.body.append(card);
- const all = card.querySelector('button'); all.click();
- await new Promise(resolve => setImmediate(resolve));
- assert.equal(calls[0], null); assert.match(card.textContent, /Grouped 3 notes/); assert.equal(all.disabled, false);
- const root = document.createElement('div'); document.body.append(root); p._views.set(root, { ctx: { paperItem: f.parent } });
- p.openNoteInGrouping(root); root.querySelector('.abstractin-notein-group-current').click();
- await new Promise(resolve => setImmediate(resolve));
- assert.equal(calls[1], f.parent.id); assert.match(root.textContent, /Grouped 3 notes/);
- p.groupNoteInManually = async () => { throw new Error('Read failed'); };
- await p.runNoteInButton(all, card.querySelector('[role=status]'));
- assert.match(card.textContent, /Could not group notes: Read failed/); assert.equal(all.disabled, false);
 });
 
 for (const type of ['unfiled', 'library', 'collection']) test(`Zotero 10 ${type} view groups notes even when Zotero internally uses search mode`, async () => {
@@ -150,19 +132,12 @@ for (const type of ['unfiled', 'library', 'collection']) test(`Zotero 10 ${type}
  adapter.dispose();
 });
 
-test('a real text query stays flat and the grouping button offers a verified Show NoteIn action', async () => {
- const f = fixture(true), { p, view, provider, document } = f;
+test('a real text query keeps original note matches visible', async () => {
+ const f = fixture(true), { p, view, provider } = f;
  await p.organizeNoteInParent(1); f.populate();
- view.collectionTreeRow.type = 'library'; view.collectionTreeRow.searchText = 'Earlier'; provider._searchMode = true;
+ view.collectionTreeRows = [{ type: 'library', searchText: 'Earlier' }]; provider._searchMode = true;
  const adapter = p.installNoteInTree(view);
  assert.ok(provider._rows.some(row => row.ref === f.chat));
- p.groupNoteInManually = async () => ({ count: 2, documents: 1, skipped: 0, documentIDs: [1], displayed: false, reason: p.noteInViewReason(view) });
- let shown = null; p.showNoteIn = async id => { shown = id; };
- const card = p.buildNoteInCard(document); document.body.append(card);
- await p.runNoteInButton(card.querySelector('button'), card.querySelector('[role=status]'));
- assert.match(card.textContent, /not visible in the current list/);
- await card.querySelector('.abstractin-notein-show').onclick();
- assert.equal(shown, 1); assert.match(card.textContent, /now visible and selected/);
  adapter.dispose();
 });
 
