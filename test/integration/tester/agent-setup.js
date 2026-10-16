@@ -20,6 +20,10 @@ done
 if [ "$1" = "-p" ]; then
  printf '%s\n' "$@" > "$0.args"
  cat > "$0.prompt"
+ if grep -q 'Create a durable summary of this reading conversation.' "$0.prompt"; then
+  echo '{"type":"assistant","message":{"content":[{"type":"text","text":"{\"summary\":\"Native agent summary: verified conclusion, equation $x=1$, and unresolved question.\"}"}]}}'
+  exit 0
+ fi
  echo '{"type":"assistant","message":{"content":[{"type":"text","text":"fixture answer"}]}}'
  exit 0
 fi
@@ -194,8 +198,9 @@ exit 1
    const setup = view.readingSetup;
    plugin.renderSkeleton(doc, documentBody); await plugin.renderContent(doc, documentBody, item);
    check('native item refresh preserves the reading setup', documentBody.querySelector('.abstractin-root') === root && plugin._views.get(root) === view && view.readingSetup === setup);
-   await plugin.answerReadingSetup(view, 'Reading refresh fixture'); await plugin.answerReadingSetup(view, 'paper');
-   await plugin.answerReadingSetup(view, String(selected.id)); await plugin.answerReadingSetup(view, 'skip');
+   root.querySelector('[data-setup-field=attachment]').value = String(selected.id);
+   check('native setup displays title, material type and goal together', !!root.querySelector('[data-setup-field=title]') && !!root.querySelector('[data-setup-field=type]') && !!root.querySelector('[data-setup-field=goal]'));
+   await plugin.answerReadingSetup(view, 'confirm');
    check('native setup completes without returning to start', began === 1 && !view.readingSetup && !root.querySelector('.abstractin-start-reading'));
    plugin._readingStates.delete(first.id); plugin._readingStates.delete(second.id);
    const restored = await plugin.getContext(item);
@@ -254,5 +259,28 @@ exit 1
   check('early CLI exit reports its real stderr instead of File closed', failure.error === 'Fixture CLI initialization failed before reading input', failure);
   const retry = await plugin.runClaude(request);
   check('normal requests still succeed after an input pipe failure', retry.text === 'fixture answer', retry);
+  const oldNoteMode = plugin.noteSaveMode();
+  try {
+   const noteParent = new Zotero.Item('journalArticle'); noteParent.setField('title', 'Note saving policy fixture'); await noteParent.saveTx();
+   const noteDir = PathUtils.join(plugin.getDataDir(), 'note-policy-none'); await IOUtils.makeDirectory(noteDir, { ignoreExisting: true });
+   const noteCtx = plugin.registerChatContext({ dir: noteDir, paperItem: noteParent });
+   const transcript = [{ role: 'user', text: 'PRIVATE ORIGINAL QUESTION', ts: 1 }, { role: 'assistant', text: 'PRIVATE ORIGINAL ANSWER', backend: 'claude', ts: 2 }];
+   plugin.setPref('noteSaveMode', 'none');
+   await plugin.saveHistory(noteDir, transcript); await plugin.saveSessions(noteDir, { claude: { id: 'volatile-session' } });
+   check('native no-save mode keeps complete messages only in memory', (await plugin.loadHistory(noteDir)).length === 2 && !await IOUtils.exists(PathUtils.join(noteDir, 'chat.json')) && !await IOUtils.exists(PathUtils.join(noteDir, 'session.json')) && noteParent.getNotes().length === 0);
+   plugin.endNoteSession(noteDir);
+   check('native no-save mode discards messages and CLI sessions on close', (await plugin.loadHistory(noteDir)).length === 0 && !Object.keys(await plugin.loadSessions(noteDir)).length);
+   const summaryDir = PathUtils.join(plugin.getDataDir(), 'note-policy-summary'); await IOUtils.makeDirectory(summaryDir, { ignoreExisting: true }); plugin.registerChatContext({ ...noteCtx, dir: summaryDir });
+   plugin.setPref('noteSaveMode', 'summary');
+   const warning = await plugin.saveHistory(summaryDir, transcript);
+   const saved = await IOUtils.readUTF8(PathUtils.join(summaryDir, 'chat.json'));
+   check('native summary mode uses a real local agent process and persists no original transcript', !warning && saved.includes('Native agent summary') && !saved.includes('PRIVATE ORIGINAL') && (await plugin.loadHistory(summaryDir)).length === 2, warning);
+   plugin.endNoteSession(summaryDir); const restoredSummary = await plugin.loadHistory(summaryDir);
+   check('native summary mode reopens with only the generated summary', restoredSummary.length === 1 && restoredSummary[0].savedSummary && restoredSummary[0].text.includes('unresolved question'));
+   const summaryNotes = noteParent.getNotes().map(id => Zotero.Items.get(id)).filter(note => note.getTags().some(tag => tag.tag === 'AbstractIn:Chat'));
+   check('native summary sync note contains summary instead of full messages', summaryNotes.length === 1 && summaryNotes[0].getNote().includes('Native agent summary') && !summaryNotes[0].getNote().includes('PRIVATE ORIGINAL'));
+   const settingsCard = plugin.buildChatCard(doc);
+   check('native global note saving control offers three ordered modes', [...settingsCard.querySelector('.abstractin-note-save-mode').options].map(option => option.value).join(',') === 'full,summary,none');
+  } finally { plugin.setPref('noteSaveMode', oldNoteMode); }
  } finally { plugin.testAndAdaptAgent = originalTest; holder._agentSetup?.close(); holder.remove(); }
 }

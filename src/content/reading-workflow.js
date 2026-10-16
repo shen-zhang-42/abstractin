@@ -84,7 +84,7 @@ Object.assign(AbstractIn, {
 			let note = old.find(p => p.data.part === part)?.note || new Zotero.Item("note");
 			note.libraryID = ctx.paperItem.libraryID; note.parentID = ctx.paperItem.id;
 			let wrapper = this.el(Zotero.getMainWindow().document, "div");
-			let title = history.find(m => m.role === "user")?.text?.replace(/\s+/g, " ").slice(0, 100) || "New chat";
+			let title = history.length && history.every(m => m.savedSummary) ? "Reading summary" : history.find(m => m.role === "user")?.text?.replace(/\s+/g, " ").slice(0, 100) || "New chat";
 			wrapper.append(this.el(wrapper.ownerDocument, "h1", null, "AbstractIn — Chat: " + title + (total > 1 ? " (" + (part + 1) + "/" + total + ")" : "")),
 				this.el(wrapper.ownerDocument, "p", null, "Complete conversation text with LaTeX; image files and Codex session identifiers stay local."),
 				this.el(wrapper.ownerDocument, "pre", null, JSON.stringify({

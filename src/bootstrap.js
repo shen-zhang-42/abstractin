@@ -35,6 +35,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(resourceURI + "content/history-browser.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading-export.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/notein.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/note-storage.js");
 	AbstractIn.init({ id, version, rootURI, resourceURI });
 	// Load the bundled renderer immediately, before any answer needs it.
 	AbstractIn.getKatex();

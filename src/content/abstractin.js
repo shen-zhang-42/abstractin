@@ -2142,6 +2142,7 @@ AbstractIn = {
 			this.openMenu(root, more, (menu) => {
 				this.menuItem(doc, menu, {
 					label: "Save as note",
+					disabled: this.noteSaveMode?.() !== "full",
 					desc: "Child note on this paper, maths kept",
 					onSelect: async () => {
 						this.closeMenu(root);
@@ -3920,7 +3921,7 @@ AbstractIn = {
 					}
 					catch (e) { recordWarning = "The answer is available, but Zotero could not save its reading note: " + (e.message || e); }
 				}
-				else recordWarning = "The answer is available, but Codex did not return a valid concise reading record. Use Save as note to save this answer manually.";
+				else if (!this.noteSaveMode || this.noteSaveMode() === "full") recordWarning = "The answer is available, but Codex did not return a valid concise reading record. Use Save as note to save this answer manually.";
 				if (recordKey) meta.recordKey = recordKey;
 				if (recordWarning) meta.recordWarning = recordWarning;
 			}

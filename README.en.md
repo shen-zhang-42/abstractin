@@ -84,6 +84,17 @@ Vocabulary tutoring respects all three answer modes: Balanced can use language k
 
 ## Chat management
 
+**Settings → AbstractIn → Chat → Note saving** is global and defaults to **Full**:
+
+- **Full:** preserve the complete conversation and existing Zotero note behavior.
+- **Summary:** after each answer, its agent summarizes the current conversation, merging repeated questions and retaining conclusions, equations and unresolved questions. This uses the agent's allowance. The open window keeps full messages; local history and Zotero sync notes contain only the summary. Reopening the reading panel or window shows the summary with a fresh CLI session.
+- **Don’t save:** new conversation messages, CLI sessions and automatic reading notes stay in memory and are cleared when the reading panel or window closes. No new transcript or sync note is created.
+
+Changing the setting processes currently open chats. Existing historical notes are not batch-deleted or converted; old full histories remain available under Full mode. Failed summaries produce a visible warning and preserve the previous summary; full messages remain only in the open window. Use **Retry saving summaries** in the same settings before closing.
+
+New reading setup shows the prefilled title, material type and optional goal together. Edit any field (and select the attachment when several PDFs exist), then click **Confirm** once.
+
+
 **NoteIn** is a collapsed virtual group under each document. On startup, AbstractIn automatically organizes its existing reading notes and saved conversations; newly saved notes join the same group. Legacy plugin notes whose titles start with `AbstractIn — ` are also organized automatically, without a button. Original note IDs, content, parent items and storage locations remain unchanged, and ordinary Zotero notes stay in place. One small NoteIn index note provides the group entry rather than a real subfolder. Notes explicitly marked as belonging to another document are excluded, and read-only libraries receive no index changes.
 
 Expand the document and then **NoteIn** to view the notes. Unfiled Items and tag filters support grouping; actual text search results and trash retain Zotero's native layout. Disabling AbstractIn restores the flat note list.
@@ -165,7 +176,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.77**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.78**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

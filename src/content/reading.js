@@ -351,7 +351,7 @@ Object.assign(AbstractIn, {
 		let attachments = this.readingAttachments(view.ctx);
 		let reader = this.readerFor(view.ctx, view.doc.defaultView);
 		let active = attachments.find(item => item.id === reader?.itemID) || view.ctx.attachmentItem;
-		view.readingSetup = { step: "title", attachments, attachment: attachments.find(item => item.id === active?.id) || attachments[0],
+		view.readingSetup = { step: "confirm", attachments, attachment: attachments.find(item => item.id === active?.id) || attachments[0],
 			type: this.readingType(view.ctx.paperItem), title: this.safeField(view.ctx.paperItem, "title") || "", goal: "" };
 		view.root.dataset.readingIntro = "true";
 		let welcome = view.logEl.querySelector(".abstractin-empty");
@@ -369,91 +369,48 @@ Object.assign(AbstractIn, {
 	},
 
 	appendReadingSetupQuestion(view, error = "") {
-		let state = view.readingSetup;
-		if (!state) return;
-		view.logEl.querySelectorAll(".abstractin-reading-choices button").forEach(button => { button.disabled = true; });
-		let card = this.el(view.doc, "div", "abstractin-msg abstractin-assistant abstractin-reading-setup-question");
-		let choices = [];
-		let question;
-		if (error) { question = error; choices = [["Try again", "retry"]]; }
-		else if (!state.attachments.length) {
-			question = "Please attach a PDF to this Zotero item, then let me check again.";
-			choices = [["Check for PDF", "refresh-pdf"]];
+		const state = view.readingSetup; if (!state) return;
+		view.logEl.querySelectorAll(".abstractin-reading-setup-question").forEach(node => node.remove());
+		const doc = view.doc, card = this.el(doc, "div", "abstractin-msg abstractin-assistant abstractin-reading-setup-question");
+		card.append(this.el(doc, "h3", null, "Confirm your reading setup"));
+		if (error) { const notice = this.el(doc, "p", "abstractin-error", error); notice.setAttribute("role", "alert"); card.append(notice); }
+		if (!state.attachments.length) {
+			card.append(this.el(doc, "p", null, "Attach a PDF to this Zotero item, then check again."));
+			const refresh = this.el(doc, "button", "abstractin-reading-choice", "Check for PDF"); refresh.type = "button";
+			refresh.onclick = () => this.answerReadingSetup(view, "refresh-pdf"); card.append(refresh);
+		} else {
+			const field = (label, control) => { const row = this.el(doc, "label", "abstractin-reading-setup-field"); row.append(this.el(doc, "span", null, label), control); card.append(row); };
+			const title = this.el(doc, "input", "abstractin-reading-setup-input"); title.type = "text"; title.value = state.title;
+			title.dataset.setupField = "title"; title.setAttribute("aria-label", "Title"); field("1. Title", title);
+			const type = this.select(doc, [["paper", "Scientific paper"], ["book", "Book"]], state.type || "paper", value => { state.type = value; });
+			type.dataset.setupField = "type"; type.setAttribute("aria-label", "Material type"); field("2. Material type", type);
+			if (state.attachments.length > 1) {
+				const attachment = this.select(doc, state.attachments.map(item => [String(item.id), this.safeField(item, "title") || item.key]), String(state.attachment.id), () => {});
+				attachment.dataset.setupField = "attachment"; attachment.setAttribute("aria-label", "PDF attachment"); field("PDF attachment", attachment);
+			}
+			const goal = this.el(doc, "textarea", "abstractin-reading-setup-input"); goal.value = state.goal; goal.rows = 2;
+			goal.dataset.setupField = "goal"; goal.setAttribute("aria-label", "Reading goal"); goal.placeholder = "Optional — start at the current page"; field("3. Where would you like to begin, or what would you like to understand?", goal);
+			const confirm = this.el(doc, "button", "abstractin-reading-choice abstractin-reading-setup-submit", "Confirm"); confirm.type = "button";
+			confirm.onclick = () => this.answerReadingSetup(view, "confirm"); card.append(confirm);
+			title.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); this.answerReadingSetup(view, "confirm"); } });
 		}
-		else if (state.step === "title") {
-			question = state.title ? "Are we reading “" + state.title + "”? Confirm it, or tell me the title you want to use." : "What book or paper are we reading? Tell me its title.";
-			if (state.title) choices = [["Yes, this one", state.title]];
-		}
-		else if (state.step === "type") {
-			question = "Is this a book or a scientific paper?";
-			choices = state.type === "paper" ? [["Scientific paper", "paper"], ["Book", "book"]] : [["Book", "book"], ["Scientific paper", "paper"]];
-		}
-		else if (state.step === "attachment") {
-			question = "Which PDF should we read?";
-			choices = state.attachments.map(item => [this.safeField(item, "title") || item.key, String(item.id)]);
-		}
-		else {
-			question = "Where would you like to begin, or what would you like to understand? You can also start at the current page.";
-			choices = [["Start at the current page", "skip"]];
-		}
-		card.appendChild(this.el(view.doc, "p", null, question));
-		let buttons = this.el(view.doc, "div", "abstractin-reading-choices");
-		for (let [label, answer] of choices) {
-			let button = this.el(view.doc, "button", "abstractin-reading-choice", label);
-			button.type = "button";
-			button.addEventListener("click", () => this.answerReadingSetup(view, answer, label));
-			buttons.appendChild(button);
-		}
-		card.appendChild(buttons);
-		view.logEl.querySelectorAll(".abstractin-reading-setup-input, .abstractin-reading-setup-submit").forEach(control => { control.disabled = true; });
-		if (state.attachments.length && state.step !== "ready" && !error) {
-			const field = this.el(view.doc, "input", "abstractin-reading-setup-input");
-			field.type = "text"; field.setAttribute("aria-label", "Reading setup response");
-			field.placeholder = state.step === "title" ? "Book or paper title for " + this.companionName(view.root) + "…" : state.step === "goal" ? "Where should " + this.companionName(view.root) + " begin?" : "Reply to " + this.companionName(view.root) + "…";
-			const submit = this.el(view.doc, "button", "abstractin-reading-choice abstractin-reading-setup-submit", "Continue");
-			submit.type = "button";
-			const respond = () => this.answerReadingSetup(view, field.value);
-			submit.addEventListener("click", respond);
-			field.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); respond(); } });
-			const form = this.el(view.doc, "div", "abstractin-reading-setup-response"); form.append(field, submit); card.append(form);
-		}
-		card.setAttribute("aria-live", "polite");
-		view.logEl.appendChild(card);
-		view.input.placeholder = "Reply to " + this.companionName(view.root) + "…";
-		this.scrollToEnd(view.logEl);
-		card.querySelector(".abstractin-reading-setup-input")?.focus();
+		view.logEl.append(card); this.scrollToEnd(view.logEl);
 	},
 
-	async answerReadingSetup(view, answer, label = answer) {
-		let state = view.readingSetup;
-		answer = String(answer || "").trim();
-		if (!state || state.busy || !answer) return;
-		if (!state.attachments.length) {
-			if (answer === "refresh-pdf") { delete view.readingSetup; await this.openReadingSetup(view.root); }
-			return;
-		}
-		if (state.step !== "ready") {
-			if (state.step === "type") {
-				let type = /^(book|书|书籍|图书|教材)$/i.test(answer) ? "book" : /^(paper|scientific paper|论文|科学论文|科研论文)$/i.test(answer) ? "paper" : "";
-				if (!type) { this.appendReadingSetupQuestion(view); return; }
-				state.type = type;
-			}
-			if (state.step === "attachment") {
-				let matches = state.attachments.filter(item => String(item.id) === answer || item.key === answer || this.safeField(item, "title") === answer);
-				if (matches.length !== 1) { this.appendReadingSetupQuestion(view); return; }
-				state.attachment = matches[0];
-			}
-			view.logEl.querySelectorAll(".abstractin-reading-choices button").forEach(button => { button.disabled = true; });
-			view.logEl.appendChild(this.el(view.doc, "div", "abstractin-msg abstractin-user abstractin-reading-setup-answer", label));
-			view.input.value = "";
-			this.autoGrow(view.input);
-			if (state.step === "title") { state.title = answer; state.step = "type"; }
-			else if (state.step === "type") state.step = state.attachments.length > 1 ? "attachment" : "goal";
-			else if (state.step === "attachment") state.step = "goal";
-			else { state.goal = answer === "skip" ? "" : answer; state.step = "ready"; }
-			if (state.step !== "ready") { this.appendReadingSetupQuestion(view); this.setBusy(view, false); return; }
-		}
+	async answerReadingSetup(view, answer) {
+		const state = view.readingSetup;
+		if (!state || state.busy) return;
+		if (answer === "refresh-pdf") { delete view.readingSetup; await this.openReadingSetup(view.root); return; }
+		if (!["confirm", "retry"].includes(answer) || !state.attachments.length) return;
+		const field = name => view.logEl.querySelector('[data-setup-field="' + name + '"]');
+		state.title = (field("title") ? field("title").value : state.title || "").trim();
+		state.type = field("type")?.value || state.type || "paper";
+		state.goal = (field("goal")?.value || "").trim();
+		state.attachment = state.attachments.find(item => String(item.id) === (field("attachment")?.value || String(state.attachment.id)));
+		if (!state.title || !["book", "paper"].includes(state.type) || !state.attachment) { this.appendReadingSetupQuestion(view, "Enter a title and choose the material type and PDF."); return; }
+		state.step = "ready";
 		state.busy = true;
+		view.logEl.querySelectorAll(".abstractin-reading-setup-question input, .abstractin-reading-setup-question select, .abstractin-reading-setup-question textarea, .abstractin-reading-setup-question button").forEach(control => { control.disabled = true; });
 		view.input.disabled = true;
 		view.root.querySelector(".abstractin-send").disabled = true;
 		let status = this.el(view.doc, "div", "abstractin-notice abstractin-reading-setup-progress", "Getting ready to read…");
