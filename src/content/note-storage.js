@@ -149,34 +149,56 @@
   },
   releaseReaderPanelView(state, reader, entry) { this.endNoteSession(this._views.get(entry.root)?.ctx?.dir); return previous.releaseReaderPanelView.call(this, state, reader, entry); },
   removeFromWindow(win) { for (const [dir, owner] of this._noteOwners) if (owner === win) { this.endNoteSession(dir); this._noteOwners.delete(dir); } return previous.removeFromWindow.call(this, win); },
+  NOTE_SAVE_MODES: {
+   full: { label: 'Full', icon: 'noteFull', description: 'Save the complete conversation for this document.' },
+   summary: { label: 'Summary', icon: 'noteSummary', description: 'Save an agent-generated summary. Uses the agent’s allowance.' },
+   none: { label: 'Don’t save', icon: 'noteNone', description: 'Keep conversations only while this window is open.' },
+  },
   updateDocumentNoteSaving(view) {
-   if (!this.noteDocumentKey(view.ctx) || !view.root?.querySelector('.abstractin-header')) { view.root?.querySelector('.abstractin-document-note-saving')?.remove(); return; }
-   let row = view.root.querySelector('.abstractin-document-note-saving');
-   if (!row) {
-    const doc = view.doc, label = this.el(doc, 'label', 'abstractin-document-note-saving-label', 'Note saving');
-    row = this.el(doc, 'div', 'abstractin-document-note-saving'); row.title = 'For this document and all its chats';
-    const status = this.el(doc, 'span', 'abstractin-note-saving-status'); status.setAttribute('role','status');
-    const select = this.select(doc, [['full','Full'],['summary','Summary'],['none','Don’t save']], this.noteSaveMode(view.ctx), async value => {
-     const active = row.noteView || view;
-     select.disabled = true; status.textContent = value === 'summary' ? 'Saving summaries… Uses the agent’s allowance.' : 'Updating…';
-     try { const warning = await this.changeNoteSaveMode(value, active.ctx); if (row.noteView === active) status.textContent = warning || 'Saved for this document.'; }
-     catch (e) { if (row.noteView === active) status.textContent = e.message || String(e); }
-     finally { select.disabled = false; select.value = this.noteSaveMode(row.noteView.ctx); retry.hidden = this.noteSaveMode(row.noteView.ctx) !== 'summary'; }
-    });
-    select.classList.add('abstractin-note-save-mode'); select.setAttribute('aria-label','Note saving for this document'); label.append(select);
-    const retry = this.el(doc,'button','abstractin-button abstractin-note-summary-retry','Retry summary'); retry.type='button';
-    retry.onclick = async () => {
-     retry.disabled=true; const active = row.noteView || view;
-     try { const warnings=[]; for (const [dir,history] of this._noteLiveHistories) if (this.noteDocumentKey(dir) === this.noteDocumentKey(active.ctx)) { const warning=await this.saveHistory(dir,history); if(warning)warnings.push(warning); } status.textContent=warnings.join('\n') || 'Summaries saved for this document.'; }
-     catch (e) { status.textContent=e.message || String(e); }
-     finally { retry.disabled=false; }
-    };
-    row.append(label,retry,status); view.root.querySelector('.abstractin-header').after(row);
+   const controls = view.root?.querySelector('.abstractin-controls');
+   let button = view.root?.querySelector('.abstractin-note-save-mode');
+   if (!this.noteDocumentKey(view.ctx) || !controls) { button?.remove(); view.root?.querySelector('.abstractin-note-saving-status')?.remove(); return; }
+   let status = view.root.querySelector('.abstractin-note-saving-status');
+   if (!status) { status = this.el(view.doc, 'div', 'abstractin-note-saving-status'); status.setAttribute('role','status'); controls.after(status); }
+   if (!button) {
+    button = this.ghostButton(view.doc, 'abstractin-document-note-saving abstractin-note-save-mode', 'noteFull', '', () => this.openNoteSavingMenu(view.root, button), { chevron: true });
+    controls.querySelector('.abstractin-effort-btn').after(button);
    }
-   if (row.noteView && this.noteDocumentKey(row.noteView.ctx) !== this.noteDocumentKey(view.ctx)) row.querySelector('.abstractin-note-saving-status').textContent = '';
-   row.noteView = view;
-   row.querySelector('select').value=this.noteSaveMode(view.ctx);
-   row.querySelector('.abstractin-note-summary-retry').hidden=this.noteSaveMode(view.ctx)!=='summary';
+   if (button.noteView && this.noteDocumentKey(button.noteView.ctx) !== this.noteDocumentKey(view.ctx)) status.textContent = '';
+   button.noteView = view;
+   const mode = this.noteSaveMode(view.ctx), option = this.NOTE_SAVE_MODES[mode];
+   button.dataset.mode = mode;
+   button.querySelector('.abstractin-i').replaceWith(this.svgIcon(view.doc, option.icon));
+   button.setLabel(option.label);
+   button.title = 'Note saving: ' + option.label + ' · For this document and all its chats';
+   button.setAttribute('aria-label', 'Note saving for this document: ' + option.label);
+  },
+  openNoteSavingMenu(root, button) {
+   const doc = root.ownerDocument;
+   this.openMenu(root, button, menu => {
+    this.menuSection(doc, menu, 'Note saving · This document');
+    const active = button.noteView, current = this.noteSaveMode(active.ctx);
+    const status = root.querySelector('.abstractin-note-saving-status');
+    for (const [value, option] of Object.entries(this.NOTE_SAVE_MODES)) this.menuItem(doc, menu, {
+     label: option.label, desc: option.description, icon: option.icon, checked: current === value,
+     onSelect: async () => {
+      this.closeMenu(root); if (value === current) return;
+      button.disabled = true; status.textContent = value === 'summary' ? 'Saving summaries… Uses the agent’s allowance.' : 'Updating…';
+      try { const warning = await this.changeNoteSaveMode(value, active.ctx); if (button.noteView === active) status.textContent = warning || ''; }
+      catch (e) { if (button.noteView === active) status.textContent = e.message || String(e); }
+      finally { button.disabled = false; this.updateDocumentNoteSaving(button.noteView); }
+     },
+    });
+    if (current === 'summary') this.menuItem(doc, menu, {
+     label: 'Retry summary', icon: 'retry', desc: 'Regenerate summaries for this document’s open conversations.',
+     onSelect: async () => {
+      this.closeMenu(root); button.disabled = true; status.textContent = 'Saving summaries…';
+      try { const warnings=[]; for (const [dir,history] of this._noteLiveHistories) if (this.noteDocumentKey(dir) === this.noteDocumentKey(active.ctx)) { const warning=await this.saveHistory(dir,history); if(warning)warnings.push(warning); } if (button.noteView === active) status.textContent=warnings.join('\n') || ''; }
+      catch (e) { if (button.noteView === active) status.textContent=e.message || String(e); }
+      finally { button.disabled=false; }
+     },
+    });
+   });
   },
   claudeArgs(request) { const args=previous.claudeArgs.call(this,request); if(request.summaryOnly) for(const flag of ['--tools','--allowedTools']) { const i=args.indexOf(flag); if(i>=0)args[i+1]=''; } return args; },
   codexArgs(request) { const args=previous.codexArgs.call(this,request); if(request.summaryOnly) args.splice(args.length-(request.session?3:1),0,'-c','features.shell_tool=false','-c','features.unified_exec=false','-c','features.apps=false','-c','web_search="disabled"'); return args; },

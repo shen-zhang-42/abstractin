@@ -112,14 +112,37 @@ test('a busy different document does not block mode changes and new chat directo
 test('the document sidebar uses English labels and follows the current document when a root is reused',async()=>{
  const f=await fixture('full'), body=f.document.createElement('div');f.document.body.append(body);f.p.renderSkeleton(f.document,body);
  const root=body.querySelector('.abstractin-root'), view={root,doc:f.document,ctx:f.ctx,logEl:root.querySelector('.abstractin-log'),input:root.querySelector('.abstractin-input')};f.p._views.set(root,view);f.p.renderMessages(view,[]);
- let control=root.querySelector('.abstractin-note-save-mode');assert.deepEqual([...control.options].map(option=>option.textContent),['Full','Summary','Don’t save']);
+ let control=root.querySelector('.abstractin-note-save-mode');
+ assert.equal(control.parentElement,root.querySelector('.abstractin-controls'));
+ assert.equal(control.previousElementSibling,root.querySelector('.abstractin-effort-btn'));
+ assert.equal(control.dataset.mode,'full');assert.equal(control.querySelector('.abstractin-i').dataset.icon,'noteFull');
+ control.click();
+ let items=[...root.querySelectorAll('.abstractin-menu-item')];
+ assert.deepEqual(items.map(item=>item.querySelector('.abstractin-menu-label').textContent),['Full','Summary','Don’t save']);
+ assert.deepEqual(items.map(item=>item.querySelector('.abstractin-reading-menu-icon').dataset.icon),['noteFull','noteSummary','noteNone']);
+ assert.equal(items[0].getAttribute('aria-checked'),'true');f.p.closeMenu(root);
  assert.equal(root.querySelector('.abstractin-document-note-saving').textContent.match(/[\u3400-\u9fff]/),null);
  assert.equal(f.p.buildChatCard(f.document).querySelector('.abstractin-note-save-mode'),null);
  const other={dir:await mkdtemp(join(tmpdir(),'note-ui-other-')),paperItem:{...f.ctx.paperItem,key:'OTHER'}};f.p.registerChatContext(other);
  const next={...view,ctx:other};f.p._views.set(root,next);f.p.renderMessages(next,[]);
- control=root.querySelector('.abstractin-note-save-mode');control.value='none';control.dispatchEvent(new f.window.Event('change',{bubbles:true}));
+ control=root.querySelector('.abstractin-note-save-mode');control.click();
+ root.querySelectorAll('.abstractin-menu-item')[2].click();
  for(let attempt=0;control.disabled&&attempt<100;attempt++) await new Promise(resolve=>setTimeout(resolve,10));
- assert.equal(control.disabled,false);
+ assert.equal(control.disabled,false);assert.equal(control.dataset.mode,'none');assert.equal(control.querySelector('.abstractin-i').dataset.icon,'noteNone');
  assert.equal(f.p.noteSaveMode(other),'none');assert.equal(f.p.noteSaveMode(f.ctx),'full');
  assert.ok([...f.p.buildChatCard(f.document).querySelectorAll('option')].some(option=>option.value==='中文'&&option.textContent==='Chinese'));
+});
+
+
+test('summary saving shows its icon and keeps retry in the composer menu',async()=>{
+ const f=await fixture('summary'), body=f.document.createElement('div');f.document.body.append(body);f.p.renderSkeleton(f.document,body);
+ const root=body.querySelector('.abstractin-root'),view={root,doc:f.document,ctx:f.ctx,logEl:root.querySelector('.abstractin-log'),input:root.querySelector('.abstractin-input')};f.p._views.set(root,view);f.p.renderMessages(view,[]);
+ const button=root.querySelector('.abstractin-note-save-mode');
+ assert.equal(button.querySelector('.abstractin-i').dataset.icon,'noteSummary');
+ assert.match(button.getAttribute('aria-label'),/Summary/);button.click();
+ assert.equal(root.querySelectorAll('.abstractin-menu-item')[1].getAttribute('aria-checked'),'true');
+ assert.equal(root.querySelectorAll('.abstractin-menu-item')[3].textContent,'Retry summaryRegenerate summaries for this document’s open conversations.');
+ f.p.closeMenu(root);f.p.renderMessages({...view,ctx:{}},[]);
+ assert.equal(root.querySelector('.abstractin-note-save-mode'),null);
+ assert.equal(root.querySelector('.abstractin-note-saving-status'),null);
 });
