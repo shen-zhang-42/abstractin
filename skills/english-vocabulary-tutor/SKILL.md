@@ -72,6 +72,13 @@ Never imply that an audio recording is available unless playback is actually sup
 
 For pronunciation questions, explain difficult sounds and word stress in clear English.
 
+Pronunciation also applies to supporting vocabulary, not only the target word:
+- In **Word family and forms**, put US and UK IPA next to every listed word, including derived words, negative forms, and each explicitly listed inflection. Grouping inflections on one line must not hide their individual pronunciations.
+- In synonym, near-synonym, and antonym comparisons, put US and UK IPA next to every single-word entry. If the pronunciations are identical, use one transcription labeled **US/UK**; otherwise label them separately.
+- Omit IPA for multiword synonym or antonym phrases and expressions, such as **put off** or **not at all**. Do not transcribe each component of such a phrase.
+- Annotate vocabulary entries, not every incidental word in definitions or examples. Keep the existing comparison scope; pronunciation does not require additional cards or longer word lists.
+- Apply the same uncertainty rule to supporting vocabulary: label uncertain IPA as unverified rather than guessing.
+
 ## 5. Definitions and Vocabulary Levels
 
 The vocabulary course uses nested sets:
@@ -108,7 +115,7 @@ Avoid long lists of unnatural or marginal collocations.
 
 For a standalone word explanation, include a compact **Word family and forms** section once, before the individual sense cards. The target word's own parts of speech are not a substitute for its related forms.
 
-- List established, commonly useful related verbs, nouns, adjectives, and adverbs, including common negative forms. For each, give its part of speech, a brief meaning tied to the target, a typical phrase or short example, and its spoken/written usage label.
+- List established, commonly useful related verbs, nouns, adjectives, and adverbs, including common negative forms. For each, give its US/UK IPA, part of speech, a brief meaning tied to the target, a typical phrase or short example, and its spoken/written usage label.
 - Include applicable grammatical forms: verb base, third-person singular present, past tense, past participle, and -ing form; noun plural and countability; adjective/adverb comparative and superlative where naturally used. Group predictable inflections on one line rather than giving each a card.
 - Distinguish inflections of the same word from derived words. Do not invent a form just to fill every part-of-speech category. Mention uncommon or awkward forms only when necessary to explain why a more natural expression is preferred.
 - Cover the common family directly related to the target, not every remotely related word. Keep meanings brief here; do not create full cards or synonym/antonym trees for family members. A focused usage question needs only the forms relevant to that question.
@@ -155,6 +162,7 @@ Do not invent numerical frequency rankings. When corpus evidence is unavailable,
 For each target sense, select a small number of useful synonyms or near-synonyms and relevant antonyms. Usually two or three near-synonyms and one or two antonyms are enough; use fewer when that is more accurate. If there is no natural antonym, say so rather than forcing one.
 
 Keep comparisons tied to the target word's current sense and part of speech. Explain:
+- US and UK IPA for each single-word alternative; omit IPA for multiword phrases.
 - The shared meaning and the difference in nuance, strength, connotation, or register.
 - Each comparison word's typical construction or collocation in this sense.
 - When substitution is natural, when it changes the meaning, and when it is grammatically or idiomatically unsuitable.
@@ -224,7 +232,7 @@ Typical grammatical patterns and collocations.
 
 **Natural alternatives**
 
-| Word | Relation to this sense | Spoken/written usage | Pattern/example | Difference and substitution |
+| Word / phrase (US/UK IPA for single words only) | Relation to this sense | Spoken/written usage | Pattern/example | Difference and substitution |
 |---|---|---|---|---|
 | ... | Synonym / near-synonym / antonym | ... | ... | ... |
 
