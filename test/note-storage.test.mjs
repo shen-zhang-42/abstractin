@@ -54,12 +54,12 @@ test('summary failures keep full text in the open session without silently persi
  assert.equal((await f.p.loadHistory(f.dir)).length,3);f.p.endNoteSession(f.dir);assert.equal((await f.p.loadHistory(f.dir)).length,1);
 });
 
-test('the global mode change processes currently open chats and preserves older saved notes',async()=>{
+test('the document mode change processes its open chats and preserves older saved notes',async()=>{
  const f=await fixture('full');await f.p.saveHistory(f.dir,f.history);
  const root=f.document.createElement('div');root.className='abstractin-root';f.document.body.append(root);f.p._views.set(root,{root,doc:f.document,ctx:f.ctx});
- await f.p.changeNoteSaveMode('summary');assert.equal(f.p.noteSaveMode(),'summary');assert.equal((await f.p.loadHistory(f.dir)).length,2);
+ await f.p.changeNoteSaveMode('summary', f.ctx);assert.equal(f.p.noteSaveMode(f.ctx),'summary');assert.equal((await f.p.loadHistory(f.dir)).length,2);
  f.p.endNoteSession(f.dir);assert.equal((await f.p.loadHistory(f.dir))[0].savedSummary,true);
- await f.p.changeNoteSaveMode('none');await f.p.saveHistory(f.dir,[{role:'user',text:'VOLATILE'}]);f.p.endNoteSession(f.dir);assert.equal((await f.p.loadHistory(f.dir)).length,0);
+ await f.p.changeNoteSaveMode('none', f.ctx);await f.p.saveHistory(f.dir,[{role:'user',text:'VOLATILE'}]);f.p.endNoteSession(f.dir);assert.equal((await f.p.loadHistory(f.dir)).length,0);
  assert.match(await readFile(join(f.dir,'chat.json'),'utf8'),/Verified conclusion/);
 });
 
@@ -79,4 +79,47 @@ for(const mode of ['none','summary']) test(`closing the reading panel in ${mode}
  assert.equal(state.active,false);assert.ok(!view.logEl.textContent.includes('RAW ANSWER SECRET'));
  const reopened=await f.p.loadHistory(f.dir);assert.equal(reopened.length,mode==='none'?0:1);
  await f.p.saveSessions(f.dir,{claude:{id:'late-full-session'}});assert.deepEqual(Object.keys(await f.p.loadSessions(f.dir)),[]);
+});
+
+test('different documents retain independent modes, files and in-memory sessions',async()=>{
+ const f=await fixture('full'), otherDir=await mkdtemp(join(tmpdir(),'note-other-'));
+ const other={dir:otherDir,paperItem:{...f.ctx.paperItem,key:'OTHER'}};f.p.registerChatContext(other);
+ await f.p.changeNoteSaveMode('none',f.ctx);
+ await f.p.saveHistory(f.dir,f.history);await f.p.saveHistory(otherDir,f.history);
+ assert.equal(f.p.noteSaveMode(f.ctx),'none');assert.equal(f.p.noteSaveMode(other),'full');
+ assert.equal(await f.window.OS.File.exists(join(f.dir,'chat.json')),false);
+ assert.match(await readFile(join(otherDir,'chat.json'),'utf8'),/RAW ANSWER SECRET/);
+ await f.p.changeNoteSaveMode('summary',other);await f.p.saveHistory(otherDir,f.history);
+ assert.equal(f.p.noteSaveMode(f.dir),'none');assert.equal(f.p.noteSaveMode(otherDir),'summary');
+ f.p.endNoteSession(f.dir);assert.equal((await f.p.loadHistory(otherDir)).length,2);
+ f.p.endNoteSession(otherDir);assert.equal((await f.p.loadHistory(otherDir))[0].savedSummary,true);
+ assert.equal((await f.p.loadHistory(f.dir)).length,0);
+});
+
+test('a busy different document does not block mode changes and new chat directories inherit their document mode',async()=>{
+ const f=await fixture('full'), otherDir=await mkdtemp(join(tmpdir(),'note-busy-'));
+ const other={dir:otherDir,paperItem:{...f.ctx.paperItem,key:'OTHER'}};f.p.registerChatContext(other);f.p._pending.set(otherDir,{});
+ await f.p.changeNoteSaveMode('none',f.ctx);
+ await assert.rejects(f.p.changeNoteSaveMode('summary',other),/this document/);
+ const child=join(f.dir,'discussions','new-chat');f.p.registerNoteDocument(child,f.ctx);
+ assert.equal(f.p.noteSaveMode(child),'none');assert.equal(f.p.noteSaveMode(otherDir),'full');
+ const sameDocument={...f.ctx,dir:join(f.dir,'another-pdf'),attachmentItem:{key:'ANOTHER'}};f.p.registerChatContext(sameDocument);
+ assert.equal(f.p.noteSaveMode(sameDocument),'none');assert.equal(f.p.noteSaveMode(sameDocument.dir),'none');
+ const differentLibrary={...f.ctx,dir:join(f.dir,'different-library'),paperItem:{...f.ctx.paperItem,libraryID:2}};f.p.registerChatContext(differentLibrary);
+ assert.equal(f.p.noteSaveMode(differentLibrary),'full');
+});
+
+test('the document sidebar uses English labels and follows the current document when a root is reused',async()=>{
+ const f=await fixture('full'), body=f.document.createElement('div');f.document.body.append(body);f.p.renderSkeleton(f.document,body);
+ const root=body.querySelector('.abstractin-root'), view={root,doc:f.document,ctx:f.ctx,logEl:root.querySelector('.abstractin-log'),input:root.querySelector('.abstractin-input')};f.p._views.set(root,view);f.p.renderMessages(view,[]);
+ let control=root.querySelector('.abstractin-note-save-mode');assert.deepEqual([...control.options].map(option=>option.textContent),['Full','Summary','Don’t save']);
+ assert.equal(root.querySelector('.abstractin-document-note-saving').textContent.match(/[\u3400-\u9fff]/),null);
+ assert.equal(f.p.buildChatCard(f.document).querySelector('.abstractin-note-save-mode'),null);
+ const other={dir:await mkdtemp(join(tmpdir(),'note-ui-other-')),paperItem:{...f.ctx.paperItem,key:'OTHER'}};f.p.registerChatContext(other);
+ const next={...view,ctx:other};f.p._views.set(root,next);f.p.renderMessages(next,[]);
+ control=root.querySelector('.abstractin-note-save-mode');control.value='none';control.dispatchEvent(new f.window.Event('change',{bubbles:true}));
+ for(let attempt=0;control.disabled&&attempt<100;attempt++) await new Promise(resolve=>setTimeout(resolve,10));
+ assert.equal(control.disabled,false);
+ assert.equal(f.p.noteSaveMode(other),'none');assert.equal(f.p.noteSaveMode(f.ctx),'full');
+ assert.ok([...f.p.buildChatCard(f.document).querySelectorAll('option')].some(option=>option.value==='中文'&&option.textContent==='Chinese'));
 });

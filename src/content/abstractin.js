@@ -306,6 +306,10 @@ AbstractIn = {
 		return this.getPref(backend + ".model") || "";
 	},
 
+	languageDisplayName(value) {
+		return ({ "": "Same as my question", "Italiano": "Italian", "Français": "French", "Deutsch": "German", "Español": "Spanish", "Português": "Portuguese", "Nederlands": "Dutch", "Polski": "Polish", "Русский": "Russian", "Türkçe": "Turkish", "中文": "Chinese", "日本語": "Japanese", "한국어": "Korean" })[value] || value;
+	},
+
 	getEffort(backend) {
 		let effort = this.getPref(backend + ".effort") || "";
 		return this.getEfforts(backend).includes(effort) ? effort : "";
@@ -2142,7 +2146,7 @@ AbstractIn = {
 			this.openMenu(root, more, (menu) => {
 				this.menuItem(doc, menu, {
 					label: "Save as note",
-					disabled: this.noteSaveMode?.() !== "full",
+					disabled: this.noteSaveMode?.(view.ctx) !== "full",
 					desc: "Child note on this paper, maths kept",
 					onSelect: async () => {
 						this.closeMenu(root);
@@ -3265,7 +3269,7 @@ AbstractIn = {
 		}
 		else if (name === "answers") {
 			hero("language", "Answer language");
-			let language = this.select(doc, this.LANGUAGES.map(value => [value, value || "Same as my question"]), this.getLanguage(), value => this.setPref("language", value));
+			let language = this.select(doc, this.LANGUAGES.map(value => [value, this.languageDisplayName(value)]), this.getLanguage(), value => this.setPref("language", value));
 			language.title = "Answer language"; section("Language", language);
 			hint("Explanation depth follows your question. Book and paper quick prompts are edited separately in Settings → Chat and fill the composer before sending.");
 		}
@@ -3921,7 +3925,7 @@ AbstractIn = {
 					}
 					catch (e) { recordWarning = "The answer is available, but Zotero could not save its reading note: " + (e.message || e); }
 				}
-				else if (!this.noteSaveMode || this.noteSaveMode() === "full") recordWarning = "The answer is available, but Codex did not return a valid concise reading record. Use Save as note to save this answer manually.";
+				else if (!this.noteSaveMode || this.noteSaveMode(ctx) === "full") recordWarning = "The answer is available, but Codex did not return a valid concise reading record. Use Save as note to save this answer manually.";
 				if (recordKey) meta.recordKey = recordKey;
 				if (recordWarning) meta.recordWarning = recordWarning;
 			}
@@ -4115,7 +4119,7 @@ AbstractIn = {
 		let card = this.card(doc, "Chat", "Book and paper questions have separate lists, available in the dropdown above the message box.");
 
 		let languageSelect = this.select(doc,
-			this.LANGUAGES.map(language => [language, language || "Same as my question"]),
+			this.LANGUAGES.map(language => [language, this.languageDisplayName(language)]),
 			this.getLanguage(), value => this.setPref("language", value));
 		card.body.appendChild(this.row(doc, "Answer language", languageSelect,
 			"The assistants answer in this language whatever language you write in."));

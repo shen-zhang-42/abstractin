@@ -181,6 +181,7 @@
    const root = this.discussionRoot(ctx), container = OS.Path.join(root, "discussions");
    await Zotero.File.createDirectoryIfMissingAsync(container);
    const dir = OS.Path.join(container, chat.id); await Zotero.File.createDirectoryIfMissingAsync(dir);
+   this.registerNoteDocument?.(dir, ctx);
    await this.saveHistory(dir, seed);
    index.chats.push(chat); if (!metadata.migrated) index.active = chat.id;
    if (chapterID && index.chapters.some(c => c.id === chapterID)) index.chapters.find(c => c.id === chapterID).activeChat = chat.id;

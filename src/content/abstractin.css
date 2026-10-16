@@ -3139,3 +3139,9 @@
 
 .abstractin-reading-setup-field { display:flex; flex-direction:column; gap:6px; margin:12px 0; }
 .abstractin-reading-setup-field input, .abstractin-reading-setup-field textarea, .abstractin-reading-setup-field select { box-sizing:border-box; width:100%; }
+
+.abstractin-document-note-saving { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:4px 10px; font-size:12px; flex-shrink:0; }
+.abstractin-document-note-saving-label { display:flex; align-items:center; gap:8px; }
+.abstractin-document-note-saving select { max-width:140px; }
+.abstractin-note-saving-status { flex-basis:100%; color:var(--abstractin-muted); }
+.abstractin-note-saving-status:empty { display:none; }

@@ -84,13 +84,13 @@ Vocabulary tutoring respects all three answer modes: Balanced can use language k
 
 ## Chat management
 
-**Settings → AbstractIn → Chat → Note saving** is global and defaults to **Full**:
+**Note saving** at the top of each document’s sidebar controls that document and all its chats/PDF attachments. Different documents have independent settings. All interface labels are English:
 
 - **Full:** preserve the complete conversation and existing Zotero note behavior.
 - **Summary:** after each answer, its agent summarizes the current conversation, merging repeated questions and retaining conclusions, equations and unresolved questions. This uses the agent's allowance. The open window keeps full messages; local history and Zotero sync notes contain only the summary. Reopening the reading panel or window shows the summary with a fresh CLI session.
 - **Don’t save:** new conversation messages, CLI sessions and automatic reading notes stay in memory and are cleared when the reading panel or window closes. No new transcript or sync note is created.
 
-Changing the setting processes currently open chats. Existing historical notes are not batch-deleted or converted; old full histories remain available under Full mode. Failed summaries produce a visible warning and preserve the previous summary; full messages remain only in the open window. Use **Retry saving summaries** in the same settings before closing.
+Changing the setting processes only this document’s open chats and in-memory sessions, leaving other documents unchanged. Documents without an override inherit the previous installation’s default; fresh installations default to Full. Existing historical notes are not batch-deleted or converted; untouched full histories remain available under Full mode. Once the current conversation has been saved as a summary and closed, its full messages are not restored. Failed summaries produce a visible warning and preserve the previous summary; full messages remain only in the open window. Use **Retry summary** beside this document’s selector before closing.
 
 New reading setup shows the prefilled title, material type and optional goal together. Edit any field (and select the attachment when several PDFs exist), then click **Confirm** once.
 
@@ -176,7 +176,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.78**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.79**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

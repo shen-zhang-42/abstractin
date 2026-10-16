@@ -265,13 +265,13 @@ exit 1
    const noteDir = PathUtils.join(plugin.getDataDir(), 'note-policy-none'); await IOUtils.makeDirectory(noteDir, { ignoreExisting: true });
    const noteCtx = plugin.registerChatContext({ dir: noteDir, paperItem: noteParent });
    const transcript = [{ role: 'user', text: 'PRIVATE ORIGINAL QUESTION', ts: 1 }, { role: 'assistant', text: 'PRIVATE ORIGINAL ANSWER', backend: 'claude', ts: 2 }];
-   plugin.setPref('noteSaveMode', 'none');
+   await plugin.changeNoteSaveMode('none', noteCtx);
    await plugin.saveHistory(noteDir, transcript); await plugin.saveSessions(noteDir, { claude: { id: 'volatile-session' } });
    check('native no-save mode keeps complete messages only in memory', (await plugin.loadHistory(noteDir)).length === 2 && !await IOUtils.exists(PathUtils.join(noteDir, 'chat.json')) && !await IOUtils.exists(PathUtils.join(noteDir, 'session.json')) && noteParent.getNotes().length === 0);
    plugin.endNoteSession(noteDir);
    check('native no-save mode discards messages and CLI sessions on close', (await plugin.loadHistory(noteDir)).length === 0 && !Object.keys(await plugin.loadSessions(noteDir)).length);
-   const summaryDir = PathUtils.join(plugin.getDataDir(), 'note-policy-summary'); await IOUtils.makeDirectory(summaryDir, { ignoreExisting: true }); plugin.registerChatContext({ ...noteCtx, dir: summaryDir });
-   plugin.setPref('noteSaveMode', 'summary');
+   const summaryDir = PathUtils.join(plugin.getDataDir(), 'note-policy-summary'); await IOUtils.makeDirectory(summaryDir, { ignoreExisting: true }); const summaryCtx = plugin.registerChatContext({ ...noteCtx, dir: summaryDir });
+   await plugin.changeNoteSaveMode('summary', summaryCtx);
    const warning = await plugin.saveHistory(summaryDir, transcript);
    const saved = await IOUtils.readUTF8(PathUtils.join(summaryDir, 'chat.json'));
    check('native summary mode uses a real local agent process and persists no original transcript', !warning && saved.includes('Native agent summary') && !saved.includes('PRIVATE ORIGINAL') && (await plugin.loadHistory(summaryDir)).length === 2, warning);
@@ -279,8 +279,25 @@ exit 1
    check('native summary mode reopens with only the generated summary', restoredSummary.length === 1 && restoredSummary[0].savedSummary && restoredSummary[0].text.includes('unresolved question'));
    const summaryNotes = noteParent.getNotes().map(id => Zotero.Items.get(id)).filter(note => note.getTags().some(tag => tag.tag === 'AbstractIn:Chat'));
    check('native summary sync note contains summary instead of full messages', summaryNotes.length === 1 && summaryNotes[0].getNote().includes('Native agent summary') && !summaryNotes[0].getNote().includes('PRIVATE ORIGINAL'));
-   const settingsCard = plugin.buildChatCard(doc);
-   check('native global note saving control offers three ordered modes', [...settingsCard.querySelector('.abstractin-note-save-mode').options].map(option => option.value).join(',') === 'full,summary,none');
+   const otherParent = new Zotero.Item('journalArticle'); otherParent.setField('title', 'Independent note policy'); await otherParent.saveTx();
+   const otherDir = PathUtils.join(plugin.getDataDir(), 'other-note-policy'); await IOUtils.makeDirectory(otherDir, { ignoreExisting: true });
+   const otherCtx = plugin.registerChatContext({ dir: otherDir, paperItem: otherParent });
+   await plugin.changeNoteSaveMode('full', otherCtx); await plugin.saveHistory(otherDir, transcript);
+   check('native documents persist independent modes and transcripts', plugin.noteSaveMode(summaryCtx) === 'summary' && plugin.noteSaveMode(otherCtx) === 'full' && (await IOUtils.readUTF8(PathUtils.join(otherDir,'chat.json'))).includes('PRIVATE ORIGINAL'));
+   const policyBody = plugin.el(doc,'div'); (doc.body || doc.documentElement).append(policyBody); plugin.renderSkeleton(doc,policyBody);
+   const policyRoot = policyBody.querySelector('.abstractin-root'), policyView = { root:policyRoot,doc,ctx:summaryCtx,input:policyRoot.querySelector('.abstractin-input'),logEl:policyRoot.querySelector('.abstractin-log') };
+   plugin._views.set(policyRoot,policyView); plugin.renderMessages(policyView,restoredSummary);
+   let policySelect = policyRoot.querySelector('.abstractin-note-save-mode');
+   check('native document sidebar offers three English saving modes', [...policySelect.options].map(option=>option.textContent).join(',') === 'Full,Summary,Don’t save' && !/[\u3400-\u9fff]/.test(policyRoot.querySelector('.abstractin-document-note-saving').textContent));
+   policySelect.value='none'; policySelect.dispatchEvent(new win.Event('change',{bubbles:true})); await waitFor(()=>!policySelect.disabled);
+   check('native document selector changes only the current document', plugin.noteSaveMode(summaryCtx) === 'none' && plugin.noteSaveMode(otherCtx) === 'full');
+   const switchedView = { ...policyView,ctx:otherCtx }; plugin._views.set(policyRoot,switchedView); plugin.renderMessages(switchedView,await plugin.loadHistory(otherDir));
+   policySelect = policyRoot.querySelector('.abstractin-note-save-mode');
+   check('native reused sidebar follows the newly selected document', policySelect.value === 'full');
+   policySelect.value='summary'; policySelect.dispatchEvent(new win.Event('change',{bubbles:true})); await waitFor(()=>!policySelect.disabled);
+   check('native reused selector saves the new document without changing the previous one', plugin.noteSaveMode(otherCtx) === 'summary' && plugin.noteSaveMode(summaryCtx) === 'none');
+   check('native global settings no longer exposes saving controls and language labels are English', !plugin.buildChatCard(doc).querySelector('.abstractin-note-save-mode') && [...plugin.buildChatCard(doc).querySelectorAll('option')].some(option=>option.value==='中文'&&option.textContent==='Chinese'));
+   plugin._views.delete(policyRoot); policyRoot.disposeUI?.(); policyBody.remove();
   } finally { plugin.setPref('noteSaveMode', oldNoteMode); }
  } finally { plugin.testAndAdaptAgent = originalTest; holder._agentSetup?.close(); holder.remove(); }
 }
