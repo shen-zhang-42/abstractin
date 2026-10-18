@@ -182,8 +182,11 @@
    await Zotero.File.createDirectoryIfMissingAsync(container);
    const dir = OS.Path.join(container, chat.id); await Zotero.File.createDirectoryIfMissingAsync(dir);
    this.registerNoteDocument?.(dir, ctx);
-   await this.saveHistory(dir, seed);
-   index.chats.push(chat); if (!metadata.migrated) index.active = chat.id;
+   index.chats.push(chat);
+   this.discussionContext(ctx, chat); // Register before saving seeded conversations to Zotero sync notes.
+   if (seed.length) await this.saveHistory(dir, seed);
+   else await Zotero.File.putContentsAsync(OS.Path.join(dir, "chat.json"), "[]");
+   if (!metadata.migrated) index.active = chat.id;
    if (chapterID && index.chapters.some(c => c.id === chapterID)) index.chapters.find(c => c.id === chapterID).activeChat = chat.id;
    if (persist) await this.writeDiscussionIndex(ctx, index);
    return chat;
@@ -201,12 +204,19 @@
    try { const result = await initialization; this._activeDiscussionDirs.set(dir, result.dir); return result; }
    finally { this._discussionInitializations.delete(dir); }
   },
-  async initializeDiscussion(ctx) {
-   if (!ctx?.reading || ctx.discussion) return ctx;
-   const index = await this.discussionIndex(ctx);
-   await this.refreshDiscussionChapters(ctx, index);
-   // Recover discussion metadata carried by Zotero sync notes on a new device.
-   const parts = original.chatNoteParts.call(this, ctx), remote = new Map();
+  async syncedReadingState(paperItem, attachmentItem) {
+   const ctx = { paperItem, attachmentItem, reading: {}, includeAllDiscussions: true };
+   const chats = this.chatNoteHistories(ctx);
+   if (!chats.length) return null;
+   const latest = chats[0];
+   if (['book','paper'].includes(latest.reading?.type)) return { type: latest.reading.type, title: String(latest.reading.title || ''), goal: String(latest.reading.goal || '') };
+   // Older sync notes did not carry reading.json. Their chapter/contents
+   // metadata still identifies books without consulting the PDF or an agent.
+   const book = chats.some(chat => chat.chapter || chat.discussion?.chapterID && chat.discussion.chapterID !== this.INITIALIZATION_CHAPTER) || this.readingArtifactNotes(ctx, 'Contents').length;
+   return { type: book ? 'book' : 'paper', title: this.safeField(paperItem, 'title'), goal: '' };
+  },
+  async refreshSyncedDiscussionIndex(ctx, index) {
+   const parts = this.chatNoteHistories({ ...ctx, includeAllDiscussions: true }).map(data => ({data})), remote = new Map();
    for (const { data } of parts) if (data.discussionID && /^[a-z0-9-]+$/.test(data.discussionID) && data.discussion?.id === data.discussionID &&
     (!remote.has(data.discussionID) || data.updatedAt > remote.get(data.discussionID).updatedAt)) remote.set(data.discussionID, data);
    for (const data of remote.values()) {
@@ -223,6 +233,35 @@
     const container = OS.Path.join(this.discussionRoot(ctx), "discussions"); await Zotero.File.createDirectoryIfMissingAsync(container);
     await Zotero.File.createDirectoryIfMissingAsync(OS.Path.join(container, record.id));
    }
+  },
+  async recoverDiscussionIndex(ctx) {
+   const path = OS.Path.join(this.discussionRoot(ctx), 'discussions.json');
+   try { if (await OS.File.exists(path)) { await this.discussionIndex(ctx); return; } }
+   catch (error) { this.logError('damaged discussion index', error); }
+   {
+    // Preserve the damaged index before rebuilding metadata. Chat transcripts,
+    // Zotero notes and agent sessions are never removed by recovery.
+    if (await OS.File.exists(path)) {
+     const text = await Zotero.File.getContentsAsync(path);
+     await Zotero.File.putContentsAsync(path + '.recovery-' + this.chatSyncID() + '.json', text);
+    }
+    const index = { version: 2, active: null, chapters: [], chats: [], migrated: {} };
+    await this.refreshSyncedDiscussionIndex(ctx, index);
+    await this.refreshDiscussionChapters(ctx, index);
+    for (const entry of await this.listDiscussionChildren(OS.Path.join(this.discussionRoot(ctx), 'discussions'))) {
+     if (!entry.isDir || !/^[a-z0-9-]+$/.test(entry.name) || index.chats.some(chat => chat.id === entry.name)) continue;
+     const known = this._chatContexts.get(entry.path)?.discussion;
+     const chapterID = known && (known.chapterID === this.INITIALIZATION_CHAPTER || index.chapters.some(chapter => chapter.id === known.chapterID)) ? known.chapterID : null;
+     index.chats.push({ ...known, id: entry.name, chapterID, number: known && chapterID === known.chapterID ? known.number : this.nextDiscussionNumber(index, chapterID), topic: known?.topic || 'Recovered discussion', createdAt: known?.createdAt || Date.now(), updatedAt: known?.updatedAt || Date.now() });
+    }
+    await this.writeDiscussionIndex(ctx, index);
+   }
+  },
+  async initializeDiscussion(ctx) {
+   if (!ctx?.reading || ctx.discussion) return ctx;
+   const index = await this.discussionIndex(ctx);
+   await this.refreshDiscussionChapters(ctx, index);
+   await this.refreshSyncedDiscussionIndex(ctx, index);
    await this.migrateInitializationDiscussions(ctx, index);
    let chat = this.visibleDiscussions(index).find(c => c.id === index.active) || this.visibleDiscussions(index).slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
    if (!chat) chat = await this.createDiscussion(ctx, index);
@@ -329,7 +368,7 @@
    if ((!question && !images.length) || this._pending.has(view.ctx.dir) || this._discussionLocks.has(documentDir)) return;
    this._discussionLocks.add(documentDir);
    try {
-    const index = await this.discussionIndex(view.ctx); await this.refreshDiscussionChapters(view.ctx, index);
+    const index = await this.discussionIndex(view.ctx); await this.refreshSyncedDiscussionIndex(view.ctx, index); await this.writeDiscussionIndex(view.ctx, index); await this.refreshDiscussionChapters(view.ctx, index);
     const location = sendTimeLocation;
     const selection = options.selection || (view.pageImageSource && images.includes(view.pageImageSource.path) ? view.pageImageSource.selection : null);
     if (selection && selection.attachmentID !== view.ctx.attachmentItem.id) throw new Error("The selection belongs to a different PDF.");
@@ -527,7 +566,7 @@
     } });
    }, { placement: "below", align: "end" });
    if (menu) (async () => {
-    index = await this.discussionIndex(view.ctx); await this.refreshDiscussionChapters(view.ctx, index);
+    index = await this.discussionIndex(view.ctx); await this.refreshSyncedDiscussionIndex(view.ctx, index); await this.writeDiscussionIndex(view.ctx, index); await this.refreshDiscussionChapters(view.ctx, index);
     legacy = await this.legacyDiscussions(view.ctx, index); if (menu.isConnected) menu.refresh();
    })().catch(e => this.appendError(view, e.message));
   },
@@ -636,17 +675,55 @@
   // Scope Zotero sync hydration to the discussion ID. A new empty discussion
   // must never hydrate the newest transcript of a different chapter.
   chatNoteParts(ctx) {
-   return original.chatNoteParts.call(this, ctx).filter(part => ctx.discussion ? part.data.discussionID === ctx.discussion.id : !part.data.discussionID);
+   return original.chatNoteParts.call(this, ctx).filter(part => ctx.includeAllDiscussions || (ctx.discussion ? part.data.discussionID === ctx.discussion.id : !part.data.discussionID));
+  },
+  mergeSyncedDiscussionHistories(histories) {
+   // Merge complete turns, never isolated messages, so simultaneous work on two
+   // computers cannot drop one branch or detach an answer from its question.
+   const turns = [], seen = new Map();
+   for (const history of histories) {
+    for (let at = 0; at < history.length;) {
+     let end = at + 1; while (end < history.length && history[end].role !== 'user') end++;
+     const turn = history.slice(at, end), first = turn[0];
+     const key = first.ts != null ? first.role + ':' + first.ts + ':' + first.text : first.referenceID || JSON.stringify(turn.map(m => [m.role,m.text]));
+     if (seen.has(key)) {
+      const previous = turns[seen.get(key)];
+      // A delayed user-only snapshot cannot erase an already completed answer.
+      if (turn.length < previous.length && turn.every((m,i) => m.role === previous[i].role && m.text === previous[i].text)) { at = end; continue; }
+      turns[seen.get(key)] = turn;
+     }
+     else { seen.set(key,turns.length); turns.push(turn); }
+     at = end;
+    }
+   }
+   return turns.flat();
   },
   async hydrateChatHistory(dir, local, exists) {
    const ctx = this._chatContexts.get(dir);
    if (ctx?.discussion) {
-    if (exists) return local;
-    const chat = this.chatNoteHistories(ctx)[0];
-    if (!chat) return local;
-    const history = chat.history.map(message => ({ ...message, ...(message.selection ? { selection: { ...message.selection, attachmentID: ctx.attachmentItem.id } } : {}) }));
+    if (this._pending.has(dir) || this._chatTransitions.has(dir)) return local;
+    const chats = this.chatNoteHistories(ctx).filter(chat => !chat.archived);
+    if (!chats.length) {
+     if (local.length) try { await this.saveChatNotes(dir, local); } catch (e) { this.logError('chat sync retry', e); }
+     return local;
+    }
+    const state = await this.chatSyncState(dir), latest = chats[0];
+    if (exists && latest.updatedAt <= (state?.updatedAt || 0)) return local;
+    // Summary and full transcripts are distinct policies; do not expand a saved
+    // summary into old full messages during cross-device restoration.
+    const full = chats.filter(chat => !chat.history.length || !chat.history.every(m => m.savedSummary));
+    let history;
+    if (latest.history.length && latest.history.every(m => m.savedSummary)) {
+     history = !exists || latest.updatedAt > (state?.updatedAt || 0) ? latest.history : local;
+    } else {
+     const localFull = local.every(m => !m.savedSummary) ? local : [];
+     history = this.mergeSyncedDiscussionHistories([localFull, ...full.slice().reverse().map(chat => chat.history)]);
+    }
+    history = history.map(message => ({ ...message, ...(message.selection && ctx.attachmentItem ? { selection: { ...message.selection, attachmentID: ctx.attachmentItem.id } } : {}) }));
+    if (JSON.stringify(history) === JSON.stringify(local) && exists) return local;
     await Zotero.File.putContentsAsync(OS.Path.join(dir, "chat.json"), JSON.stringify(history));
-    await this.writeChatSyncState(dir, { chatID: chat.chatID, writerID: chat.writerID, revision: chat.revision });
+    await this.writeChatSyncState(dir, { chatID: latest.chatID, writerID: latest.writerID, revision: latest.revision, updatedAt: latest.updatedAt });
+    await this.saveSessions(dir, {});
     return history;
    }
    return original.hydrateChatHistory.call(this, dir, local, exists);

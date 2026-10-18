@@ -239,7 +239,9 @@
      }, "abstractin-history-card");
      return;
     }
-    const index = await this.discussionIndex(view.ctx); await this.refreshDiscussionChapters(view.ctx, index);
+    const index = await this.discussionIndex(view.ctx);
+    await this.refreshSyncedDiscussionIndex(view.ctx, index); await this.writeDiscussionIndex(view.ctx, index);
+    await this.refreshDiscussionChapters(view.ctx, index);
     const legacy = await this.legacyDiscussions(view.ctx, index, { includeImported: true });
     if (view.historyBrowser !== browser || !screen.isConnected) return;
     body.textContent = ""; this.installChatSearch(view, screen, body, index);

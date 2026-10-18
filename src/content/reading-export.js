@@ -40,7 +40,7 @@ Object.assign(AbstractIn, {
   for (const id of ctx.paperItem.getNotes?.() || []) {
    const note = Zotero.Items.get(id);
    if (!note || note.deleted || !note.getTags().some(t => ["AbstractIn", "AbstractIn:Summary", "AbstractIn:Contents"].includes(t.tag))) continue;
-   const template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
+   const template = this.parseNoteHTML(note.getNote());
    const text = template.content.textContent;
    if (text.includes("attachment: " + ctx.attachmentItem.key)) append("note:" + note.key, null, text, "Zotero note " + note.key);
   }

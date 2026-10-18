@@ -8,7 +8,7 @@
   noteInMetadata(note, parent, legacy = false) {
    if (!note?.isNote?.() || note.deleted || note.parentID !== parent.id || note.libraryID !== parent.libraryID) return null;
    const tags = note.getTags().map(t => t.tag);
-   const template = this.el(Zotero.getMainWindow().document, 'template'); template.innerHTML = note.getNote();
+   const template = this.parseNoteHTML(note.getNote());
    for (const pre of template.content.querySelectorAll('pre')) {
     try {
      const data = JSON.parse(pre.textContent);
@@ -38,7 +38,7 @@
    const anchors = notes.filter(note => this.noteInMetadata(note, parent) === 'anchor').sort((a, b) => a.id - b.id);
    const legacyKeys = new Set();
    for (const index of anchors) {
-    const template = this.el(Zotero.getMainWindow().document, 'template'); template.innerHTML = index.getNote();
+    const template = this.parseNoteHTML(index.getNote());
     for (const pre of template.content.querySelectorAll('pre')) try {
      const data = JSON.parse(pre.textContent);
      if (data.format === 'abstractin-notein-v1' && data.itemKey === parent.key && Array.isArray(data.legacyKeys)) {

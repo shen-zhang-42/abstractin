@@ -141,7 +141,9 @@ Quotes are linked through stable result IDs. If deletion or merging changes the 
 
 Reading records are saved as **editable Zotero child notes** under the document item. Full chat text and metadata, including chapters and result numbers, are also stored in dedicated chat notes. Long chats are split into chunks.
 
-With Zotero data synchronization enabled, another computer running AbstractIn can restore chapter groups and complete discussions from synced notes. The new computer still needs Start Reading initialization for that document, and its PDF must be available locally. Continuing a discussion on another computer preserves its origin record to avoid directly overwriting the other computer's chat.
+With Zotero data synchronization enabled, another computer running AbstractIn can restore chapter groups and complete discussions from synced notes. Complete synced chat notes restore the reading type, title and goal without repeating initialization; the PDF must still be available locally. Existing local caches also check for new synced turns and summaries. Opening Chats discovers discussions that arrived after the local index was created. Continuing a discussion on another computer preserves its origin record to avoid directly overwriting the other computer's chat.
+
+If **Could not read this item** appears, click **Restore reading** to reload the document’s reading state and conversations. A damaged discussion index is backed up before reconstruction from local chats and Zotero notes. Original notes, transcripts and sessions are preserved.
 
 Synchronization scope differs by data type:
 
@@ -176,7 +178,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.81**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.82**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

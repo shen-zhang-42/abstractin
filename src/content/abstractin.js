@@ -882,8 +882,7 @@ AbstractIn = {
 					this.logError("renderContent", e);
 					let logEl = body.querySelector(".abstractin-log");
 					if (logEl) {
-						logEl.textContent = "";
-						logEl.appendChild(this.el(doc, "div", "abstractin-msg abstractin-error", "Something went wrong: " + e));
+						this.renderReadingRecovery(doc, body, item, null, e);
 					}
 				}
 			},
@@ -957,6 +956,14 @@ AbstractIn = {
 			node.textContent = text;
 		}
 		return node;
+	},
+
+	parseNoteHTML(html) {
+		// Zotero note markup is HTML, even when the host window is an XML/XUL
+		// document. Parse inertly so HTML entities and void elements are valid.
+		const win = Zotero.getMainWindow();
+		const parsed = new win.DOMParser().parseFromString(String(html || ""), "text/html");
+		return { content: parsed.body };
 	},
 
 	svgIcon(doc, name, className) {
@@ -2365,6 +2372,46 @@ AbstractIn = {
 		}
 	},
 
+	renderReadingRecovery(doc, body, item, reader, error) {
+		const root = body.querySelector('.abstractin-root'), log = root.querySelector('.abstractin-log');
+		const renderID = root._contentRenderID;
+		root.querySelector('.abstractin-composer').hidden = true;
+		log.replaceChildren(this.el(doc, 'div', 'abstractin-notice', 'Could not read this item: ' + (error.message || error)));
+		const button = this.ghostButton(doc, 'abstractin-restore-reading', 'retry', 'Restore reading', async () => {
+			button.disabled = true;
+			try {
+				const current = this._views.get(root)?.ctx;
+				const pdf = reader && Zotero.Items.get(reader.itemID);
+				const target = pdf && (pdf.parentItem || pdf).id === (item.parentItem || item).id ? pdf : item;
+				await this.restoreReadingState(target, current);
+				if (root._contentRenderID !== renderID || !root.isConnected) return;
+				await this.renderContent(doc, body, item, reader);
+			} catch (e) {
+				this.logError('restore reading', e);
+				if (root._contentRenderID !== renderID || !root.isConnected) return;
+				this.renderReadingRecovery(doc, body, item, reader, e);
+			}
+		});
+		log.append(button, this.el(doc, 'p', 'abstractin-notice', 'Reload saved reading settings and conversations from this device and Zotero notes. Existing notes are preserved.'));
+	},
+
+	async restoreReadingState(item, cached) {
+		const attachment = item.isAttachment?.() ? item : cached?.paperItem?.id === item.id && cached.attachmentItem ? cached.attachmentItem : await item.getBestAttachment();
+		const parent = item.isRegularItem?.() ? item : item.parentItem || item;
+		if (!attachment) return;
+		const dir = OS.Path.join(this.getDataDir(), parent.libraryID + '-' + parent.key, 'reading-' + attachment.key);
+		const known = [cached, ...this._chatContexts.values()].find(ctx => ctx?.paperItem?.key === parent.key && ctx.paperItem.libraryID === parent.libraryID && ctx.attachmentItem?.key === attachment.key && ctx.reading);
+		if (known) this._readingStates.set(attachment.id, known.reading);
+		const ctx = { paperItem: parent, attachmentItem: attachment, dir, reading: known?.reading || this._readingStates.get(attachment.id) || await this.syncedReadingState(parent, attachment) };
+		if (!ctx.reading) return;
+		await Zotero.File.createDirectoryIfMissingAsync(this.getDataDir());
+		await Zotero.File.createDirectoryIfMissingAsync(OS.Path.join(this.getDataDir(), parent.libraryID + '-' + parent.key));
+		await Zotero.File.createDirectoryIfMissingAsync(dir);
+		await this.recoverDiscussionIndex(ctx);
+		const index = await this.discussionIndex(ctx);
+		if (known?.discussion && this.visibleDiscussions(index).some(chat => chat.id === known.discussion.id)) { index.active = known.discussion.id; await this.writeDiscussionIndex(ctx, index); }
+	},
+
 	async renderContent(doc, body, item, boundReader = null) {
 		let root = body.querySelector(".abstractin-root");
 		let logEl = body.querySelector(".abstractin-log");
@@ -2399,7 +2446,8 @@ AbstractIn = {
 		}
 		catch (e) {
 			this.logError("getContext", e);
-			notice("Could not read this item: " + (e.message || e));
+			if (root._contentRenderID !== renderID || !logEl.isConnected) return;
+			this.renderReadingRecovery(doc, body, item, boundReader, e);
 			return;
 		}
 		if (!ctx) {
@@ -2410,14 +2458,19 @@ AbstractIn = {
 		let reader = boundReader || this.readerFor(ctx, doc.defaultView);
 		if (reader && item.isRegularItem()) {
 			let attachment = Zotero.Items.get(reader.itemID);
-			if (attachment) ctx = await this.getContext(attachment);
+			if (attachment) {
+				try { ctx = await this.getContext(attachment); }
+				catch (e) { if (root._contentRenderID === renderID) this.renderReadingRecovery(doc, body, attachment, reader, e); return; }
+			}
 		}
 
 		ctx.reader = reader?.itemID === ctx.attachmentItem?.id ? reader : null;
 		let view = { doc, root, logEl, input, ctx, send: null };
 		view.send = (text, images) => this.sendText(view, text, images);
 
-		let history = await this.loadHistory(ctx.dir);
+		let history;
+		try { history = await this.loadHistory(ctx.dir); }
+		catch (e) { if (root._contentRenderID === renderID) this.renderReadingRecovery(doc, body, item, reader, e); return; }
 		if (!logEl.isConnected || root._contentRenderID !== renderID) return;
 		// A setup started while context/history was loading belongs to the live view.
 		let live = this._views.get(root);
@@ -5662,6 +5715,8 @@ AbstractIn = {
 				if (selected) attachmentItem = selected;
 			} catch (e) { /* Older documents use the best attachment until a PDF is chosen. */ }
 		}
+		// On a new device there is no reading.json yet. Use complete synced
+		// conversations, not local PDF paths, to recover the document's mode.
 		let reading = attachmentItem && this._readingStates.get(attachmentItem.id);
 		if (!reading && attachmentItem) {
 			try {
@@ -5672,6 +5727,10 @@ AbstractIn = {
 				}
 			}
 			catch (e) { /* A new document starts with the companion introduction. */ }
+		}
+		if (!reading && attachmentItem) {
+			reading = await this.syncedReadingState(paperItem, attachmentItem);
+			if (reading) this._readingStates.set(attachmentItem.id, reading);
 		}
 		if (reading) {
 			dir = OS.Path.join(dir, "reading-" + attachmentItem.key);

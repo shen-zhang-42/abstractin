@@ -490,8 +490,7 @@ Object.assign(AbstractIn, {
 		for (let id of ids) {
 			let note = Zotero.Items.get(id);
 			if (!note || !note.getTags().some(tag => tag.tag === "AbstractIn")) continue;
-			let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template");
-			template.innerHTML = note.getNote();
+			const template = this.parseNoteHTML(note.getNote());
 			let text = [...template.content.querySelectorAll("h1, h2, h3, p, blockquote, li")].map(node => node.textContent).join("\n");
 			if (!text.includes("attachment: " + ctx.attachmentItem.key)) continue;
 			records.push("## Zotero note " + note.key + "\n" + text);
@@ -755,7 +754,7 @@ Object.assign(AbstractIn, {
 		let doc = Zotero.getMainWindow().document;
 		let existing = (ctx.paperItem.getNotes?.() || []).map(id => Zotero.Items.get(id)).find(note => {
 			if (!note || !note.getTags().some(t => t.tag === "AbstractIn") || note.getTags().some(t => t.tag.startsWith("AbstractIn:"))) return false;
-			let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
+			const template = this.parseNoteHTML(note.getNote());
 			let paragraphs = [...template.content.querySelectorAll("p")].map(n => n.textContent);
 			return paragraphs.includes("Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key) &&
 				paragraphs.includes("Scope: " + scope.level + "; id: " + scope.id) &&

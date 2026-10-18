@@ -237,9 +237,7 @@ Object.assign(AbstractIn, {
 			entry.render = this.renderContent(win.document, body, item, reader).catch(e => {
 				this.logError("reader panel render", e);
 				if (!this.readerPanelNodeAlive(root)) return;
-				let view = this._views.get(root);
-				if (view) this.appendError(view, e.message || String(e));
-				else root.querySelector(".abstractin-log").textContent = "AbstractIn could not load this PDF: " + (e.message || e);
+				this.renderReadingRecovery(win.document, body, item, reader, e);
 			});
 		}
 		entry.body.hidden = false;

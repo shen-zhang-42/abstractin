@@ -553,8 +553,7 @@ test("history cards restore a conversation and its agent thread inside the curre
  assert.ok(view.logEl.querySelector(".abstractin-history-browser")); assert.equal(view.root.querySelector(".abstractin-menu"), null);
  assert.equal(view.root.dataset.historyBrowser, "true");
  const selected = view.root.querySelector('[data-discussion-id="' + first.id + '"]'); assert.ok(selected); selected.click();
- for (let i = 0; i < 30 && view.historyBrowser; i++) await new Promise(r => setTimeout(r, 5));
- await new Promise(r => setTimeout(r, 20));
+ for (let i = 0; i < 100 && view.root.querySelector(".abstractin-history-browser"); i++) await new Promise(r => setTimeout(r, 10));
  assert.equal(view.ctx.dir, firstDir); assert.equal(view.root.querySelector(".abstractin-history-browser"), null);
  assert.equal(view.root.dataset.historyBrowser, undefined); assert.equal((await p.loadSessions(firstDir)).codex.id, session);
  await send("Continue the explanation"); assert.equal(requests.at(-1).session.id, session);
@@ -1116,4 +1115,110 @@ test("manual moves into and out of Initialization preserve independent transcrip
  assert.equal(reopened.chats.find(c => c.id === existing.id).chapterID, 'ch-02');
  assert.equal(reopened.chats.find(c => c.id === moving).chapterID, 'initialization');
  assert.equal((await p.loadHistory(existingDir))[1].text, 'Existing initialization output');
+});
+
+
+test("an existing discussion cache receives new turns from another device and preserves concurrent turns", async () => {
+ const {p,view,prefs,dir}=await setup('paper');
+ const original=[{role:'user',text:'Original',ts:1},{role:'assistant',text:'Answer',ts:2}];
+ await p.saveHistory(view.ctx.dir,original);
+ const firstDevice=p.chatDeviceID(), localDir=view.ctx.dir;
+ const remoteRoot=join(dir,'remote-device');await mkdir(join(remoteRoot,'discussions',view.ctx.discussion.id),{recursive:true});
+ const remote=p.discussionContext({...view.ctx,documentDir:remoteRoot},view.ctx.discussion);
+ await p.loadHistory(remote.dir);
+ prefs['extensions.abstractin.chatDeviceID']='second-device';
+ await p.saveHistory(remote.dir,[...original,{role:'user',text:'Remote follow-up',ts:3},{role:'assistant',text:'Remote answer',ts:4}]);
+ prefs['extensions.abstractin.chatDeviceID']=firstDevice;
+ // This device had already cached the shorter history before the sync arrived.
+ let restored=await p.loadHistory(localDir);assert.equal(restored.length,4);assert.equal(restored[2].text,'Remote follow-up');
+ // Both devices can append without silently losing the other device's turn.
+ await p.saveHistory(localDir,[...restored,{role:'user',text:'Local follow-up',ts:5},{role:'assistant',text:'Local answer',ts:6}]);
+ prefs['extensions.abstractin.chatDeviceID']='second-device';
+ await p.saveHistory(remote.dir,[...original,{role:'user',text:'Remote follow-up',ts:3},{role:'assistant',text:'Remote answer',ts:4},{role:'user',text:'Concurrent remote question',ts:7},{role:'assistant',text:'Concurrent remote answer',ts:8}]);
+ restored=await p.loadHistory(localDir);
+ assert.deepEqual(Array.from(restored,m=>m.text),['Original','Answer','Remote follow-up','Remote answer','Local follow-up','Local answer','Concurrent remote question','Concurrent remote answer']);
+ assert.equal((await p.loadHistory(localDir)).length,8);
+});
+
+test("reading settings and seeded discussions restore on a device without reading.json",async()=>{
+ const {p,ctx,parent,attachment,window,dir}=await setup('book');
+ const root=join(dir,'new-profile');p.getDataDir=()=>root;
+ const index=await p.discussionIndex(ctx);
+ const chat=await p.createDiscussion(ctx,index,'ch-01','Portable seed',[{role:'user',text:'A seeded question'},{role:'assistant',text:'A seeded answer'}]);
+ assert.ok(p.chatNoteHistories(p.discussionContext(ctx,chat)).some(record=>record.history.length===2));
+ parent.isRegularItem=()=>true;parent.getBestAttachment=async()=>attachment;parent.getAttachments=()=>[attachment.id];
+ attachment.isAttachment=()=>true;attachment.isRegularItem=()=>false;attachment.parentItem=parent;
+ const get=window.Zotero.Items.get;window.Zotero.Items.get=id=>id===attachment.id?attachment:get(id);
+ p._readingStates.clear();
+ const recovered=await p.getContext(parent);
+ assert.equal(recovered.reading.type,'book');assert.equal(recovered.reading.title,'Test book');
+ const recoveredIndex=await p.discussionIndex(recovered);
+ const portable=recoveredIndex.chats.find(c=>c.id===chat.id);assert.ok(portable);
+ assert.equal((await p.loadHistory(p.discussionContext(recovered,portable).dir))[1].text,'A seeded answer');
+});
+
+test("HTML note parsing tolerates Zotero rich text in XML windows and remains inert",async()=>{
+ const {p,view,window,notes}=await setup('paper');
+ await p.saveHistory(view.ctx.dir,[{role:'user',text:'Question'},{role:'assistant',text:'Answer'}]);
+ const xml=new window.DOMParser().parseFromString('<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"/>','application/xml');
+ const html='<p>Fish&nbsp;and chips<br>Second line</p><script>window.noteExecuted=true</script>';
+ assert.throws(()=>{p.el(xml,'template').innerHTML=html;});
+ for(const note of notes) note.html+=html;
+ window.Zotero.getMainWindow=()=>({document:xml,DOMParser:window.DOMParser,crypto:window.crypto});
+ assert.equal(p.chatNoteHistories(view.ctx)[0].history[1].text,'Answer');
+ assert.match(p.readingNoteMarkdown(notes[0]),/Fish\s+and chips/);
+ assert.equal(window.noteExecuted,undefined);
+});
+
+test("Restore reading backs up a damaged index and restores the current discussion without changing notes",async()=>{
+ const {p,ctx,view,parent,attachment,notes}=await setup('paper');
+ await p.saveHistory(view.ctx.dir,[{role:'user',text:'Keep this question'},{role:'assistant',text:'Keep this answer'}]);
+ parent.isRegularItem=()=>true;parent.getBestAttachment=async()=>attachment;
+ attachment.isAttachment=()=>true;attachment.isRegularItem=()=>false;attachment.parentItem=parent;
+ const before=notes.map(note=>note.html),path=join(p.discussionRoot(ctx),'discussions.json'),broken='{broken';
+ await writeFile(path,broken);
+ await assert.rejects(p.getContext(attachment));
+ const body=view.root.parentElement;p.renderReadingRecovery(view.doc,body,attachment,null,new Error('Invalid index'));
+ const button=view.root.querySelector('.abstractin-restore-reading');assert.equal(button.textContent,'Restore reading');
+ let rerendered=false;const render=p.renderContent;p.renderContent=async(...args)=>{rerendered=true;assert.equal(args[2],attachment);};
+ button.click();for(let i=0;i<100&&!rerendered;i++)await new Promise(resolve=>setTimeout(resolve,10));p.renderContent=render;
+ assert.equal(rerendered,true);const index=await p.discussionIndex(ctx);assert.equal(index.active,view.ctx.discussion.id);
+ assert.equal((await p.loadHistory(view.ctx.dir))[1].text,'Keep this answer');
+ const backups=(await readdir(p.discussionRoot(ctx))).filter(name=>name.startsWith('discussions.json.recovery-'));
+ assert.equal(backups.length,1);assert.equal(await readFile(join(p.discussionRoot(ctx),backups[0]),'utf8'),broken);
+ assert.deepEqual(notes.map(note=>note.html),before);
+});
+
+
+test("Chats discovers discussions arriving through Zotero sync after the local index was cached",async()=>{
+ const {p,view,dir,prefs}=await setup('paper');
+ const remoteRoot=join(dir,'late-sync');await mkdir(remoteRoot,{recursive:true});
+ const remoteCtx={...view.ctx,documentDir:remoteRoot,dir:remoteRoot,discussion:undefined};
+ const index={version:2,active:null,chats:[],chapters:[],migrated:{}};
+ prefs['extensions.abstractin.chatDeviceID']='late-sync-device';
+ const chat=await p.createDiscussion(remoteCtx,index,null,'Arrived later',[{role:'user',text:'Synced question'},{role:'assistant',text:'Synced answer'}]);
+ assert.ok(!(await p.discussionIndex(view.ctx)).chats.some(c=>c.id===chat.id));
+ await p.openHistoryMenu(view.root);
+ assert.ok(view.root.querySelector('[data-discussion-id="'+chat.id+'"]'));
+ assert.ok((await p.discussionIndex(view.ctx)).chats.some(c=>c.id===chat.id));
+});
+
+
+test("a delayed partial sync snapshot cannot remove an existing completed answer",()=>{
+ const {plugin:p}=loadPlugin();
+ const question={role:'user',text:'Question',ts:1},answer={role:'assistant',text:'Completed answer',ts:2};
+ const merged=p.mergeSyncedDiscussionHistories([[question,answer],[question]]);
+ assert.deepEqual(Array.from(merged,m=>m.text),['Question','Completed answer']);
+});
+
+test("overlapping chunked note writes serialize and retain a complete final revision",async()=>{
+ const {p,view,notes}=await setup('paper');
+ const first=[{role:'user',text:'Question'},{role:'assistant',text:'Old answer '.repeat(6000)}];
+ const second=[{role:'user',text:'Question'},{role:'assistant',text:'New answer '.repeat(6000)}];
+ let active=0,peak=0;
+ // The first call creates its notes; a second call must wait before reusing them.
+ const create=p.writeChatNotes;p.writeChatNotes=async(...args)=>{peak=Math.max(peak,++active);try{await new Promise(resolve=>setTimeout(resolve,5));return await create.apply(p,args);}finally{active--;}};
+ await Promise.all([p.saveChatNotes(view.ctx.dir,first),p.saveChatNotes(view.ctx.dir,second)]);
+ assert.equal(peak,1);assert.ok(notes.length>2);
+ assert.equal(p.chatNoteHistories(view.ctx)[0].history[1].text,second[1].text);
 });

@@ -146,3 +146,15 @@ test('summary saving shows its icon and keeps retry in the composer menu',async(
  assert.equal(root.querySelector('.abstractin-note-save-mode'),null);
  assert.equal(root.querySelector('.abstractin-note-saving-status'),null);
 });
+
+
+test('a closed summary session refreshes a stale cached summary from another device',async()=>{
+ const f=await fixture('summary');await f.p.saveHistory(f.dir,f.history);f.p.endNoteSession(f.dir);
+ const remoteDir=await mkdtemp(join(tmpdir(),'summary-second-device-'));f.p.registerChatContext({...f.ctx,dir:remoteDir});
+ f.p.setPref('chatDeviceID','summary-second-device');
+ f.p.runBackend=async()=>({text:JSON.stringify({summary:'New summary from another device.'})});
+ await f.p.saveHistory(remoteDir,[...f.history,{role:'user',text:'More information',ts:3},{role:'assistant',text:'More conclusions',ts:4}]);
+ const restored=await f.p.loadHistory(f.dir);
+ assert.equal(restored.length,1);assert.equal(restored[0].savedSummary,true);assert.equal(restored[0].text,'New summary from another device.');
+ assert.equal(JSON.parse(await readFile(join(f.dir,'chat.json'),'utf8'))[0].text,'New summary from another device.');
+});

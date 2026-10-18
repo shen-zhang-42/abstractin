@@ -56,9 +56,14 @@
    // untouched and are available again under Full saving or as native notes.
    if (!Array.isArray(stored) || !stored.every(message => message.savedSummary)) stored = [];
    const ctx = this._chatContexts.get(dir);
-   if (!stored.length && ctx) {
+   if (ctx) {
     const remote = this.chatNoteHistories(ctx).filter(chat => chat.history.length && chat.history.every(message => message.savedSummary)).sort((a,b) => b.updatedAt-a.updatedAt)[0];
-    if (remote) stored = remote.history;
+    const state = await this.chatSyncState(dir);
+    if (remote && (!stored.length || remote.updatedAt > (state?.updatedAt || 0))) {
+     stored = remote.history;
+     await Zotero.File.putContentsAsync(OS.Path.join(dir, 'chat.json'), JSON.stringify(stored));
+     await this.writeChatSyncState(dir, { chatID: remote.chatID, writerID: remote.writerID, revision: remote.revision, updatedAt: remote.updatedAt });
+    }
    }
    this._noteSummaries.set(dir, copy(stored)); return stored;
   },

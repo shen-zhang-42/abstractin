@@ -3,6 +3,7 @@
 Object.assign(AbstractIn, {
 	_chatContexts: new Map(),
 	_chatArchiveImports: new Set(),
+	_chatNoteWrites: new Map(),
 
 	registerChatContext(ctx) {
 		if (ctx?.paperItem && ctx.dir) this._chatContexts.set(ctx.dir, ctx);
@@ -31,7 +32,7 @@ Object.assign(AbstractIn, {
 		for (let id of ctx.paperItem.getNotes?.() || []) {
 			let note = Zotero.Items.get(id);
 			if (!note || note.deleted || !note.getTags().some(t => t.tag === "AbstractIn:Chat")) continue;
-			let template = this.el(doc, "template"); template.innerHTML = note.getNote();
+			const template = this.parseNoteHTML(note.getNote());
 			for (let pre of template.content.querySelectorAll("pre")) {
 				try {
 					let data = JSON.parse(pre.textContent);
@@ -70,6 +71,15 @@ Object.assign(AbstractIn, {
 	},
 
 	async saveChatNotes(dir, history, override = null) {
+		const snapshot = JSON.parse(JSON.stringify(history));
+		const prior = this._chatNoteWrites.get(dir) || Promise.resolve();
+		const job = prior.catch(() => {}).then(() => this.writeChatNotes(dir, snapshot, override));
+		this._chatNoteWrites.set(dir, job);
+		try { return await job; }
+		finally { if (this._chatNoteWrites.get(dir) === job) this._chatNoteWrites.delete(dir); }
+	},
+
+	async writeChatNotes(dir, history, override = null) {
 		let ctx = this._chatContexts.get(dir);
 		if (!ctx) return;
 		let state = override || await this.chatSyncState(dir), writerID = this.chatDeviceID();
@@ -92,6 +102,7 @@ Object.assign(AbstractIn, {
 					attachmentKey: ctx.reading ? ctx.attachmentItem?.key : null,
 					chatID: state.chatID, writerID, revision, updatedAt, part, total,
 					archived: !!override?.archived,
+					reading: ctx.reading ? { type: ctx.reading.type, title: ctx.reading.title || "", goal: ctx.reading.goal || "" } : null,
 					discussionID: ctx.discussion?.id || null,
 					discussion: ctx.discussion || null,
 					chapter: ctx.discussion ? (await this.discussionIndex(ctx)).chapters.find(c => c.id === ctx.discussion.chapterID) || null : null,
@@ -194,7 +205,7 @@ Object.assign(AbstractIn, {
 		let doc = Zotero.getMainWindow().document;
 		return (ctx.paperItem.getNotes?.() || []).map(id => Zotero.Items.get(id)).filter(note => {
 			if (!note || !note.getTags().some(t => t.tag === "AbstractIn:" + kind)) return false;
-			let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
+			const template = this.parseNoteHTML(note.getNote());
 			return [...template.content.querySelectorAll("p")].some(p => p.textContent === "Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key);
 		});
 	},
@@ -222,7 +233,7 @@ Object.assign(AbstractIn, {
 	readingArtifactData(note) {
 		if (!note) return null;
 		let doc = Zotero.getMainWindow().document;
-		let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
+		const template = this.parseNoteHTML(note.getNote());
 		for (let pre of template.content.querySelectorAll("pre")) {
 			try { let data = JSON.parse(pre.textContent); if (data.format === "abstractin-workspace-v1") return data; }
 			catch (e) { /* Other pre blocks can contain mathematical notation. */ }
@@ -232,7 +243,7 @@ Object.assign(AbstractIn, {
 
 	readingNoteMarkdown(note) {
 		let doc = Zotero.getMainWindow().document;
-		let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
+		const template = this.parseNoteHTML(note.getNote());
 		for (let pre of template.content.querySelectorAll("pre")) {
 			try {
 				if (JSON.parse(pre.textContent).format === "abstractin-workspace-v1") {
@@ -292,7 +303,7 @@ Object.assign(AbstractIn, {
 		let parts = [];
 		for (let kind of ["Contents", "Summary"]) {
 			for (let note of this.readingArtifactNotes(ctx, kind)) {
-				let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = note.getNote();
+				const template = this.parseNoteHTML(note.getNote());
 				parts.push("## " + kind + " — Zotero note " + note.key + "\n\n" + template.content.textContent);
 			}
 		}
@@ -691,7 +702,7 @@ Object.assign(AbstractIn, {
 		recap.append(this.el(doc, "h3", null, "Previous discussions and open questions"));
 		let count = 0;
 		for (let record of records.slice().reverse()) {
-			let template = doc.createElementNS("http://www.w3.org/1999/xhtml", "template"); template.innerHTML = record.getNote();
+			const template = this.parseNoteHTML(record.getNote());
 			if (![...template.content.querySelectorAll("p")].some(p => p.textContent === "Zotero item: " + ctx.paperItem.key + "; attachment: " + ctx.attachmentItem.key)) continue;
 			let title = template.content.querySelector("h1")?.textContent || record.key;
 			let questions = [...template.content.querySelectorAll("li")].map(n => n.textContent);
