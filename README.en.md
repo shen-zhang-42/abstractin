@@ -33,7 +33,7 @@ Linked PDFs maintained in Dropbox or another external folder use Zotero's resolv
 
 ### Separate workflows for books and papers
 
-Books can initialize a table of contents from the source and organize discussions by chapter or appendix. Papers focus on reading goals and topics, with options to summarize the source or ask directly. The composer placeholder reflects the material type.
+Books can initialize a table of contents from the source and organize discussions by chapter or appendix. Initialization reads all detected contents pages, including continuations, and supplies their complete text to the agent in batches without file-tool calls. Entries are checked against the source and missing entries trigger one corrective pass; an incomplete result preserves existing contents and reports a retryable error. Use **Contents & records → Update contents** to repair a directory created by an older version. Scanned or unreadable contents require OCR. Papers focus on reading goals and topics, with options to summarize the source or ask directly. The composer placeholder reflects the material type.
 
 Reading workflows use the bundled `book-reading` and `scientific-paper-reading` skills and their supporting resources. No local skill directory is required. The plugin always uses its bundled originals and automatically extracts them unchanged into its own cache so local CLIs can read them.
 
@@ -178,7 +178,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.83**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.84**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

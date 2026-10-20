@@ -752,6 +752,7 @@
   },
   readingPrompt(ctx, selection) {
    let text = original.readingPrompt.call(this, ctx, selection);
+   if (ctx.reading.action === "contents") return text;
    if (!ctx.discussion) return text;
    text = text.replace("saved notes and previous conversation", "this discussion's messages")
     .replace(/Current editable Zotero notes take precedence over older chat: .*?\. /, "")
@@ -958,7 +959,7 @@
   },
   codexArgs(request) {
    const args = original.codexArgs.call(this, request);
-   if (request.ctx.discussion && request.ctx.reading.evidenceMode !== "knowledge") args.splice(args.length - (request.session ? 3 : 1), 0,
+   if (request.ctx.reading?.action === "contents" || request.ctx.discussion && request.ctx.reading.evidenceMode !== "knowledge") args.splice(args.length - (request.session ? 3 : 1), 0,
     "-c", "features.shell_tool=false", "-c", "features.unified_exec=false", "-c", "features.apps=false", "-c", 'web_search="disabled"');
    return args;
   },
@@ -968,6 +969,7 @@
    return args;
   },
   async agentReadingContext(id, ctx) {
+   if (ctx.reading.action === "contents") return "\nAll contents source text is supplied inline by the plugin. No file tools are required; do not print tool invocation markup.";
    let text = await original.agentReadingContext.call(this, id, ctx);
    if (!ctx.discussion) return text;
    if (id === "codex" && ctx.reading.evidenceMode !== "knowledge") {

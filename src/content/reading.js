@@ -587,15 +587,11 @@ Object.assign(AbstractIn, {
 				"Use sources: [] unless quoting the supplied verified current page exactly; then use {pageIndex: supplied zero-based index, quote: exact supplied excerpt}. " +
 				"Escape LaTeX correctly in JSON. Do not write files or perform external research.";
 		}
-		if (reading.action === "contents") return "AbstractIn book contents initialization. Read the original book-reading skill at " + JSON.stringify(reading.skillPath) +
-			" and use only its structure initialization workflow. " + this.languageInstruction() +
-			" Document identity: " + JSON.stringify({ libraryID: ctx.paperItem.libraryID, itemKey: ctx.paperItem.key, attachmentKey: ctx.attachmentItem.key }) + ". " +
-			"PDF source status: " + JSON.stringify(reading.pdfSource || {}) + ". " +
-			"Begin with contents-source.md, a bounded candidate excerpt copied from source-text.md. If it does not include the actual contents, search source-text.md for the contents heading and inspect only those pages. " +
-			"Existing contents corrections are in workspace.md, derived from the current Zotero note. Recheck changed headings against the actual source. " +
-			"Extract verified structure only. Do not read chapter openings, locate every chapter's physical page, or generate summaries. " +
-			"The plugin creates folders and saves the authoritative Zotero contents note. Do not write files, use a browser bridge, or conduct external research. " +
-			"Use the abstractin-workspace output schema in the action instructions. Do not emit abstractin-record.";
+		if (reading.action === "contents") return "AbstractIn book contents initialization. " + this.languageInstruction() +
+			"The plugin reads the original contents pages and supplies their complete text inline in batches. Read every supplied line. No file tools are available or needed. " +
+			"Extract the complete structure without chapter summaries, chapter-body searches, guessed headings or guessed physical page offsets. " +
+			"The plugin verifies the entries and saves the authoritative Zotero contents note. Return the abstractin-workspace schema from the action instructions; never emit tool calls or abstractin-record.";
+
 		let source = selection ? {
 			selectedText: selection.text, printedPageLabel: selection.pageLabel || null,
 			pdfPageIndex: selection.position?.pageIndex ?? null,

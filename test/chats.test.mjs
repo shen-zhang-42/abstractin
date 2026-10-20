@@ -1022,6 +1022,8 @@ test("initialization actions reuse one dedicated chat and ordinary questions lea
  const errors = [], ask = p.ask.bind(p); p.ask = async (...args) => { const result = await ask(...args); errors.push(result.error); return result; };
  p.exportReadingSource = async () => ({ status: 'ready', signature: 'test-pdf', pageMapping: true, totalPages: 15 });
  p.prepareCurrentReadingPage = p.prepareContentsSource = async () => {};
+ p.runContentsInitialization = (backend,request) => p.runBackend(backend,request);
+ p.saveReadingAction = async (_ctx,_action,text) => ({answer:text});
  p.exportReadingWorkspace = p.exportReadingRecords = async () => '';
  p.agentReadingContext = async () => '';
  await send('Initialize the actual book contents without chapter summaries.', { readingAction: 'contents' });

@@ -187,7 +187,7 @@ test("a discussion with ambiguous PDF page boundaries saves through ask and retu
 	assert.equal((await p.loadHistory(ctx.dir))[1].recordNotice, result.recordNotice);
 });
 
-test("contents initialization reads a bounded excerpt in a fresh context and saves without chapter page scans", async () => {
+test("contents initialization supplies complete detected contents in a fresh context without chapter scans", async () => {
 	const { plugin: p, window, ctx, notes, dir } = await setup();
 	p.prepareReadingSkills = async ctx => ctx.reading;
 	p.loadSessions = async () => ({ codex: { id: "old", model: "", sourceSignature: "old" } });
@@ -271,7 +271,7 @@ test("a failed automatic initialization does not run again after another Start o
 	assert.equal(requests.length, 2, "a user can retry explicitly or go straight to questions");
 });
 
-test("contents preparation supplies a bounded exact source excerpt and avoids chapter scans", async () => {
+test("contents preparation supplies original directory pages inline without requiring file tools", async () => {
 	const { plugin: p, ctx, dir } = await setup();
 	await p.prepareContentsSource(ctx);
 	assert.match(await readFile(join(dir, "contents-source.md"), "utf8"), /Contents\n1 Foundations/);
@@ -837,4 +837,68 @@ test("Context only vocabulary tutoring does not access the PDF or saved notes", 
  };
  const result = await p.ask(ctx, '解释这个单词的意思', { backend: 'codex', progress() {} });
  assert.equal(result.error, undefined);
+});
+
+
+test('long contents include every continuation page and entry beyond the old page and character limits',async()=>{
+ const {plugin:p,ctx,dir,notes}=await setup();
+ const pages=Array.from({length:18},(_,page)=>(page===0?'Contents\n':'')+Array.from({length:65},(_,row)=>{
+  const number=page*65+row+1;return number+' Topic '+number+' '+('original title '.repeat(5)).trim()+' .... '+(number+20);
+ }).join('\n'));
+ const text=pages.map((text,page)=>'## PDF page '+(page+1)+'; pageIndex '+page+'\n'+text).join('\n\n')+'\n\n## PDF page 19; pageIndex 18\nChapter 1\nBody text starts here.\nThis narrative is not a contents entry.\nNo contents follow.';
+ await writeFile(join(dir,'source-text.md'),text);ctx.reading.action='contents';ctx.reading.pdfSource.totalPages=19;
+ await p.prepareContentsSource(ctx);assert.equal(ctx.reading.contentsPlan.pages.length,18);assert.equal(ctx.reading.contentsPlan.expected.length,1170);
+ assert.ok(ctx.reading.contentsPlan.text.length>60000);assert.ok(!ctx.reading.contentsPlan.text.includes('Body text starts here'));
+ const supplied=[];p.runBackend=async(backend,request)=>{
+  assert.equal(request.session,null);assert.equal(request.history.length,0);assert.match(request.question,/No file or other tools/);
+  const source=request.question.match(/<contents-source>\n([\s\S]*?)\n<\/contents-source>/)[1];supplied.push(source);
+  const required=ctx.reading.contentsPlan.expected.filter(item=>source.includes(item.line));
+  return {text:'Extracted.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',entries:required.map(item=>({title:item.title,printedPageLabel:item.printedPageLabel,evidence:item.line}))})+'</abstractin-workspace>'};
+ };
+ const result=await p.runContentsInitialization('claude',{ctx,question:p.readingActionPrompt(ctx,'contents'),onProgress(){}},{progress(){}});
+ assert.equal(result.error,undefined);assert.ok(supplied.length>3);
+ for(const expected of ctx.reading.contentsPlan.expected)assert.ok(supplied.some(batch=>batch.includes(expected.line)));
+ await p.saveReadingAction(ctx,'contents',result.text);
+ const saved=p.readingArtifactData(notes[0]);assert.equal(saved.entries.length,1170);assert.equal(saved.complete,true);assert.ok(saved.entries.at(-1).title.startsWith('1170 Topic'));
+});
+
+test('literal Read invocations retry once with inline source instead of leaving initialization stuck',async()=>{
+ const {plugin:p,ctx}=await setup();ctx.reading.action='contents';await p.prepareContentsSource(ctx);
+ let calls=0;p.runBackend=async(_,request)=>{
+  calls++;assert.match(request.question,/<contents-source>/);
+  if(calls===1)return{text:'<invoke name="Read"><parameter name="file_path">contents-source.md</parameter></invoke>'};
+  assert.match(request.question,/Previous extraction was incomplete/);
+  return{text:'Complete.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',entries:[{title:'1 Foundations',printedPageLabel:'3',evidence:'1 Foundations .... 3'}]})+'</abstractin-workspace>'};
+ };
+ const result=await p.runContentsInitialization('claude',{ctx,question:'Initialize',onProgress(){}},{progress(){}});
+ assert.equal(calls,2);assert.equal(result.error,undefined);assert.match(result.text,/Foundations/);assert.ok(!result.text.includes('<invoke'));
+ const args=p.claudeArgs({ctx,question:'Initialize',history:[],session:null});assert.equal(args[args.indexOf('--tools')+1],'');
+ assert.ok(p.codexArgs({ctx,question:'Initialize',history:[],session:null,images:[]}).includes('features.shell_tool=false'));
+});
+
+test('a persistently missing chapter fails initialization without replacing the existing contents note',async()=>{
+ const {plugin:p,ctx,dir,response,notes}=await setup();await p.saveReadingAction(ctx,'contents',response);const before=notes[0].html;
+ await writeFile(join(dir,'source-text.md'),'Contents\n1 Foundations .... 3\n2 Probability .... 20');ctx.reading.action='contents';await p.prepareContentsSource(ctx);
+ let calls=0;p.runBackend=async()=>{calls++;return{text:response};};
+ const result=await p.runContentsInitialization('codex',{ctx,question:'Initialize',onProgress(){}},{progress(){}});
+ assert.equal(calls,2);assert.match(result.error,/incomplete.*Probability/s);assert.equal(notes[0].html,before);
+ await assert.rejects(p.saveReadingAction(ctx,'contents',response),/incomplete/);assert.equal(notes[0].html,before);
+});
+
+test('unpaginated source excludes chapter prose and unheaded directory continuations retain their last page',()=>{
+ const {plugin:p}=loadPlugin();
+ const unmapped=p.contentsSourcePlan('Front matter\nContents\n1 Foundations .... 3\n2 Probability .... 20\nPreface\nNarrative line one.\nNarrative line two.\nNarrative line three.');
+ assert.ok(!unmapped.text.includes('Narrative line three'));assert.equal(unmapped.expected.length,2);
+ const continuation=p.contentsSourcePlan('## PDF page 1; pageIndex 0\n1 Foundations .... 3\n2 Probability .... 20\n3 Measures .... 30\n## PDF page 2; pageIndex 1\n4 Integration .... 40\n## PDF page 3; pageIndex 2\nChapter 1\nProse follows.');
+ assert.equal(continuation.pages.length,2);assert.equal(continuation.expected.length,4);
+});
+
+
+test('final evidence validation failure is a retryable initialization error rather than a success message',async()=>{
+ const {plugin:p,window,ctx,contents,notes}=await setup();p.prepareReadingSkills=async ctx=>ctx.reading;
+ window.Zotero.PDFWorker={getFullText:async()=>({text:'Contents\n1 Foundations .... 3\fPreface\f1 Foundations\nArgument',extractedPages:3,totalPages:3})};
+ p.runBackend=async()=>({text:'Complete.\n<abstractin-workspace>'+JSON.stringify({...contents,entries:[...contents.entries,{title:'Invented appendix',evidence:'Never supplied'}]})+'</abstractin-workspace>'});
+ const result=await p.ask(ctx,'Initialize',{backend:'codex',readingAction:'contents',progress(){}});
+ assert.match(result.error,/incomplete/);assert.equal(result.recordKey,undefined);assert.equal(notes.length,0);
+ assert.equal((await p.loadHistory(ctx.dir)).length,0);
 });
