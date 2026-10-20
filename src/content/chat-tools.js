@@ -62,6 +62,77 @@
    }
    return turns;
   },
+  async regroupBookDiscussions(ctx) {
+   if (ctx.reading?.type !== 'book') return {};
+   const root=this.discussionRoot(ctx);
+   if (this._discussionLocks.has(root) || [...this._pending.keys()].some(dir=>dir!==ctx.dir && this.discussionRoot(this._chatContexts.get(dir) || {dir})===root)) throw new Error('Wait for other chats in this document to finish');
+   this._discussionLocks.add(root);
+   try {
+    const index=await this.discussionIndex(ctx);await this.refreshDiscussionChapters(ctx,index);
+    const sources=this.visibleDiscussions(index).filter(chat=>chat.chapterID!==this.INITIALIZATION_CHAPTER && !chat.initializationPlacementManual && !chat.autoGroupingKey && (!chat.chapterID || !index.chapters.some(chapter=>chapter.id===chat.chapterID)));
+    const plans=[];
+    for(const chat of sources) {
+     const source=this.discussionContext(ctx,chat),history=await this.loadHistory(source.dir);
+     if(!history.length) continue;
+     let turns;
+     if(history.every(message=>message.savedSummary)) {
+      const route=this.resolveDiscussionChapter({...ctx,discussion:{chapterID:null}},index,chat.topic || '',null,null);
+      turns=[{chapterID:!route.ambiguous ? route.chapterID : null,reason:'Saved summary',messages:history,sourceKey:'discussion:'+chat.id,start:0,subject:chat.topic}];
+     } else turns=this.classifyLegacyTurns(ctx,index,[{key:'discussion:'+chat.id,history}]);
+     plans.push({chat,source,history,turns});
+    }
+    const turns=plans.flatMap(plan=>plan.turns);turns.forEach((turn,at)=>{turn.key='turn-'+at;});
+    let classificationWarning='';
+    if(turns.some(turn=>!turn.chapterID)) try {await this.suggestLegacyChapters({ctx},index,turns);} catch(error) {this.logError('chapter grouping suggestions',error);classificationWarning='Some chats remain Unassigned because agent classification did not complete.';}
+    for(const plan of plans) if(JSON.stringify(await this.loadHistory(plan.source.dir))!==JSON.stringify(plan.history)) throw new Error('Chats changed while grouping; retry initialization');
+    // Freeze a recovery copy before changing ownership. Destinations are fully
+    // saved before their source is hidden, preserving citations and originals.
+    let grouped=0,split=0;const changed=[];
+    await this.writeDiscussionIndex(ctx,index);
+    for(const plan of plans) {
+     const groups=new Map();
+     for(const turn of plan.turns) {if(!groups.has(turn.chapterID))groups.set(turn.chapterID,[]);groups.get(turn.chapterID).push(...turn.messages);}
+     if(!groups.size || groups.size===1 && groups.has(null)) continue;
+     if(this.noteSaveMode(plan.source)==='full') await Zotero.File.putContentsAsync(OS.Path.join(plan.source.dir,'before-auto-grouping.json'),JSON.stringify(plan.history));
+     if(groups.size===1) {
+      const chapterID=[...groups.keys()][0];
+      plan.chat.numberHistory ||= [];plan.chat.numberHistory.push({chapterID:plan.chat.chapterID,number:plan.chat.number});
+      plan.chat.number=this.nextDiscussionNumber(index,chapterID);plan.chat.chapterID=chapterID;plan.chat.autoGroupedAt=Date.now();changed.push(plan.chat);grouped++;
+     } else {
+      const destinations=[];
+      for(const [chapterID,messages] of groups) {
+       const key=await this.hashAgentText(JSON.stringify([plan.chat.id,chapterID,messages]));
+       let destination=index.chats.find(chat=>chat.autoGroupingKey===key);
+       if(!destination) {
+        destination=await this.createDiscussion(ctx,index,chapterID,plan.chat.topic,messages.map(message=>({...message,groupedFrom:message.groupedFrom || plan.chat.id})),{migrated:true,autoGroupingKey:key,autoGroupedFrom:plan.chat.id},{persist:false});
+        await this.saveSessions(this.discussionContext(ctx,destination).dir,{});
+       }
+       destinations.push(destination.id);changed.push(destination);
+      }
+      plan.chat.supersededBy=destinations;changed.push(plan.chat);split++;
+     }
+    }
+    // Keep the initialization chat active throughout this maintenance action.
+    index.active=ctx.discussion?.id || index.active;
+    for(const chapter of index.chapters) if(!this.visibleDiscussions(index).some(chat=>chat.id===chapter.activeChat && chat.chapterID===chapter.id)) chapter.activeChat=this.visibleDiscussions(index).filter(chat=>chat.chapterID===chapter.id).sort((a,b)=>b.updatedAt-a.updatedAt)[0]?.id || null;
+    await this.writeDiscussionIndex(ctx,index);
+    const syncChats=new Map(changed.map(chat=>[chat.id,chat]));
+    for(const chat of index.chats) if(chat.autoGroupingKey || chat.autoGroupedAt || chat.supersededBy?.some(id=>index.chats.find(target=>target.id===id)?.autoGroupingKey)) syncChats.set(chat.id,chat);
+    for(const chat of syncChats.values()) {
+     const target=this.discussionContext(ctx,chat);
+     await this.saveChatNotes(target.dir,await this.loadHistory(target.dir));
+    }
+    // Views on a retained chat get its new metadata; a view on a split source
+    // follows its first replacement, while its draft remains under the source.
+    for(const view of this.noteStorageViews()) if(this.discussionRoot(view.ctx)===root) {
+     const old=index.chats.find(chat=>chat.id===view.ctx.discussion?.id);
+     const next=old?.supersededBy ? index.chats.find(chat=>old.supersededBy.includes(chat.id)) : old;
+     if(next && next.id!==ctx.discussion?.id && next.id!==old?.id) await this.switchDiscussion(view,next,index,{locked:true});
+     else if(next) {view.ctx.discussion={...next};this.updateReadingControls(view);}
+    }
+    return {notice:[grouped || split ? 'Chats grouped by chapter: '+grouped+' moved, '+split+' split. Uncertain turns remain Unassigned.' : '',classificationWarning].filter(Boolean).join(' ') || undefined};
+   } finally {this._discussionLocks.delete(root);}
+  },
   async openLegacyClassification(view) {
    if (this._pending.has(view.ctx.dir) || this._discussionLocks.has(this.discussionRoot(view.ctx))) return;
    const index = await this.discussionIndex(view.ctx); await this.refreshDiscussionChapters(view.ctx, index);
@@ -101,13 +172,13 @@
    const backend = this.readingAgent(); await this.assertAgentReadingReady(backend, "knowledge");
    const container = OS.Path.join(this.discussionRoot(view.ctx), "migration-reviews"); await Zotero.File.createDirectoryIfMissingAsync(container);
    const dir = OS.Path.join(container, this.chatSyncID()); await Zotero.File.createDirectoryIfMissingAsync(dir);
-   const ctx = { ...view.ctx, dir, discussion: { id: "migration-review" }, reading: { ...view.ctx.reading, evidenceMode: "knowledge", currentPage: null } };
+   const ctx = { ...view.ctx, dir, discussion: { id: "migration-review" }, reading: { ...view.ctx.reading, action: "classify", evidenceMode: "knowledge", currentPage: null } };
    // Batches keep migration work bounded. Only unknown ownership is sent;
    // answers provide topic clues, never permission to follow their evidence.
    const unknown = turns.filter(t => !t.chapterID && t.reason !== "User choice");
    for (let offset = 0; offset < unknown.length; offset += 8) {
     const batch = unknown.slice(offset, offset + 8);
-    const question = "Classify these legacy question/answer turns by the chapter the USER QUESTION IS ABOUT, not the chapter cited as supporting evidence. This is an explicit migration inspection, separate from all reading chats. Use only the supplied excerpts and verified chapter headings. Never infer a chapter from a theorem number or printed page without a verified mapping. If uncertain return null. Do not open files or use tools. Return only JSON {\"assignments\":[{\"key\":\"turn-key\",\"chapterID\":\"verified-id or null\"}]}.\n" + JSON.stringify({ chapters: index.chapters.map(({ id, title }) => ({ id, title })), turns: batch.map(t => ({ key: t.key, question: (t.messages.find(m => m.role === "user")?.text || "").slice(0, 8000), answer: t.messages.filter(m => m.role === "assistant").map(m => m.text).join("\n").slice(0, 2000) })) });
+    const question = "Classify these legacy question/answer turns by the chapter the USER QUESTION IS ABOUT, not the chapter cited as supporting evidence. This is an explicit migration inspection, separate from all reading chats. Use only the supplied excerpts and verified chapter headings. Never infer a chapter from a theorem number or printed page without a verified mapping. If uncertain return null. Do not open files or use tools. Return only JSON {\"assignments\":[{\"key\":\"turn-key\",\"chapterID\":\"verified-id or null\"}]}.\n" + JSON.stringify({ chapters: index.chapters.map(({ id, title }) => ({ id, title })), turns: batch.map(t => ({ key: t.key, question: (t.messages.find(m => m.role === "user")?.text || t.subject || "").slice(0, 8000), answer: t.messages.filter(m => m.role === "assistant").map(m => m.text).join("\n").slice(0, 2000) })) });
     const result = await this.runBackend(backend, { ctx, files: {}, history: [], session: null, question, images: [], model: this.getModel(backend), effort: this.getEffort(backend), onProgress() {}, onSpawn() {} });
     if (result.error) throw new Error(result.error);
     const data = this.parseAgentObject(result.text);

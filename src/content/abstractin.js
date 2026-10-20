@@ -1283,10 +1283,12 @@ AbstractIn = {
 			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "abstractin-header-icon"),
 			identity,
 			this.iconButton(doc, "abstractin-history abstractin-chats", "Chats", "chatManager", () => this.openHistoryMenu(root)),
+			this.iconButton(doc, "abstractin-initialize-contents", "Initialize contents", "book", () => this.initializeBookContents(root)),
 			this.iconButton(doc, "abstractin-export-reading", "Export reading summary", "save", () => this.openReadingExport(root)),
 			this.iconButton(doc, "abstractin-open-settings", "Settings", "settings", () => this.openSettings()),
 		);
 
+		header.querySelector(".abstractin-initialize-contents").hidden = true;
 		let log = this.el(doc, "div", "abstractin-log");
 		log.appendChild(this.el(doc, "div", "abstractin-notice", "Loading…"));
 		let logWrap = this.el(doc, "div", "abstractin-log-wrap");
@@ -2345,7 +2347,7 @@ AbstractIn = {
 			send.disabled = !busy && (!!root.querySelector(".abstractin-wizard") || !this.canSend(view));
 		}
 		view.input.disabled = !!root.querySelector(".abstractin-wizard");
-		root.querySelectorAll(".abstractin-prompt-menu, .abstractin-retry, .abstractin-new-chat, .abstractin-start-reading").forEach((button) => {
+		root.querySelectorAll(".abstractin-prompt-menu, .abstractin-retry, .abstractin-new-chat, .abstractin-start-reading, .abstractin-initialize-contents").forEach((button) => {
 			button.disabled = busy;
 		});
 		this.updateReadingGate(view);
@@ -3967,6 +3969,11 @@ AbstractIn = {
 					let saved = await this.saveReadingAction(ctx, pending.readingAction, result.text);
 					result.text = saved.answer; recordKey = saved.key;
 					recordNotice = saved.notice;
+					if (pending.readingAction === "contents" && ctx.discussion) {
+						pending.progress({ status: "Grouping existing chats by chapter" });
+						try { const grouped = await this.regroupBookDiscussions(ctx); if (grouped.notice) recordNotice = [recordNotice, grouped.notice].filter(Boolean).join(' '); }
+						catch (error) { this.logError('automatic chapter grouping',error); recordNotice = [recordNotice,'Contents saved, but some chats could not be grouped: '+(error.message || error)+'. Use Reinitialize contents to retry.'].filter(Boolean).join(' '); }
+					}
 				}
 				catch (e) { if (pending.readingAction === "contents") return { error: e.message || String(e) }; result.text = this.readingVisibleText(result.text); recordWarning = e.message || String(e); }
 				if (recordKey) meta.recordKey = recordKey;

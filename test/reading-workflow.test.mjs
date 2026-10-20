@@ -902,3 +902,17 @@ test('final evidence validation failure is a retryable initialization error rath
  assert.match(result.error,/incomplete/);assert.equal(result.recordKey,undefined);assert.equal(notes.length,0);
  assert.equal((await p.loadHistory(ctx.dir)).length,0);
 });
+
+
+test('the book contents header button initializes after reading has started and can reinitialize saved contents',async()=>{
+ const {plugin:p,view,ctx,response}=await setup();ctx.reading.contentsAttempted=true;
+ p.renderMessages(view,[{role:'user',text:'Already reading'},{role:'assistant',text:'An existing answer'}]);
+ const button=view.root.querySelector('.abstractin-initialize-contents');assert.equal(button.hidden,false);assert.equal(button.title,'Initialize contents');
+ view.input.value='Keep this unsent draft';const calls=[];p.startRequest=async(...args)=>{calls.push(args);};
+ button.click();await new Promise(resolve=>setTimeout(resolve,0));
+ assert.equal(calls.length,1);assert.equal(calls[0][4].readingAction,'contents');assert.equal(p._drafts.get(ctx.dir).text,'Keep this unsent draft');
+ await p.saveReadingAction(ctx,'contents',response);p.updateReadingControls(view);
+ assert.equal(button.title,'Reinitialize contents');button.click();await new Promise(resolve=>setTimeout(resolve,0));assert.equal(calls.length,2);
+ p._pending.set(ctx.dir,{});p.updateReadingControls(view);assert.equal(button.disabled,true);await p.initializeBookContents(view.root);assert.equal(calls.length,2);p._pending.clear();
+ ctx.reading.type='paper';p.updateReadingControls(view);assert.equal(button.hidden,true);
+});

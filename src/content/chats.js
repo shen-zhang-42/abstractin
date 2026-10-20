@@ -223,13 +223,17 @@
     const record = data.discussion;
     const existing = index.chats.find(c => c.id === data.discussionID);
     if (existing) {
+     if(Number.isFinite(record.autoGroupedAt) && record.autoGroupedAt > (existing.autoGroupedAt || 0) && Number.isInteger(record.number) && record.number > 0) {
+      if(data.chapter?.id===record.chapterID && !index.chapters.some(chapter=>chapter.id===data.chapter.id)) index.chapters.push(data.chapter);
+      if(!record.chapterID || index.chapters.some(chapter=>chapter.id===record.chapterID)) Object.assign(existing,{chapterID:record.chapterID || null,number:record.number,numberHistory:record.numberHistory || [],autoGroupedAt:record.autoGroupedAt});
+     }
      if (record.deletedAt) existing.deletedAt = record.deletedAt;
      if (record.supersededBy) existing.supersededBy = record.supersededBy;
      continue;
     }
     if (!Number.isInteger(record.number) || record.number < 1) continue;
     if (data.chapter && !index.chapters.some(c => c.id === data.chapter.id)) index.chapters.push(data.chapter);
-    index.chats.push({ id: record.id, chapterID: record.chapterID || null, number: record.number, topic: String(record.topic || "discussion"), ...(record.initialization ? { initialization: true } : {}), ...(record.initializationPlacementManual ? { initializationPlacementManual: true } : {}), ...(record.topicManual ? { topicManual: true } : {}), ...(record.topicQuestions ? { topicQuestions: record.topicQuestions } : {}), createdAt: record.createdAt || data.updatedAt, updatedAt: data.updatedAt, ...(record.numberingRevision ? { numberingRevision: record.numberingRevision } : {}), ...(record.numberHistory ? { numberHistory: record.numberHistory } : {}), ...(record.mergedFrom ? { mergedFrom: record.mergedFrom } : {}), ...(record.deletedAt ? { deletedAt: record.deletedAt } : {}), ...(record.supersededBy ? { supersededBy: record.supersededBy } : {}) });
+    index.chats.push({ id: record.id, chapterID: record.chapterID || null, number: record.number, topic: String(record.topic || "discussion"), ...(record.autoGroupedAt ? {autoGroupedAt:record.autoGroupedAt} : {}), ...(record.autoGroupingKey ? {autoGroupingKey:record.autoGroupingKey,autoGroupedFrom:record.autoGroupedFrom} : {}), ...(record.initialization ? { initialization: true } : {}), ...(record.initializationPlacementManual ? { initializationPlacementManual: true } : {}), ...(record.topicManual ? { topicManual: true } : {}), ...(record.topicQuestions ? { topicQuestions: record.topicQuestions } : {}), createdAt: record.createdAt || data.updatedAt, updatedAt: data.updatedAt, ...(record.numberingRevision ? { numberingRevision: record.numberingRevision } : {}), ...(record.numberHistory ? { numberHistory: record.numberHistory } : {}), ...(record.mergedFrom ? { mergedFrom: record.mergedFrom } : {}), ...(record.deletedAt ? { deletedAt: record.deletedAt } : {}), ...(record.supersededBy ? { supersededBy: record.supersededBy } : {}) });
     const container = OS.Path.join(this.discussionRoot(ctx), "discussions"); await Zotero.File.createDirectoryIfMissingAsync(container);
     await Zotero.File.createDirectoryIfMissingAsync(OS.Path.join(container, record.id));
    }

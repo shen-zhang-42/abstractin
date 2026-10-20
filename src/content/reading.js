@@ -501,6 +501,22 @@ Object.assign(AbstractIn, {
 		return text;
 	},
 
+	async initializeBookContents(root) {
+		const view = this._views.get(root);
+		if (!view?.ctx.reading || view.ctx.reading.type !== 'book' || root._initializingContents) return;
+		const documentDir = this.discussionRoot(view.ctx);
+		if (this._discussionLocks.has(documentDir) || [...this._pending.keys()].some(dir => this.discussionRoot(this._chatContexts.get(dir) || {dir}) === documentDir)) return;
+		root._initializingContents = true; this.updateReadingControls(view);
+		try {
+			if (view.historyBrowser) await this.returnFromHistoryBrowser(view);
+			if (this._views.get(root)!==view || !root.isConnected) return;
+			if (view.input.value) {this._drafts.set(view.ctx.dir,{text:view.input.value,selection:view.draftSelection?.selection,send:false});view.input.value='';this.autoGrow(view.input);}
+			root.querySelector('.abstractin-panel')?.remove();
+			await this.startRequest(view,'Initialize the actual book contents without chapter summaries.',[],[],{readingAction:'contents'});
+		} catch (error) { this.appendError(view,error.message || String(error)); }
+		finally { delete root._initializingContents; const active=this._views.get(root);if(active)this.updateReadingControls(active); }
+	},
+
 	updateReadingGate(view) {
 		if (!view.ctx.paperItem && !view.ctx.attachmentItem) {
 			view.root.querySelector(".abstractin-composer").hidden = false;
@@ -540,6 +556,15 @@ Object.assign(AbstractIn, {
 			button.title = label;
 			button.setAttribute("aria-label", label);
 			button.hidden = !!reading || !!view.readingSetup || view.root.dataset.chatting === "true";
+		}
+		const initialize=view.root.querySelector('.abstractin-initialize-contents');
+		if (initialize) {
+			initialize.hidden=reading?.type!=='book' || !!view.readingSetup;
+			const saved=reading?.type==='book' && view.ctx.paperItem && this.readingArtifactNotes(view.ctx,'Contents').length;
+			initialize.title=saved ? 'Reinitialize contents' : 'Initialize contents';
+			initialize.setAttribute('aria-label',initialize.title);
+			const documentDir=this.discussionRoot(view.ctx);
+			initialize.disabled=!!view.root._initializingContents || this._discussionLocks.has(documentDir) || [...this._pending.keys()].some(dir=>this.discussionRoot(this._chatContexts.get(dir) || {dir})===documentDir);
 		}
 		let tools = view.root.querySelector(".abstractin-reading-tools");
 		if (tools) tools.hidden = !reading;

@@ -1024,6 +1024,7 @@ test("initialization actions reuse one dedicated chat and ordinary questions lea
  p.prepareCurrentReadingPage = p.prepareContentsSource = async () => {};
  p.runContentsInitialization = (backend,request) => p.runBackend(backend,request);
  p.saveReadingAction = async (_ctx,_action,text) => ({answer:text});
+ let regrouped=0;p.regroupBookDiscussions=async()=>{regrouped++;return {};};
  p.exportReadingWorkspace = p.exportReadingRecords = async () => '';
  p.agentReadingContext = async () => '';
  await send('Initialize the actual book contents without chapter summaries.', { readingAction: 'contents' });
@@ -1047,7 +1048,7 @@ test("initialization actions reuse one dedicated chat and ordinary questions lea
  await p.returnFromHistoryBrowser(view);
  await p.newChat(view.root);
  assert.notEqual(view.ctx.discussion.chapterID, 'initialization');
- assert.ok(requests.length >= 3);
+ assert.ok(requests.length >= 3);assert.equal(regrouped,2,'each successful initialization triggers grouping');
 });
 
 test("old mixed unassigned chats migrate initialization pairs without losing normal messages or IDs", async () => {
@@ -1223,4 +1224,72 @@ test("overlapping chunked note writes serialize and retain a complete final revi
  await Promise.all([p.saveChatNotes(view.ctx.dir,first),p.saveChatNotes(view.ctx.dir,second)]);
  assert.equal(peak,1);assert.ok(notes.length>2);
  assert.equal(p.chatNoteHistories(view.ctx)[0].history[1].text,second[1].text);
+});
+
+
+test('automatic grouping splits a pre-initialization mixed chat by complete turns while retaining source records and citations',async()=>{
+ const {p,view,ctx,dir}=await setup();const source={...view.ctx.discussion},sourceDir=view.ctx.dir;
+ await p.saveHistory(sourceDir,[{role:'user',text:'Chapter 1: sets',ts:1},{role:'assistant',text:'Set explanation',ts:2},{role:'user',text:'Chapter 2: continuity',ts:3},{role:'assistant',text:'Continuity explanation',ts:4},{role:'user',text:'An unrelated general question',ts:5},{role:'assistant',text:'Uncertain topic',ts:6}]);
+ const before=await readFile(join(sourceDir,'chat.json'),'utf8'),original=JSON.parse(before);
+ const index=await p.discussionIndex(ctx),initialization=await p.initializationDiscussion(ctx,index),active=p.discussionContext(ctx,initialization);view.ctx=active;
+ let suggested=0;p.suggestLegacyChapters=async(_view,_index,turns)=>{suggested++;assert.ok(turns.some(turn=>!turn.chapterID));};
+ const result=await p.regroupBookDiscussions(active);assert.match(result.notice,/1 split/);assert.equal(suggested,1);
+ const after=await p.discussionIndex(active),old=after.chats.find(chat=>chat.id===source.id);assert.equal(old.supersededBy.length,3);assert.equal(after.active,initialization.id);
+ const visible=p.visibleDiscussions(after).filter(chat=>chat.id!==initialization.id);assert.deepEqual(Array.from(visible,chat=>chat.chapterID).sort(),[null,'ch-01','ch-02'].sort());
+ const restored=[];for(const chat of visible){const history=await p.loadHistory(p.discussionContext(active,chat).dir);assert.equal(history.length,2);restored.push(...history);assert.equal(Object.keys(await p.loadSessions(p.discussionContext(active,chat).dir)).length,0);}
+ assert.deepEqual(restored.map(message=>message.referenceID).sort(),original.map(message=>message.referenceID).sort());
+ assert.equal(await readFile(join(sourceDir,'chat.json'),'utf8'),before);assert.equal(await readFile(join(sourceDir,'before-auto-grouping.json'),'utf8'),JSON.stringify(original));
+ const count=after.chats.length;await p.regroupBookDiscussions(active);assert.equal((await p.discussionIndex(active)).chats.length,count,'repeat grouping does not duplicate chats');
+});
+
+test('automatic grouping moves a single-chapter chat without changing its identity or agent sessions',async()=>{
+ const {p,view,ctx}=await setup();const sourceDir=view.ctx.dir,id=view.ctx.discussion.id;
+ await p.saveHistory(sourceDir,[{role:'user',text:'Chapter 1: sets'},{role:'assistant',text:'Set explanation'}]);await p.saveSessions(sourceDir,{codex:{id:'keep-original-session'}});
+ const index=await p.discussionIndex(ctx),stale=JSON.parse(JSON.stringify(index)),initialization=await p.initializationDiscussion(ctx,index),active=p.discussionContext(ctx,initialization);view.ctx=active;
+ const result=await p.regroupBookDiscussions(active);assert.match(result.notice,/1 moved/);
+ const moved=(await p.discussionIndex(active)).chats.find(chat=>chat.id===id);assert.equal(moved.chapterID,'ch-01');assert.equal(moved.supersededBy,undefined);
+ assert.equal((await p.loadSessions(sourceDir)).codex.id,'keep-original-session');
+ stale.chapters=[];await p.refreshSyncedDiscussionIndex(active,stale);assert.equal(stale.chats.find(chat=>chat.id===id).chapterID,'ch-01','an existing device index receives the new chapter assignment');
+});
+
+test('automatic grouping refuses a busy document before modifying any source chat',async()=>{
+ const {p,ctx,view}=await setup();await p.saveHistory(view.ctx.dir,[{role:'user',text:'Chapter 1: sets'},{role:'assistant',text:'Set explanation'}]);
+ const before=JSON.stringify(await p.discussionIndex(ctx));p._pending.set(view.ctx.dir,{});
+ await assert.rejects(p.regroupBookDiscussions({...ctx,dir:'initialization-request'}),/Wait/);
+ assert.equal(JSON.stringify(await p.discussionIndex(ctx)),before);assert.equal(p._discussionLocks.size,0);
+});
+
+
+test('automatic grouping respects Don’t save and creates no full-transcript backup',async()=>{
+ const {p,view,ctx,window}=await setup();await p.changeNoteSaveMode('none',ctx);
+ const sourceDir=view.ctx.dir;
+ await p.saveHistory(sourceDir,[{role:'user',text:'Chapter 1: transient question'},{role:'assistant',text:'Transient answer'}]);
+ const index=await p.discussionIndex(ctx),initialization=await p.initializationDiscussion(ctx,index),active=p.discussionContext(ctx,initialization);view.ctx=active;
+ await p.regroupBookDiscussions(active);
+ assert.equal(await window.OS.File.exists(join(sourceDir,'before-auto-grouping.json')),false);
+ assert.equal(JSON.parse(await readFile(join(sourceDir,'chat.json'),'utf8')).length,0);
+ assert.equal((await p.loadHistory(sourceDir))[1].text,'Transient answer');
+});
+
+test('an interrupted grouping backup leaves the original chat visible and releases the lock',async()=>{
+ const {p,view,ctx,window}=await setup();const id=view.ctx.discussion.id,sourceDir=view.ctx.dir;
+ await p.saveHistory(sourceDir,[{role:'user',text:'Chapter 1: sets'},{role:'assistant',text:'Set answer'}]);
+ const index=await p.discussionIndex(ctx),initialization=await p.initializationDiscussion(ctx,index),active=p.discussionContext(ctx,initialization);view.ctx=active;
+ const write=window.Zotero.File.putContentsAsync;window.Zotero.File.putContentsAsync=async(path,...args)=>{if(path.endsWith('before-auto-grouping.json'))throw new Error('Backup failed');return write(path,...args);};
+ await assert.rejects(p.regroupBookDiscussions(active),/Backup failed/);
+ const original=(await p.discussionIndex(active)).chats.find(chat=>chat.id===id);
+ assert.equal(original.chapterID,null);assert.equal(original.supersededBy,undefined);assert.equal(p._discussionLocks.size,0);assert.equal((await p.loadHistory(sourceDir))[1].text,'Set answer');
+});
+
+
+test('saved-summary chats can be grouped as whole chats without inventing missing question turns',async()=>{
+ const {p,view,ctx,window}=await setup();const sourceDir=view.ctx.dir,id=view.ctx.discussion.id;
+ await p.saveHistory(sourceDir,[{role:'assistant',text:'Only the durable summary remains.',savedSummary:true}]);
+ p.setPref('documentNoteSaveModes',JSON.stringify({[p.noteDocumentKey(ctx)]:'summary'}));
+ const index=await p.discussionIndex(ctx);index.chats.find(chat=>chat.id===id).topic='Chapter 1: earlier questions';
+ const initialization=await p.initializationDiscussion(ctx,index),active=p.discussionContext(ctx,initialization);view.ctx=active;
+ await p.regroupBookDiscussions(active);
+ assert.equal((await p.discussionIndex(active)).chats.find(chat=>chat.id===id).chapterID,'ch-01');
+ const history=await p.loadHistory(sourceDir);assert.equal(history.length,1);assert.equal(history[0].role,'assistant');assert.equal(history[0].text,'Only the durable summary remains.');
+ assert.equal(await window.OS.File.exists(join(sourceDir,'before-auto-grouping.json')),false);
 });
