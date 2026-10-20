@@ -960,3 +960,48 @@ test('wrapped OCR headings keep exact evidence and cannot cover a different titl
  await assert.rejects(p.saveReadingAction(ctx,'contents','Complete.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',coverage:'Complete',entries})+'</abstractin-workspace>'),/incomplete/);
  assert.equal(notes[0].html,before);
 });
+
+test('OCR heading cleanup restores readable titles, retaining source evidence and existing chapter IDs',async()=>{
+ const {plugin:p,ctx,dir,notes}=await setup();
+ const titles=['V. C o n d itio n a l P r o b a b i l i t i e s a n d M a th e m a tic a l E x p ectatio n s','VI. In d e p e n d e n c e; T h e L aw o f L a r g e N u m b e rs'];
+ const clean=['V. Conditional Probabilities and Mathematical Expectations','VI. Independence; The Law of Large Numbers'];
+ const rows=titles.map((title,index)=>title+' .... '+(47+index*10));
+ await writeFile(join(dir,'source-text.md'),'## PDF page 1; pageIndex 0\nContents\n'+rows.join('\n'));
+ const old={kind:'contents',coverage:'PDF page 1',entries:titles.map((title,index)=>({id:'existing-'+index,title,printedPageLabel:String(47+index*10),evidence:rows[index]}))};
+ await p.saveReadingAction(ctx,'contents','Old directory.\n<abstractin-workspace>'+JSON.stringify(old)+'</abstractin-workspace>');
+ await p.prepareContentsSource(ctx);ctx.reading.action='contents';
+ let calls=0;p.runBackend=async(_,request)=>{
+  calls++;
+  if(calls===1){assert.match(request.question,/Restore normal word spacing/);return{text:'Complete.\n<abstractin-workspace>'+JSON.stringify({...old,entries:old.entries.map((entry,index)=>({...entry,id:'new-'+index}))})+'</abstractin-workspace>'};}
+  assert.match(request.question,/OCR typography pass/);assert.equal(request.session,null);assert.equal(request.history.length,0);
+  return{text:'Corrected.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',entries:clean.map((title,index)=>({id:'ocr-'+index,title,evidence:'must not overwrite source',printedPageLabel:'999'}))})+'</abstractin-workspace>'};
+ };
+ const result=await p.runContentsInitialization('claude',{ctx,question:p.readingActionPrompt(ctx,'contents'),onProgress(){}},{progress(){}});
+ assert.equal(result.error,undefined);assert.equal(calls,2);await p.saveReadingAction(ctx,'contents',result.text);
+ const saved=p.readingArtifactData(notes[0]);assert.equal(saved.entries.length,2);
+ for(let index=0;index<2;index++){
+  assert.equal(saved.entries[index].title,clean[index]);assert.equal(saved.entries[index].id,'existing-'+index);
+  assert.equal(saved.entries[index].evidence,rows[index]);assert.equal(saved.entries[index].printedPageLabel,String(47+index*10));
+ }
+});
+
+test('OCR heading cleanup rejects rewritten words and preserves existing contents on failure',async()=>{
+ const {plugin:p,ctx,notes,response}=await setup();await p.saveReadingAction(ctx,'contents',response);const before=notes[0].html;
+ const entries=[{title:'V. C o n d itio n a l P r o b a b i l i t i e s',printedPageLabel:'47',evidence:'original'}];
+ let calls=0;p.runBackend=async()=>{calls++;return{text:'<abstractin-workspace>'+JSON.stringify({kind:'contents',entries:[{id:'ocr-0',title:'V. Conditional Expectations'}]})+'</abstractin-workspace>'};};
+ const result=await p.repairContentsTitles('claude',{ctx,onProgress(){}},{progress(){}},entries);
+ assert.match(result.error,/could not be verified/);assert.equal(calls,2);assert.equal(entries[0].title,'V. C o n d itio n a l P r o b a b i l i t i e s');assert.equal(notes[0].html,before);
+ const cancelled=await p.repairContentsTitles('claude',{ctx,onProgress(){}},{cancelled:true,progress(){}},entries);
+ assert.equal(cancelled.cancelled,true);assert.equal(calls,2);
+ p.runBackend=async()=>({text:'<abstractin-workspace>'+JSON.stringify({kind:'contents',entries:[{id:'wrong-id',title:entries[0].title}]})+'</abstractin-workspace>'});
+ assert.match((await p.repairContentsTitles('claude',{ctx,onProgress(){}},{progress(){}},entries)).error,/could not be verified/);
+});
+
+
+test('readable OCR titles still navigate to their original spaced chapter headings',async()=>{
+ const {plugin:p,ctx,dir,view}=await setup();
+ const title='V. Conditional Probabilities',raw='V. C o n d itio n a l P r o b a b i l i t i e s';
+ await writeFile(join(dir,'source-text.md'),'## PDF page 1; pageIndex 0\nContents\n'+raw+' .... 47\n## PDF page 2; pageIndex 1\nPreface\n## PDF page 3; pageIndex 2\n'+raw+'\nChapter body.');
+ p.readingPDFApplication=()=>null;let location;p.navigateReading=async(_,value)=>{location=value;};
+ await p.openReadingContentsEntry(view,{title,printedPageLabel:'47'});assert.equal(location.pageIndex,2);
+});

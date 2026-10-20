@@ -615,6 +615,7 @@ Object.assign(AbstractIn, {
 		if (reading.action === "contents") return "AbstractIn book contents initialization. " + this.languageInstruction() +
 			"The plugin reads the original contents pages and supplies their complete text inline in batches. Read every supplied line. No file tools are available or needed. " +
 			"Extract the complete structure without chapter summaries, chapter-body searches, guessed headings or guessed physical page offsets. " +
+			"Restore readable word spacing in titles affected by OCR; preserve letters, digits, heading numbers and language, and keep evidence verbatim. " +
 			"The plugin verifies the entries and saves the authoritative Zotero contents note. Return the abstractin-workspace schema from the action instructions; never emit tool calls or abstractin-record.";
 
 		let source = selection ? {
