@@ -183,21 +183,14 @@ test("native splitter widths update the HTML panel without changing the native p
 	assert.equal(win.ZoteroContextPane.collapsed, true);
 });
 
-test("metadata section remains available even when reader layout supports a dedicated panel", () => {
-	const { plugin: p, document: doc, window: win } = setup();
-	let options;
-	win.Zotero.ItemPaneManager = { registerSection(value) { options = value; return "abstractin-section"; } };
-	p.registerPaneSection();
-	let enabled;
-	const item = { isRegularItem: () => true };
-	const setEnabled = value => { enabled = value; };
-	options.onItemChange({ item, doc, tabType: "reader", setEnabled });
-	assert.equal(enabled, true);
-	options.onItemChange({ item, doc, tabType: "library", setEnabled });
-	assert.equal(enabled, true);
-	doc.getElementById("layout").remove();
-	options.onItemChange({ item, doc, tabType: "reader", setEnabled });
-	assert.equal(enabled, true);
+test("reading uses the dedicated panel without registering a native item-pane section", async () => {
+ const { plugin:p,document:doc,a }=setup();
+ assert.equal(p.registerPaneSection,undefined);assert.equal(p.renderReaderPanelLauncher,undefined);
+ p.renderReaderToolbar({reader:a,doc,append:node=>doc.body.append(node)});
+ assert.ok(doc.querySelector('.abstractin-reader-toggle'));
+ await p.openReaderPanel(a);
+ assert.equal(doc.querySelectorAll('.abstractin-root').length,1);
+ assert.ok(doc.querySelector('.abstractin-reader-panel .abstractin-root'));
 });
 
 test("installing into an already loaded PDF restores one visible toolbar entry", async () => {
@@ -211,18 +204,6 @@ test("installing into an already loaded PDF restores one visible toolbar entry",
  p.removeAllReaderPanels(); assert.equal(toolbar.querySelectorAll('.abstractin-reader-toggle').length, 0);
 });
 
-test("reader item section supplies a panel launcher when the new toolbar entry is absent", async () => {
- const { plugin: p, document: doc, window: win, a } = setup();
- let options; win.Zotero.ItemPaneManager = { registerSection(value) { options = value; return 'abstractin-section'; } }; p.registerPaneSection();
- win.Zotero.Reader._readers = [a];
- const body = doc.createElement('div'); doc.body.append(body);
- const item = { id: 11, isRegularItem: () => false, isFileAttachment: () => true };
- let enabled; options.onItemChange({ item, doc, tabType: 'reader', setEnabled: value => { enabled = value; } }); assert.equal(enabled, true);
- p.readerFor = () => a;
- await options.onAsyncRender({ doc, body, item, tabType: 'reader' });
- const button = body.querySelector('button'); assert.match(button.textContent, /Open AbstractIn/);
- button.click(); await Promise.resolve(); assert.equal(doc.querySelector('.abstractin-reader-panel').hidden, false);
-});
 
 test("late toolbar rendering restores an entry and shutdown removes pending observers", async () => {
  const { plugin: p, document: doc, window: win, a } = setup();

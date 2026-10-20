@@ -25,7 +25,7 @@ async function run() {
   const win = Zotero.getMainWindow(), doc = win.document;
   check('main window stylesheet attached', !!doc.querySelector('#abstractin-stylesheet'));
   if (p) {
-   check('native item pane entry registered', !!p.paneID, p.paneID);
+   check('native item pane entry removed', p.paneID == null && typeof p.registerPaneSection === 'undefined');
    const body = p.el(doc, 'div'); doc.documentElement.append(body); p.renderSkeleton(doc, body);
    check('chat can render after startup', !!body.querySelector('.abstractin-root .abstractin-header-icon svg'));
    const loaded = await Promise.all(Object.keys(p.ICON_FILES).map(async name => ({name, loaded: !!(await p.loadIcon(doc, name))})));

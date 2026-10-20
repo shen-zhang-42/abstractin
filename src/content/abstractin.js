@@ -210,7 +210,6 @@ AbstractIn = {
 	version: null,
 	rootURI: null,
 	initialized: false,
-	paneID: null,
 	prefsPaneID: null,
 	_prefObservers: [],
 	_katex: undefined,
@@ -841,61 +840,8 @@ AbstractIn = {
 	},
 
 	// ---------------------------------------------------------------------
-	// Item pane section and settings pane registration
+	// Settings pane registration
 	// ---------------------------------------------------------------------
-
-	registerPaneSection() {
-		this.paneID = Zotero.ItemPaneManager.registerSection({
-			paneID: "abstractin-section",
-			pluginID: this.id,
-			header: {
-				l10nID: "abstractin-item-pane-header",
-				icon: (this.resourceURI || this.rootURI) + "icons/icon16.svg",
-			},
-			sidenav: {
-				l10nID: "abstractin-item-pane-sidenav",
-				icon: (this.resourceURI || this.rootURI) + "icons/icon20.svg",
-			},
-			onInit: () => {
-				this.log("section onInit");
-			},
-			onItemChange: ({ item, tabType, doc, setEnabled }) => {
-				let usable = !!item && (item.isRegularItem() || item.isFileAttachment());
-				// Keep a launcher available even if a reader toolbar event is missed.
-				setEnabled(usable);
-			},
-			onRender: ({ doc, body }) => {
-				try {
-					this.renderSkeleton(doc, body);
-				}
-				catch (e) {
-					this.logError("renderSkeleton", e);
-					body.textContent = "AbstractIn failed to render: " + e;
-				}
-			},
-			onAsyncRender: async ({ doc, body, item, tabType }) => {
-				try {
-					if (tabType === "reader" && this.renderReaderPanelLauncher(doc, body, item)) return;
-					await this.renderContent(doc, body, item);
-				}
-				catch (e) {
-					this.logError("renderContent", e);
-					let logEl = body.querySelector(".abstractin-log");
-					if (logEl) {
-						this.renderReadingRecovery(doc, body, item, null, e);
-					}
-				}
-			},
-		});
-		this.log("registerPaneSection -> paneID=" + this.paneID);
-	},
-
-	unregisterPaneSection() {
-		if (this.paneID) {
-			Zotero.ItemPaneManager.unregisterSection(this.paneID);
-			this.paneID = null;
-		}
-	},
 
 	async registerPrefsPane() {
 		try {
@@ -3529,18 +3475,11 @@ AbstractIn = {
 		if (!item) {
 			return;
 		}
-		let win = Zotero.getMainWindow();
-		win.Zotero_Tabs?.select("zotero-pane");
-		await win.ZoteroPane.selectItem(item.id);
-		// Bring the sidebar section into view once the item pane has rendered it.
-		win.setTimeout(() => {
-			try {
-				win.document.getElementById("zotero-item-details")?.scrollToPane(this.paneID);
-			}
-			catch (e) {
-				this.log("scrollToPane failed: " + e);
-			}
-		}, 300);
+		const attachment = item.isPDFAttachment?.() ? item : await item.getBestAttachment?.();
+		if (!attachment?.isPDFAttachment?.()) throw new Error("Open this document’s PDF to continue the discussion.");
+		const reader = await Zotero.Reader.open(attachment.id);
+		if (reader._initPromise) await reader._initPromise;
+		await this.openReaderPanel(reader);
 	},
 
 	applyJump(view) {

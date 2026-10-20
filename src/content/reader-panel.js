@@ -49,21 +49,6 @@ Object.assign(AbstractIn, {
 		}));
 	},
 
-	renderReaderPanelLauncher(doc, body, item) {
-		let ctx = { paperItem: item?.parentItem || item, attachmentItem: item };
-		let reader = this.readerFor(ctx, doc.defaultView);
-		if (!reader || !this.readerPanelMount(doc)) return false;
-		body.textContent = "";
-		let button = this.el(doc, "button", "abstractin-reading-tool", "Open AbstractIn panel");
-		button.type = "button";
-		button.addEventListener("click", () => this.openReaderPanel(reader).catch(e => {
-			this.logError("reader panel launcher", e);
-			body.append(this.el(doc, "p", "abstractin-notice", e.message || String(e)));
-		}));
-		body.append(button);
-		return true;
-	},
-
 	readerPanelWindow(reader) {
 		return reader._window || Zotero.getMainWindow();
 	},

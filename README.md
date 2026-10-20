@@ -20,14 +20,14 @@ AbstractIn 在 Zotero 的 PDF 阅读器中提供独立的讨论面板。你可�
 1. 安装并登录本地 Codex CLI，确认它能在终端中正常回答问题。
 2. 从 [最新 Release](https://github.com/shen-zhang-42/abstractin/releases/latest) 下载 **`abstractin.xpi`**。
 3. 在 Zotero 中选择 **工具 → 插件 → 齿轮菜单 → 从文件安装插件**，选中 XPI；如有提示，重启 Zotero。
-4. 打开书籍或论文的 PDF，点击阅读器工具栏中的 **AbstractIn** 图标，打开右侧阅读面板。
+4. 打开书籍或论文的 PDF，点击阅读器工具栏中的 **AbstractIn** 图标，打开右侧阅读面板。Zotero 原生条目侧栏不再显示 AbstractIn 区块。
 5. 点击 **`Let's start reading!`**，在同一页检查并修改预填的标题、材料类型和阅读目标（多份 PDF 时同时选择附件），点击一次 **Confirm** 即可开始。
 
 新文档需要完成阅读初始化，输入框和会话管理功能才会开放。已经确认的文档在再次打开时会恢复阅读状态和讨论。安装 XPI 后不需要运行 Codespace，也不需要下载项目源码或安装 Node.js。
 
 当前版本要求 **Zotero 10**；不再维护 Zotero 9 兼容性。设置使用原生「设置 → AbstractIn」面板，小猴子动画使用 animated WebP。
 
-用户自行用 Dropbox 等工具维护的链接 PDF，仍通过 Zotero 解析其真实路径，不要求移入 Zotero 的 storage 文件夹。从文献列表询问论文整体问题时，无需先打开 PDF 或选择页码；插件会提供这篇论文的原文。若云端路径暂时不可读，可使用 Zotero 已打开的同一附件的原文快照。原文件和附件链接不变；只有 Context only 或明确要求不查原文时，才不会读取 PDF。
+用户自行用 Dropbox 等工具维护的链接 PDF，仍通过 Zotero 解析其真实路径，不要求移入 Zotero 的 storage 文件夹。若云端路径暂时不可读，可使用 Zotero 已打开的同一附件的原文快照。原文件和附件链接不变；只有 Context only 或明确要求不查原文时，才不会读取 PDF。
 
 ## 阅读与提问
 
@@ -178,7 +178,7 @@ Context only 即使问题要求查原文也不会访问 PDF，需要查证时请
 
 XPI 可以直接发送给其他人，通过 Zotero 的“从文件安装插件”安装。使用本仓库插件 ID 和更新地址的 AbstractIn 安装可在插件管理中检查更新，也可按 Zotero 自动更新设置升级。
 
-当前版本为 **0.2.85**。原始 Zusia 使用不同的插件 ID；其用户需要先手动安装一次 AbstractIn，之后再通过本项目更新。
+当前版本为 **0.2.86**。原始 Zusia 使用不同的插件 ID；其用户需要先手动安装一次 AbstractIn，之后再通过本项目更新。
 
 ## 数据与隐私
 

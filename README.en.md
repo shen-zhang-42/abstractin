@@ -20,14 +20,14 @@ The plugin works through an AI assistant CLI installed on your computer, with **
 1. Install and sign in to the local Codex CLI. Check that it can answer questions in your terminal.
 2. Download **`abstractin.xpi`** from the [latest release](https://github.com/shen-zhang-42/abstractin/releases/latest).
 3. In Zotero, open **Tools → Plugins → gear menu → Install Add-on From File**, select the XPI, and restart Zotero if prompted.
-4. Open a book or paper PDF and click **AbstractIn** in the reader toolbar to open the panel on the right.
+4. Open a book or paper PDF and click **AbstractIn** in the reader toolbar to open the panel on the right. AbstractIn no longer adds a section to Zotero’s native item pane.
 5. Click **`Let's start reading!`**, confirm the document, material type, and reading goal as prompted, then begin discussing it.
 
 New documents require reading initialization before the composer and chat management become available. Previously confirmed documents restore their reading state and discussions when reopened. Installing the XPI does not require a Codespace, the project source code, or Node.js.
 
 This version requires **Zotero 10**; Zotero 9 compatibility is no longer maintained. Settings use the native Settings → AbstractIn pane, and the marmoset uses animated WebP.
 
-Linked PDFs maintained in Dropbox or another external folder use Zotero's resolved file path and do not need to be moved into Zotero storage. Whole-paper questions from the library pane can use the paper's original text without opening its PDF or selecting a page. If the cloud path is temporarily unreadable, the plugin can use the exact attachment already loaded in Zotero. Original files and attachment links remain unchanged. Context only and explicit no-source requests still prevent PDF access.
+Linked PDFs maintained in Dropbox or another external folder use Zotero's resolved file path and do not need to be moved into Zotero storage. If the cloud path is temporarily unreadable, the plugin can use the exact attachment already loaded in Zotero. Original files and attachment links remain unchanged. Context only and explicit no-source requests still prevent PDF access.
 
 ## Reading and asking questions
 
@@ -178,7 +178,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.85**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.86**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 
