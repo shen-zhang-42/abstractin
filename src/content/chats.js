@@ -148,7 +148,8 @@
     const locations = new Map();
     const walk = async nodes => {
      for (const node of nodes || []) {
-      const chapter = index.chapters.find(c => norm(c.title) === norm(node.title));
+      const matches = index.chapters.filter(c => norm(c.title) === norm(node.title) || this.contentsTitleKey(c.title,false) === this.contentsTitleKey(node.title,false));
+      const chapter = matches.length === 1 ? matches[0] : null;
       if (chapter && node.dest) {
        const dest = typeof node.dest === "string" ? await pdf.getDestination(node.dest) : node.dest;
        const ref = dest?.[0], page = Number.isInteger(ref) ? ref : ref ? await pdf.getPageIndex(ref) : null;
@@ -300,8 +301,16 @@
   },
   resolveDiscussionChapter(ctx, index, question, selection, location) {
    if (ctx.reading.type !== "book") return { chapterID: null };
+   const currentChapter = index.chapters.find(chapter => chapter.id === ctx.discussion?.chapterID)?.id || null;
+   const routePage = pageIndex => {
+    const chapterID = this.chapterAtPage(index, pageIndex) || currentChapter;
+    // A missing physical-page range does not invalidate the chapter already
+    // chosen for this discussion. This fallback groups chats only; it does not
+    // create a page mapping or authorize source access to another chapter.
+    return { chapterID, ambiguous: !chapterID };
+   };
    const page = selection?.position?.pageIndex ?? selection?.pageIndex;
-   if (Number.isInteger(page)) return { chapterID: this.chapterAtPage(index, page), ambiguous: !this.chapterAtPage(index, page) };
+   if (Number.isInteger(page)) return routePage(page);
    // The question's subject wins over the location of supporting evidence.
    if (this.requestsReadingSource(question) && /(?:这里|此处|这一步|上述|\bhere\b|\bthis\b)/i.test(question)) return { chapterID: ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? null : ctx.discussion.chapterID };
    const explicit = question.match(/\bchapter\s+(\d+)\b|第\s*(\d+)\s*章|\bappendix\s+([A-Z]|\d+)\b|附录\s*([A-Z]|\d+)/i);
@@ -314,7 +323,7 @@
    const named = index.chapters.filter(c => c.title.length > 3 && question.toLowerCase().includes(c.title.toLowerCase()));
    if (named.length === 1) return { chapterID: named[0].id };
    const local = /(?:这里|此处|这页|这一页|当前页|当前章节|这一步|\bhere\b|\bthis\s+(?:page|chapter|step|proof|equation)\b)/i.test(question);
-   if (local && !ctx.reading.referenceNavigation) return { chapterID: this.chapterAtPage(index, location?.pageIndex), ambiguous: !this.chapterAtPage(index, location?.pageIndex) };
+   if (local && !ctx.reading.referenceNavigation) return routePage(location?.pageIndex);
    return { chapterID: ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? null : ctx.discussion.chapterID };
   },
   chooseDiscussionChapter(view, index, { forMove = false } = {}) {

@@ -1293,3 +1293,42 @@ test('saved-summary chats can be grouped as whole chats without inventing missin
  const history=await p.loadHistory(sourceDir);assert.equal(history.length,1);assert.equal(history[0].role,'assistant');assert.equal(history[0].text,'Only the durable summary remains.');
  assert.equal(await window.OS.File.exists(join(sourceDir,'before-auto-grouping.json')),false);
 });
+
+
+test('an explicitly chosen chapter is reused for unmapped selections and local follow-up questions',async()=>{
+ const {p,view,toc,send,requests}=await setup();
+ for(const entry of toc.entries)entry.pageIndex=null;
+ const index=await p.discussionIndex(view.ctx);for(const chapter of index.chapters){chapter.pageIndex=null;chapter.endPageIndex=null;}await p.writeDiscussionIndex(view.ctx,index);
+ const selection={attachmentID:7,position:{pageIndex:7},text:'Selected passage'};
+ const first=p.startRequest(view,'Explain this page',[],[],{selection});
+ for(let i=0;i<60 && !view.root.querySelector('.abstractin-chapter-choice');i++)await new Promise(resolve=>setTimeout(resolve,5));
+ const choice=[...view.root.querySelectorAll('.abstractin-chapter-choice button')].find(button=>button.textContent.includes('2 Continuity'));
+ assert.ok(choice);choice.click();await first;const pending=p._pending.get(view.ctx.dir);if(pending)await pending.promise;
+ const chatID=view.ctx.discussion.id,thread=(await p.loadSessions(view.ctx.dir)).codex.id;
+ assert.equal(view.ctx.discussion.chapterID,'ch-02');
+ p.chooseDiscussionChapter=async()=>{throw new Error('The chapter must not be requested again');};
+ await send('Explain this step',{selection});await send('Explain this page');
+ assert.equal(view.ctx.discussion.id,chatID);assert.equal(view.ctx.discussion.chapterID,'ch-02');assert.equal(requests.length,3);
+ assert.equal((await p.loadSessions(view.ctx.dir)).codex.id,thread);
+ const current=await p.discussionIndex(view.ctx);assert.equal(current.chapters.find(chapter=>chapter.id==='ch-02').pageIndex,null);
+ const stale={...view.ctx,discussion:{...view.ctx.discussion,chapterID:'missing-chapter'}};
+ assert.equal(p.resolveDiscussionChapter(stale,current,'Explain this page',selection,{pageIndex:7}).ambiguous,true);
+ assert.equal(p.resolveDiscussionChapter(view.ctx,current,'Chapter 99: explain',null,null).ambiguous,true);
+ // A verified destination still overrides the current discussion.
+ current.chapters.find(chapter=>chapter.id==='ch-01').pageIndex=0;current.chapters.find(chapter=>chapter.id==='ch-01').endPageIndex=3;
+ assert.equal(p.resolveDiscussionChapter(view.ctx,current,'Explain this step',{pageIndex:2},null).chapterID,'ch-01');
+});
+
+test('chapter page mapping tolerates OCR letter spacing in PDF bookmarks and rejects duplicate headings',async()=>{
+ const {p,view,toc}=await setup();
+ toc.entries=[{id:'ch-05',title:'V. Conditional Probabilities',pageIndex:null},{id:'ch-06',title:'VI. Independence',pageIndex:null}];
+ p.readingPDFApplication=()=>({pdfDocument:{numPages:30,getOutline:async()=>[
+  {title:'V. C o n d itio n a l P r o b a b i l i t i e s',dest:[10]},
+  {title:'VI. In d e p e n d e n c e',dest:[20]}
+ ]}});
+ const index={chapters:[],chats:[]};await p.refreshDiscussionChapters(view.ctx,index);
+ assert.equal(p.chapterAtPage(index,12),'ch-05');assert.equal(p.chapterAtPage(index,22),'ch-06');
+ const duplicates={chapters:[{id:'first',title:'V. Conditional Probabilities',order:0},{id:'second',title:'V. Conditional Probabilities',order:1}],chats:[]};
+ toc.entries=[];await p.refreshDiscussionChapters(view.ctx,duplicates);
+ assert.equal(duplicates.chapters[0].pageIndex,undefined);assert.equal(duplicates.chapters[1].pageIndex,undefined);
+});
