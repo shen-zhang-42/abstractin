@@ -1005,3 +1005,24 @@ test('readable OCR titles still navigate to their original spaced chapter headin
  p.readingPDFApplication=()=>null;let location;p.navigateReading=async(_,value)=>{location=value;};
  await p.openReadingContentsEntry(view,{title,printedPageLabel:'47'});assert.equal(location.pageIndex,2);
 });
+
+
+test('OCR-corrected unpaged chapter headings retain verified evidence alongside complete numbered sections',async()=>{
+ const {plugin:p,ctx,dir,notes}=await setup();
+ const raw='V. C o n d itio n a l P r o b a b i l i t i e s',title='V. Conditional Probabilities';
+ const source='## PDF page 1; pageIndex 0\nContents\n'+raw+'\n§ 1. Conditional probabilities .... 47\n§ 2. Borel paradox .... 50';
+ await writeFile(join(dir,'source-text.md'),source);await p.prepareContentsSource(ctx);
+ assert.equal(ctx.reading.contentsPlan.expected.length,2);
+ const data={kind:'contents',coverage:'Complete contents page',entries:[{id:'ch-05',title,printedPageLabel:null,evidence:raw},...ctx.reading.contentsPlan.expected.map(entry=>({...entry,evidence:entry.line}))]};
+ const envelope=()=> 'Complete.\n<abstractin-workspace>'+JSON.stringify(data)+'</abstractin-workspace>';
+ await p.saveReadingAction(ctx,'contents',envelope());
+ let saved=p.readingArtifactData(notes[0]);assert.equal(saved.entries.length,3);assert.equal(saved.entries[0].title,title);assert.equal(saved.entries[0].evidence,raw);assert.equal(saved.complete,true);
+ // Recover verbatim evidence even if the agent incorrectly cleans its quotation too.
+ data.entries[0].evidence=title;await p.saveReadingAction(ctx,'contents',envelope());
+ saved=p.readingArtifactData(notes[0]);assert.equal(saved.entries[0].evidence,raw);assert.equal(saved.entries[0].id,'ch-05');
+ // Word substitutions remain unverified even when every required row is present.
+ const before=notes[0].html;data.entries[0].title='V. Conditional Expectations';data.entries[0].evidence=raw;
+ await assert.rejects(p.saveReadingAction(ctx,'contents',envelope()),error=>{
+  assert.match(error.message,/1 returned entries could not be verified/);assert.match(error.message,/Conditional Expectations/);assert.doesNotMatch(error.message,/0 source entries/);return true;
+ });assert.equal(notes[0].html,before);
+});

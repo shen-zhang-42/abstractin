@@ -531,12 +531,19 @@ Object.assign(AbstractIn, {
 			let prior = this.readingArtifactData(this.readingArtifactNotes(ctx, "Contents")[0])?.entries || [];
 			let ids = new Set();
 			let verified = [], omitted = 0, unlocated = 0;
+			const rejected=[];
+			const reject=(candidate,reason)=>{ omitted++; if(rejected.length<5)rejected.push((typeof candidate?.title==='string' ? candidate.title.slice(0,160) : '[invalid heading]')+' ('+reason+')'); };
 			for (let candidate of data.entries) {
-				if (!candidate || typeof candidate.title !== "string" || !candidate.title.trim() || candidate.title.length > 600) { omitted++; continue; }
+				if (!candidate || typeof candidate.title !== "string" || !candidate.title.trim() || candidate.title.length > 600) { reject(candidate,'invalid title'); continue; }
 				let entry = { ...candidate, title: candidate.title.trim(), pageIndex: candidate.pageIndex ?? null, printedPageLabel: candidate.printedPageLabel ?? null };
 				let title = normalize(entry.title);
-				if (!title) { omitted++; continue; }
-				if (typeof entry.evidence !== "string" || !normalize(entry.evidence).includes(title) || !normalized.includes(normalize(entry.evidence))) {
+				if (!title) { reject(candidate,'empty title'); continue; }
+				// Display titles may have repaired OCR spacing even when an unpaged
+				// chapter heading is absent from the page-labelled expected rows.
+				const titleKey=this.contentsTitleKey(entry.title,false);
+				const evidenceHasTitle=typeof entry.evidence==='string' && (normalize(entry.evidence).includes(title) ||
+					!!titleKey && this.contentsTitleKey(entry.evidence,false)===titleKey);
+				if (!evidenceHasTitle || !normalized.includes(normalize(entry.evidence))) {
 					// Recover the exact quoted contents line when the model reformats
 					// whitespace/dot leaders. Never substitute a guessed heading.
 					entry.evidence = null;
@@ -548,11 +555,11 @@ Object.assign(AbstractIn, {
 					for (let count = 1; count <= 3 && !entry.evidence; count++) {
 						for (let i = 0; i < candidates.length; i++) {
 							let excerpt = candidates.slice(i, i + count).join("\n").trim();
-							if (excerpt.length <= 3000 && normalize(excerpt).includes(title) && normalized.includes(normalize(excerpt))) { entry.evidence = excerpt; break; }
+							if (excerpt.length <= 3000 && (normalize(excerpt).includes(title) || !!titleKey && this.contentsTitleKey(excerpt,false)===titleKey) && normalized.includes(normalize(excerpt))) { entry.evidence = excerpt; break; }
 						}
 					}
 				}
-				if (!entry.evidence) { omitted++; continue; }
+				if (!entry.evidence) { reject(candidate,'no matching source evidence'); continue; }
 				if (entry.printedPageLabel !== null && typeof entry.printedPageLabel !== "string") entry.printedPageLabel = null;
 				let old = prior.find(previous => this.contentsEntryMatches(entry,previous) && !ids.has(previous.id)) ||
 					prior.find(previous => normalize(previous.title) === title && !ids.has(previous.id) && previous.printedPageLabel === entry.printedPageLabel) ||
@@ -574,7 +581,12 @@ Object.assign(AbstractIn, {
 			if (!verified.length) throw new Error("No contents entries could be verified against this PDF text. No contents note was saved; you can still ask about a selected passage or initialize again explicitly.");
 			if (ctx.reading.contentsPlan) {
 				const missing=ctx.reading.contentsPlan.expected.filter(item=>!verified.some(entry=>this.contentsEntryMatches(entry,item)));
-				if (omitted || missing.length) throw new Error('Contents verification is incomplete. '+missing.length+' source entries are missing or unverified. Existing contents were preserved; retry initialization.');
+				if (omitted || missing.length) {
+					const details=[];
+					if (missing.length) details.push(missing.length+' required source entries are missing: '+missing.slice(0,5).map(item=>item.title).join('; ')+'.');
+					if (omitted) details.push(omitted+' returned entries could not be verified: '+rejected.join('; ')+'.');
+					throw new Error('Contents verification is incomplete. '+details.join(' ')+' Existing contents were preserved; retry initialization.');
+				}
 				data.complete=true;
 				data.inspectedContentsPages=ctx.reading.pdfSource?.pageMapping ? ctx.reading.contentsPlan.pages.map(page=>page.index) : [];
 				data.sourceEntryCount=ctx.reading.contentsPlan.expected.length;
