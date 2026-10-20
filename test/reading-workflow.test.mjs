@@ -916,3 +916,47 @@ test('the book contents header button initializes after reading has started and 
  p._pending.set(ctx.dir,{});p.updateReadingControls(view);assert.equal(button.disabled,true);await p.initializeBookContents(view.root);assert.equal(calls.length,2);p._pending.clear();
  ctx.reading.type='paper';p.updateReadingControls(view);assert.equal(button.hidden,true);
 });
+
+
+test('flattened OCR contents split into separate verified rows, including repeated directory pages', async()=>{
+ const {plugin:p,ctx,dir,notes}=await setup();
+ const front="Editor’s No t e ........ . — iii Preface ........ v";
+ const first='§ 1. A x io m s........ 2 § 2. The relation to experimental data....... 3 §3. Notes on terminology....... 5 § 4. Immediate corollaries of the axiom s; conditional proba bilities ; Theorem of Bayes....... 6 § 5. Independence....... 8 § 6. Conditional probabilities as random variables; Markov c h a in s....... 12';
+ const last='§ 1. Conditional probabilities....... 47 § 2. Explanation of a Borel paradox....... 50 § 3. Conditional probabilities with respect to a random vari able ....... 51 § 4. Conditional mathematical expectations....... 52 Appendix—Zero-or-one law in the theory of probability....... 69 Bibliography ....... 71';
+ const source='## PDF page 1; pageIndex 0\nContents\n'+front+'\n'+first+'\n## PDF page 2; pageIndex 1\n'+last+'\n## PDF page 3; pageIndex 2\n'+last;
+ await writeFile(join(dir,'source-text.md'),source);ctx.reading.action='contents';await p.prepareContentsSource(ctx);
+ const expected=ctx.reading.contentsPlan.expected;
+ assert.equal(expected.length,14);assert.equal(ctx.reading.contentsPlan.pages.length,3);
+ assert.equal(expected[0].title,'Editor’s No t e');assert.equal(expected[0].printedPageLabel,'iii');
+ assert.equal(expected[2].title,'§ 1. A x io m s');assert.equal(expected[2].printedPageLabel,'2');
+ const corrections=new Map([['Editor’s No t e',"Editor's Note"],['§ 1. A x io m s','§ 1. Axioms'],['§ 4. Immediate corollaries of the axiom s; conditional proba bilities ; Theorem of Bayes','§ 4. Immediate corollaries of the axioms; conditional probabilities; Theorem of Bayes'],['§ 6. Conditional probabilities as random variables; Markov c h a in s','§ 6. Conditional probabilities as random variables; Markov chains'],['§ 3. Conditional probabilities with respect to a random vari able','§ 3. Conditional probabilities with respect to a random variable']]);
+ let calls=0;p.runBackend=async(_,request)=>{
+  calls++;for(const item of expected)assert.ok(request.question.includes(item.title));
+  const entries=expected.map(item=>({title:corrections.get(item.title)||item.title,printedPageLabel:item.printedPageLabel,evidence:'OCR-normalized quotation'}));
+  return{text:'Complete.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',entries:[...entries,entries[0]]})+'</abstractin-workspace>'};
+ };
+ const result=await p.runContentsInitialization('claude',{ctx,question:'Initialize',onProgress(){}},{progress(){}});
+ assert.equal(result.error,undefined);assert.equal(calls,1);
+ await p.saveReadingAction(ctx,'contents',result.text);
+ const saved=p.readingArtifactData(notes[0]);assert.equal(saved.entries.length,14);assert.equal(saved.complete,true);
+ assert.equal(saved.entries[0].title,"Editor's Note");assert.equal(saved.entries[0].evidence,'Editor’s No t e ........ . — iii');
+ assert.equal(saved.entries[2].evidence,'§ 1. A x io m s........ 2');
+});
+
+test('wrapped OCR headings keep exact evidence and cannot cover a different title or page',async()=>{
+ const {plugin:p,ctx,dir,notes}=await setup();
+ assert.equal(p.contentsEntryMatches({title:'Axioms',printedPageLabel:'2'},{title:'A x io m s',printedPageLabel:'2'}),true);
+ const source='## PDF page 1; pageIndex 0\nContents\nChapter I\n§ 1. Conditional proba-\nbilities as random vari-\nables ....... 12\n§ 2. Independence\n....... 18\nBibliography\n71';
+ await writeFile(join(dir,'source-text.md'),source);await p.prepareContentsSource(ctx);
+ const expected=ctx.reading.contentsPlan.expected;assert.equal(expected.length,3);
+ assert.equal(expected[0].title,'§ 1. Conditional proba- bilities as random vari- ables');
+ const entries=[{title:'§ 1. Conditional probabilities as random variables',printedPageLabel:'12',evidence:'cleaned'}, {title:'§ 2. Independence',printedPageLabel:'18',evidence:'cleaned'}, {title:'Bibliography',printedPageLabel:'71',evidence:'cleaned'}];
+ const response='Complete.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',coverage:'Complete detected contents',entries})+'</abstractin-workspace>';
+ await p.saveReadingAction(ctx,'contents',response);assert.equal(p.readingArtifactData(notes[0]).entries.length,3);
+ assert.equal(p.contentsEntryMatches({...entries[0],title:'Conditional probabilities'},expected[0]),false);
+ assert.equal(p.contentsEntryMatches({...entries[0],printedPageLabel:'13'},expected[0]),false);
+ assert.equal(p.contentsEntryMatches({...entries[0],title:'Conditional expectations as random variables'},expected[0]),false);
+ const before=notes[0].html;entries[0].title='Conditional expectations as random variables';
+ await assert.rejects(p.saveReadingAction(ctx,'contents','Complete.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',coverage:'Complete',entries})+'</abstractin-workspace>'),/incomplete/);
+ assert.equal(notes[0].html,before);
+});

@@ -321,9 +321,9 @@ Object.assign(AbstractIn, {
 		const entry = line => {
 			const value = line.trim();
 			if (!value || /^## PDF page |^# |^\d+$|^[ivxlcdm]+$/i.test(value) || heading.test(value)) return null;
-			const match = value.match(/^(.*?)\s*(?:\.{2,}|[·…]{2,}|\s)\s*([ivxlcdm]+|\d{1,4})\s*$/i);
+			const match = value.match(/^(.*?)\s*(?:(?:[.·…•]\s*){2,}|\s)(?:[—–-]\s*)?([ivxlcdm]+|\d{1,4})\s*$/i);
 			if (!match || !/[\p{L}]/u.test(match[1]) || /^(?:chapter|part|appendix)$/i.test(match[1].trim())) return null;
-			return { line: value, title: match[1].replace(/[.·…\s]+$/g, '').trim(), printedPageLabel: match[2] };
+			return { line: value, title: match[1].replace(/[.·…•\s]+$/g, '').trim(), printedPageLabel: match[2] };
 		};
 		if (!marked.length && pages.length===1) {
 			const lines=pages[0].text.split(/\r?\n/), excerpts=[];
@@ -344,10 +344,25 @@ Object.assign(AbstractIn, {
 			if(excerpts.length)pages[0].text=excerpts.join('\n\n');
 		}
 		for (const page of pages) {
-			page.lines = page.text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-			page.entries = page.lines.map((line,index) => entry(line) ||
-				(/^[ivxlcdm]+$|^\d{1,4}$/i.test(page.lines[index+1] || '') && /[\p{L}]/u.test(line) && !heading.test(line) && !/^## PDF page|^# /.test(line) ?
-				 {line:line+'\n'+page.lines[index+1],title:line,printedPageLabel:page.lines[index+1]} : null)).filter(Boolean);
+			// PDF extraction can flatten several directory rows into one line.
+			// Split only after an explicit dot leader and a complete page label.
+			const rows = page.text.replace(/((?:[.·…•][ \t]*){2,}(?:[—–-]\s*)?(?:[ivxlcdm]+|\d{1,4}))(?=\s+\S)/gi, '$1\n');
+			page.lines = rows.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+			page.entries = [];
+			let pending = [];
+			for (let index=0;index<page.lines.length;index++) {
+				const line=page.lines[index];
+				if (heading.test(line) || /^## PDF page|^# |^(?:chapter|part)\s+(?:[ivxlcdm]+|\d+)\b/i.test(line) && !entry(line)) { pending=[];continue; }
+				// An explicit new numbered heading cannot continue the preceding one.
+				if (/^(?:§\s*\d+|\d+(?:\.\d+)*[.)]?\s)/.test(line)) pending=[];
+				const candidate = entry([...pending,line].join('\n').replace(/\s+/g,' '));
+				if (candidate) {
+					candidate.line=[...pending,line].join('\n');
+					page.entries.push(candidate);pending=[];
+				} else if (/^[ivxlcdm]+$|^\d{1,4}$/i.test(line) && pending.length) {
+					page.entries.push({line:[...pending,line].join('\n'),title:pending.join(' '),printedPageLabel:line});pending=[];
+				} else if (/[\p{L}]/u.test(line)) pending.push(line);
+			}
 			page.heading = heading.test(page.text);
 		}
 		const selected = new Set();
@@ -367,7 +382,12 @@ Object.assign(AbstractIn, {
 			selected.add(next);
 		}
 		const chosen = [...selected].sort((a,b)=>a-b).map(index=>pages[index]);
-		return { pages: chosen.map(page=>({ index:page.index, text:page.text })), expected: chosen.flatMap(page=>page.entries.map(item=>({...item,pageIndex:page.index}))), text: chosen.map(page=>page.text).join("\n\n") };
+		const expected=[], seen=new Set();
+		for (const page of chosen) for (const item of page.entries) {
+			const key=JSON.stringify([this.contentsTitleKey(item.title,false),item.printedPageLabel.toLowerCase()]);
+			if (!seen.has(key)) { seen.add(key);expected.push({...item,pageIndex:page.index}); }
+		}
+		return { pages: chosen.map(page=>({ index:page.index, text:page.text })), expected, text: chosen.map(page=>page.text).join("\n\n") };
 	},
 
 	contentsExcerpt(source) { return this.contentsSourcePlan(source).text; },
@@ -382,12 +402,18 @@ Object.assign(AbstractIn, {
 		await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "contents-source.md"), "# Complete detected contents pages\n\n" + plan.text);
 	},
 
+	contentsTitleKey(value, stripNumber = true) {
+		// OCR introduces spaces inside words and wraps hyphenated words. Keep
+		// every letter/digit; tolerate typography, never substitute different words.
+		let text=String(value || '').normalize('NFKC').toLowerCase().trim();
+		if (stripNumber) text=text.replace(/^(?:(?:chapter|part|appendix|section)\s+|§\s*)?(?:\d+(?:\.\d+)*|[ivxlcdm]+|[a-z])[.():：\s-]+/i,'');
+		return text.replace(/[^\p{L}\p{N}]/gu,'');
+	},
+
 	contentsEntryMatches(entry, expected) {
-		const norm = value => String(value || '').normalize('NFKC').replace(/[\u00ad\u200b]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
-		const strip = value => norm(value).replace(/^(?:(?:chapter|part|appendix)\s+)?(?:\d+(?:\.\d+)*|[ivxlcdm]+|[a-z])[.():：\s-]+/i,'');
-		const title=strip(entry.title), wanted=strip(expected.title);
-		return title && wanted && (title===wanted || title.startsWith(wanted+' ') || wanted.startsWith(title+' ')) &&
-			norm(entry.printedPageLabel)===norm(expected.printedPageLabel);
+		const title=this.contentsTitleKey(entry.title), wanted=this.contentsTitleKey(expected.title);
+		const exact=this.contentsTitleKey(entry.title,false), original=this.contentsTitleKey(expected.title,false);
+		return !!exact && (exact===original || !!title && title===wanted) && String(entry.printedPageLabel ?? '').trim().toLowerCase()===String(expected.printedPageLabel ?? '').trim().toLowerCase();
 	},
 
 	async runContentsInitialization(backend, request, pending) {
@@ -426,7 +452,7 @@ Object.assign(AbstractIn, {
 			if (error) return {error:'Contents initialization is incomplete. '+error+'. Retry initialization; existing contents were preserved.'};
 		}
 		const unique=[];const seen=new Set();
-		for (const entry of entries) { const key=JSON.stringify([entry.title,entry.printedPageLabel]);if(!seen.has(key)){seen.add(key);unique.push(entry);} }
+		for (const entry of entries) { const key=JSON.stringify([this.contentsTitleKey(entry.title,false),String(entry.printedPageLabel ?? '').trim().toLowerCase()]);if(!seen.has(key)){seen.add(key);unique.push(entry);} }
 		return {text:'Complete contents pages inspected.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',entries:unique,coverage:'All '+plan.pages.length+' detected contents pages; '+batches.length+' complete batches inspected.',complete:true})+'</abstractin-workspace>'};
 	},
 
@@ -460,7 +486,8 @@ Object.assign(AbstractIn, {
 			let source = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
 			let normalize = text => text.normalize("NFKC").replace(/[\u00ad\u200b]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
 			let normalized = normalize(source);
-			let candidates = this.contentsExcerpt(source).split(/\r?\n/);
+			const sourcePlan = this.contentsSourcePlan(source);
+			let candidates = sourcePlan.text.split(/\r?\n/);
 			let prior = this.readingArtifactData(this.readingArtifactNotes(ctx, "Contents")[0])?.entries || [];
 			let ids = new Set();
 			let verified = [], omitted = 0, unlocated = 0;
@@ -473,6 +500,11 @@ Object.assign(AbstractIn, {
 					// Recover the exact quoted contents line when the model reformats
 					// whitespace/dot leaders. Never substitute a guessed heading.
 					entry.evidence = null;
+					// A cleaned OCR heading need not occur literally in the source.
+					// Anchor it to an independently parsed row with the same complete
+					// letters and page label, retaining its exact source quotation.
+					const sourceEntry=sourcePlan.expected.find(item=>this.contentsEntryMatches(entry,item) && normalized.includes(normalize(item.line)));
+					if (sourceEntry) entry.evidence=sourceEntry.line;
 					for (let count = 1; count <= 3 && !entry.evidence; count++) {
 						for (let i = 0; i < candidates.length; i++) {
 							let excerpt = candidates.slice(i, i + count).join("\n").trim();
