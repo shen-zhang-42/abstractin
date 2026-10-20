@@ -83,8 +83,6 @@
    if (view.props?.regularOnly) return 'This list hides notes.';
    const rows = this.noteInCollectionRows(view);
    if (rows.some(row => row.isTrash?.())) return 'The trash shows notes individually.';
-   if (rows.some(row => row.searchText || row.advancedSearch || row.type === 'search') ||
-       (!rows.some(row => row.type) && (view._searchMode || view.rowProvider?._searchMode))) return 'Search results show notes individually.';
    return '';
   },
   async scanNoteIn() {
@@ -194,47 +192,70 @@
    const plugin = this, modern = !!view.rowProvider, provider = modern ? view.rowProvider : view;
    const mapName = modern ? 'refreshRowMap' : '_refreshRowMap';
    if (typeof provider[mapName] !== 'function') throw new Error('Unsupported Zotero item-tree row map. Native notes are unchanged.');
-   const opened = new Set(), stored = new Map(), undo = []; let active = true, transforming = false;
+   const opened = new Set(), stored = new Map(), injected = new WeakSet(), undo = []; let active = true, transforming = false, lastOutput = null, scope = null;
    const patch = (object, name, wrap) => {
     if (typeof object[name] !== 'function') return;
     const own = Object.getOwnPropertyDescriptor(object, name), original = object[name], replacement = wrap(original);
     object[name] = replacement;
     undo.push(() => { if (object[name] === replacement) { if (own) Object.defineProperty(object, name, own); else delete object[name]; } });
    };
-   // Zotero's search mode also covers Unfiled Items and tag filters. These
-   // still show an ordinary document hierarchy and must support NoteIn.
+   // Group only notes already supplied beneath a document by Zotero. Standalone
+   // note hits stay visible, and unmatched notes are never added to a search.
    const enabled = () => active && !plugin.noteInViewReason(view);
-   const groupAt = index => enabled() ? plugin._noteInAnchors.get(provider._rows[index]?.ref?.id) : null;
+   const groupAt = index => {
+    const group = enabled() && plugin._noteInAnchors.get(provider._rows[index]?.ref?.id);
+    return group && stored.get(group.parent.id)?.size ? group : null;
+   };
    const create = (ref, level) => modern ? provider.createRow(ref, level, false) : { ref, id: ref.treeViewID, level, isOpen: false, getField: (field, plain) => ref.getField(field, plain, true), numNotes: () => 0 };
+   const restoreRows = () => {
+    for (let at = provider._rows.length - 1; at >= 0; at--) {
+     const row = provider._rows[at], cache = stored.get(row.ref?.id);
+     if (!cache || !row.isOpen) continue;
+     let end = at + 1; while (end < provider._rows.length && provider._rows[end].level > row.level) end++;
+     const children = provider._rows.slice(at + 1, end).filter(child => !injected.has(child));
+     const present = new Set(children.map(child => child.ref?.id));
+     for (const [id, child] of cache) if (!child.ref.deleted && child.ref.parentID === row.ref.id && !present.has(id)) children.push(child);
+     for (const child of children) if (cache.has(child.ref?.id)) child.level = row.level + 1;
+     provider._rows.splice(at + 1, end - at - 1, ...children);
+    }
+   };
    const transform = () => {
     if (transforming) return; transforming = true;
     try {
+     const nextScope = JSON.stringify([enabled(), plugin.noteInCollectionRows(view).map(row => [row.id, row.type, row.searchText || '', !!row.advancedSearch, Array.from(row.tags || []).sort()])]);
+     if (scope !== nextScope) { if (provider._rows === lastOutput) restoreRows(); stored.clear(); scope = nextScope; }
+     else if (provider._rows !== lastOutput) stored.clear();
      const input = provider._rows, output = [];
      for (let at = 0; at < input.length;) {
       const row = input[at], group = enabled() && row.ref?.isRegularItem?.() && row.isOpen ? plugin._noteInGroups.get(row.ref.id) : null;
       if (!group) { output.push(row); at++; continue; }
       let end = at + 1; while (end < input.length && input[end].level > row.level) end++;
-      const children = input.slice(at + 1, end), anchorRow = children.find(r => r.ref?.id === group.anchor.id);
-      if (!anchorRow) { output.push(...input.slice(at, end)); at = end; continue; }
+      const children = input.slice(at + 1, end);
+      let anchorRow = children.find(r => r.ref?.id === group.anchor.id);
       const ids = new Set(group.notes.filter(n => !n.deleted && n.parentID === group.parent.id).map(n => n.id));
       const cache = stored.get(group.parent.id) || new Map();
       for (const child of children) if (ids.has(child.ref?.id)) cache.set(child.ref.id, child);
       for (const id of [...cache.keys()]) if (!ids.has(id)) cache.delete(id);
       stored.set(group.parent.id, cache);
+      if (!anchorRow && cache.size) {
+       anchorRow = create(group.anchor, row.level + 1); injected.add(anchorRow);
+       const first = children.findIndex(child => ids.has(child.ref?.id));
+       children.splice(first < 0 ? children.length : first, 0, anchorRow);
+      }
       output.push(row);
       for (const child of children) {
        if (ids.has(child.ref?.id)) continue;
        output.push(child);
        if (child !== anchorRow) continue;
        child.isOpen = opened.has(group.anchor.id);
-       if (child.isOpen) for (const note of group.notes) if (ids.has(note.id)) {
+       if (child.isOpen) for (const note of group.notes) if (ids.has(note.id) && cache.has(note.id)) {
         const nested = cache.get(note.id) || create(note, row.level + 2); nested.level = row.level + 2;
         cache.set(note.id, nested); output.push(nested);
        }
       }
       at = end;
      }
-     provider._rows = output;
+     provider._rows = output; lastOutput = output;
     } finally { transforming = false; }
    };
    patch(provider, mapName, original => function(...args) { transform(); return original.apply(this, args); });
@@ -256,7 +277,7 @@
    };
    for (const name of ['isContainer', 'isContainerEmpty', 'isContainerOpen']) patch(view, name, original => function(index, ...args) {
     const group = groupAt(index);
-    return group ? name === 'isContainer' ? true : name === 'isContainerEmpty' ? group.notes.length === 0 : opened.has(group.anchor.id) : original.call(this, index, ...args);
+    return group ? name === 'isContainer' ? true : name === 'isContainerEmpty' ? !stored.get(group.parent.id)?.size : opened.has(group.anchor.id) : original.call(this, index, ...args);
    });
    const toggleName = modern ? 'onToggleOpenState' : 'toggleOpenState';
    patch(view, toggleName, original => function(index, ...args) { if (toggle(index)) return modern ? undefined : Promise.resolve(); return original.call(this, index, ...args); });
@@ -297,7 +318,7 @@
      element.classList.toggle('abstractin-notein-row', !!group);
      if (group) {
       element.dataset.abstractinNoteIn = 'true';
-      element.setAttribute('aria-label', 'NoteIn, ' + group.notes.length + ' notes'); element.setAttribute('aria-expanded', String(opened.has(group.anchor.id)));
+      element.setAttribute('aria-label', 'NoteIn, ' + stored.get(group.parent.id).size + ' notes'); element.setAttribute('aria-expanded', String(opened.has(group.anchor.id)));
       const icon = element.querySelector('.cell-icon');
       if (icon) {
        const folder = element.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -317,15 +338,8 @@
    projectProps(); refresh();
    return { refresh, toggle, provider, opened, dispose() {
     active = false;
-    // Put every hidden row back under its actual parent before removing hooks.
-    for (let at = provider._rows.length - 1; at >= 0; at--) {
-     const row = provider._rows[at], cache = stored.get(row.ref?.id);
-     if (!cache || !row.isOpen) continue;
-     let end = at + 1; while (end < provider._rows.length && provider._rows[end].level > row.level) end++;
-     const present = new Set(provider._rows.slice(at + 1, end).map(r => r.ref?.id));
-     for (const [id, child] of cache) if (!child.ref.deleted && child.ref.parentID === row.ref.id && !present.has(id)) { child.level = row.level + 1; provider._rows.splice(end++, 0, child); }
-     for (let index = at + 1; index < end; index++) if (cache.has(provider._rows[index].ref?.id)) provider._rows[index].level = row.level + 1;
-    }
+    // Restore only rows that belonged to the current native result set.
+    restoreRows();
     for (const restore of undo.reverse()) restore();
     if (tree.props === lastProps) tree.props = lastNativeProps;
     for (const row of provider._rows) if (plugin._noteInAnchors.has(row.ref?.id)) row.isOpen = false;

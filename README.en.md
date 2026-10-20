@@ -97,7 +97,7 @@ New reading setup shows the prefilled title, material type and optional goal tog
 
 **NoteIn** is a collapsed virtual group under each document. On startup, AbstractIn automatically organizes its existing reading notes and saved conversations; newly saved notes join the same group. Legacy plugin notes whose titles start with `AbstractIn — ` are also organized automatically, without a button. Original note IDs, content, parent items and storage locations remain unchanged, and ordinary Zotero notes stay in place. One small NoteIn index note provides the group entry rather than a real subfolder. Notes explicitly marked as belonging to another document are excluded, and read-only libraries receive no index changes.
 
-Expand the document and then **NoteIn** to view the notes. Unfiled Items and tag filters support grouping; actual text search results and trash retain Zotero's native layout. Disabling AbstractIn restores the flat note list.
+Expand the document and then **NoteIn** to view the notes. Unfiled Items, tag filters, text searches and saved searches support grouping beneath documents. Search views group only notes already present in the result, without adding unmatched notes. Standalone note hits without a parent document row and trash retain Zotero's native layout. Disabling AbstractIn restores the flat note list.
 
 Use **Export reading summary** in the reading header to export a book or paper digest. Books are organized by chapter; equivalent questions across chats and related explanations are consolidated. Verified original numbering is preserved where possible; supplementary points receive separate S numbers. The selected agent can request original passages to verify uncertainty and fill relevant gaps, marking unresolved claims. Generation discloses plan/API usage and provides a Markdown preview and save dialog. Existing chats and notes remain unchanged.
 
@@ -178,7 +178,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-The current version is **0.2.82**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+The current version is **0.2.83**. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

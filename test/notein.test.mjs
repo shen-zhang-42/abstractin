@@ -69,10 +69,10 @@ test('new owned notes join the group and deleted notes do not reappear from the 
  adapter.dispose(); assert.ok(!provider._rows.some(r => r.ref === chat));
 });
 
-test('search and trash views keep ordinary native rows instead of hiding note matches', async () => {
+test('search groups plugin notes while switching to trash restores native rows', async () => {
  const f = fixture(), { p, view, provider } = f; await p.organizeNoteInParent(1); f.populate();
  view._searchMode = true; const adapter = p.installNoteInTree(view);
- assert.equal(provider._rows.length, f.items.size);
+ assert.equal(provider._rows.length, f.items.size - 2);
  view._searchMode = false; view.collectionTreeRow.isTrash = () => true; adapter.refresh(); assert.equal(provider._rows.length, f.items.size);
  adapter.dispose();
 });
@@ -132,12 +132,15 @@ for (const type of ['unfiled', 'library', 'collection']) test(`Zotero 10 ${type}
  adapter.dispose();
 });
 
-test('a real text query keeps original note matches visible', async () => {
+test('a real text query groups document notes and selecting a note opens NoteIn', async () => {
  const f = fixture(true), { p, view, provider } = f;
  await p.organizeNoteInParent(1); f.populate();
  view.collectionTreeRows = [{ type: 'library', searchText: 'Earlier' }]; provider._searchMode = true;
  const adapter = p.installNoteInTree(view);
- assert.ok(provider._rows.some(row => row.ref === f.chat));
+ assert.ok(!provider._rows.some(row => row.ref === f.chat));
+ await view.selectItems([f.chat.id]);
+ assert.ok(provider._rows.some(row => row.ref === f.chat && row.level === 2));
+ assert.equal(view.getSelectedObjects()[0], f.chat);
  adapter.dispose();
 });
 
@@ -154,4 +157,45 @@ test('switching Zotero 10 lists reconnects the adapter before grouping is displa
  assert.ok(!second.provider._rows.some(row => row.ref.id === first.chat.id), 'new list hides grouped notes');
  assert.ok(second.provider._rows.some(row => row.ref.id === anchor.id));
  state.adapter.dispose(); p._noteInWindows.clear();
+});
+
+
+for (const options of [{type:'library',searchText:'Book title'}, {type:'search',advancedSearch:true}]) test('Zotero 10 search inserts a virtual NoteIn entry when the anchor is not a hit: '+options.type,async()=>{
+ const f=fixture(true),{p,view,provider,parent,chat,reading,ordinary}=f;
+ await p.organizeNoteInParent(1);const anchor=p._noteInGroups.get(1).anchor;
+ view.collectionTreeRows=[options];provider._searchMode=true;
+ // Native results include one plugin note under the book; neither the managed
+ // anchor nor the other plugin note matched the query.
+ provider._rows=[f.row(parent,0),f.row(ordinary,1),f.row(chat,1)];
+ const original=provider._rows.map(row=>row.ref.id),before=chat.getNote();
+ const adapter=p.installNoteInTree(view);
+ assert.deepEqual(Array.from(provider._rows,row=>row.ref.id),[parent.id,ordinary.id,anchor.id]);
+ adapter.toggle(provider._rows.findIndex(row=>row.ref===anchor));
+ assert.deepEqual(Array.from(provider._rows,row=>[row.ref.id,row.level]),[[parent.id,0],[ordinary.id,1],[anchor.id,1],[chat.id,2]]);
+ assert.ok(!provider._rows.some(row=>row.ref===reading),'unmatched plugin note is not added');
+ adapter.refresh();assert.equal(provider._rows.filter(row=>row.ref===anchor).length,1);
+ adapter.dispose();assert.deepEqual(Array.from(provider._rows,row=>row.ref.id),original);
+ assert.equal(chat.getNote(),before);assert.equal(chat.parentID,parent.id);
+});
+
+test('changing search results discards the previous query’s hidden notes',async()=>{
+ const f=fixture(true),{p,view,provider,parent,chat,reading}=f;
+ await p.organizeNoteInParent(1);const anchor=p._noteInGroups.get(1).anchor;
+ view.collectionTreeRows=[{type:'library',searchText:'first'}];
+ provider._rows=[f.row(parent,0),f.row(chat,1)];const adapter=p.installNoteInTree(view);
+ view.collectionTreeRows[0].searchText='second';
+ provider._rows=[f.row(parent,0),f.row(reading,1)];adapter.refresh();
+ adapter.toggle(provider._rows.findIndex(row=>row.ref===anchor));
+ assert.ok(provider._rows.some(row=>row.ref===reading));assert.ok(!provider._rows.some(row=>row.ref===chat));
+ // A rebuild under the same query must also replace, rather than accumulate, hits.
+ provider._rows=[f.row(parent,0),f.row(chat,1)];adapter.refresh();
+ assert.ok(provider._rows.some(row=>row.ref===chat));assert.ok(!provider._rows.some(row=>row.ref===reading));
+ adapter.dispose();assert.ok(!provider._rows.some(row=>row.ref===anchor));
+});
+
+test('standalone note search hits remain visible without inventing a parent document',async()=>{
+ const f=fixture(true),{p,view,provider,chat,ordinary}=f;await p.organizeNoteInParent(1);
+ view.collectionTreeRows=[{type:'library',searchText:'matching note'}];
+ provider._rows=[f.row(chat,0),f.row(ordinary,0)];const adapter=p.installNoteInTree(view);
+ assert.deepEqual(Array.from(provider._rows,row=>row.ref.id),[chat.id,ordinary.id]);adapter.dispose();
 });
