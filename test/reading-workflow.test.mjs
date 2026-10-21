@@ -965,6 +965,53 @@ test('wrapped OCR headings keep exact evidence and cannot cover a different titl
  assert.equal(notes[0].html,before);
 });
 
+test('native contents separate unpaged chapters from inline sections and preserve split section numbers', async()=>{
+ const {plugin:p,ctx,dir,notes}=await setup();
+ const source='## PDF page 4; pageIndex 3\nContents\n1 I Distribution function 1.1\nMonotone functions   1\n1.2 Distribution functions   7\n2 I Measure theory 2.1   Classes of sets   16\n3 I Random variable. Expectation. Independence\n3\n.1\nGeneral definitions   34\n## PDF page 5; pageIndex 4\nCONTENTS\n5 I Law\nof\nlarge numbers. Random series 5.1\nSimple limit theorems   106\n6 I Characteristic function 6.1\nGeneral properties; convolutions   150\n9   .1   Basic properties of conditional expectation   310';
+ await writeFile(join(dir,'source-text.md'),source);ctx.reading.action='contents';await p.prepareContentsSource(ctx);
+ const expected=ctx.reading.contentsPlan.expected;
+ assert.equal(expected.length,7);
+ assert.equal(expected[0].title,'1.1 Monotone functions');
+ assert.ok(!expected.some(entry=>/I Distribution|I Measure|I Law|I Characteristic/.test(entry.title)),'unpaged chapter headings cannot be glued to subsection entries');
+ const entries=expected.map(entry=>({title:entry.title.replace(/\s*\.\s*/g,'.'),printedPageLabel:entry.printedPageLabel,evidence:entry.line}));
+ entries.unshift({id:'ch-01',title:'1 Distribution function',printedPageLabel:null,evidence:'1 I Distribution function'});
+ p.runBackend=async()=>({text:'Complete.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',entries})+'</abstractin-workspace>'});
+ const result=await p.runContentsInitialization('codex',{ctx,question:'Initialize',onProgress(){}},{progress(){}});
+ assert.equal(result.error,undefined);
+ await p.saveReadingAction(ctx,'contents',result.text);
+ assert.equal(p.readingArtifactData(notes[0]).entries.length,8);
+ assert.ok(p.readingArtifactData(notes[0]).entries.some(entry=>entry.title==='3.1 General definitions'));
+ assert.ok(p.readingArtifactData(notes[0]).entries.some(entry=>entry.title==='9.1 Basic properties of conditional expectation'));
+});
+
+test('running contents headers with roman page labels are not required directory entries',()=>{
+ const {plugin:p}=loadPlugin();
+ const plan=p.contentsSourcePlan('## PDF page 5; pageIndex 4\nvi\nI CONTENTS\n4.3 Vague convergence 84\n## PDF page 6; pageIndex 5\nCONTENTS I vii\n9 .1 Basic properties 310');
+ assert.equal(plan.pages.length,2);
+ assert.equal(plan.expected.length,2);
+ assert.ok(plan.expected.every(entry=>!entry.title.includes('CONTENTS')));
+});
+
+test('OCR letter corrections retain source-derived headings using unique section and page anchors', async()=>{
+ const {plugin:p,ctx,dir,notes}=await setup();
+ await writeFile(join(dir,'source-text.md'),'## PDF page 4; pageIndex 3\nContents\nPreface xm\n1.3 Absolutely continuous and sing1;1lar distributions 11\n9 .3 Basic properties of smartingales 334');
+ await p.prepareContentsSource(ctx);
+ p.runBackend=async()=>({text:'Complete.\n<abstractin-workspace>'+JSON.stringify({kind:'contents',entries:[
+  {title:'Preface',printedPageLabel:'xiii',evidence:'Preface xm'},
+  {title:'1.3 Absolutely continuous and singular distributions',printedPageLabel:'11',evidence:'normalized by model'},
+  {title:'9.3 Basic properties of martingales',printedPageLabel:'334',evidence:'normalized by model'}
+ ]})+'</abstractin-workspace>'});
+ const result=await p.runContentsInitialization('codex',{ctx,question:'Initialize',onProgress(){}},{progress(){}});
+ assert.equal(result.error,undefined);
+ await p.saveReadingAction(ctx,'contents',result.text);
+ const saved=p.readingArtifactData(notes[0]).entries;
+ assert.equal(saved[0].printedPageLabel,'xm');
+ assert.match(saved[1].title,/sing1;1lar/);assert.match(saved[2].title,/smartingales/);
+ const expected=ctx.reading.contentsPlan.expected;
+ const unmatched=p.groundContentsEntries([{title:'9.4 Invented heading',printedPageLabel:'334',evidence:'not in source'}],expected);
+ assert.equal(unmatched[0].title,'9.4 Invented heading','different section identifiers cannot borrow a source row');
+});
+
 test('OCR heading cleanup restores readable titles, retaining source evidence and existing chapter IDs',async()=>{
  const {plugin:p,ctx,dir,notes}=await setup();
  const titles=['V. C o n d itio n a l P r o b a b i l i t i e s a n d M a th e m a tic a l E x p ectatio n s','VI. In d e p e n d e n c e; T h e L aw o f L a r g e N u m b e rs'];

@@ -317,7 +317,7 @@ Object.assign(AbstractIn, {
 		const marked = [...raw.matchAll(/^## PDF page (\d+); pageIndex (\d+)\s*$/gm)];
 		const pages = marked.length ? marked.map((match,i) => ({ index: Number(match[2]), text: raw.slice(match.index, marked[i+1]?.index ?? raw.length) })) :
 			raw.split("\f").map((text,index) => ({ index, text }));
-		const heading = /^\s*(?:(?:table\s+of\s+|detailed\s+|brief\s+)?contents(?:\s*\(?continued\)?)?|目\s*[录錄次])\s*(?:[ivxlcdm]+|\d+)?\s*$/im;
+		const heading = /^\s*(?:(?:(?:[ivxlcdm]+|\d+)\s*)?[|I]\s*)?(?:(?:table\s+of\s+|detailed\s+|brief\s+)?contents(?:\s*\(?continued\)?)?|目\s*[录錄次])(?:\s*[|I])?\s*(?:[ivxlcdm]+|\d+)?\s*$/im;
 		const entry = line => {
 			const value = line.trim();
 			if (!value || /^## PDF page |^# |^\d+$|^[ivxlcdm]+$/i.test(value) || heading.test(value)) return null;
@@ -345,14 +345,21 @@ Object.assign(AbstractIn, {
 		}
 		for (const page of pages) {
 			// PDF extraction can flatten several directory rows into one line.
-			// Split only after an explicit dot leader and a complete page label.
-			const rows = page.text.replace(/((?:[.·…•][ \t]*){2,}(?:[—–-]\s*)?(?:[ivxlcdm]+|\d{1,4}))(?=\s+\S)/gi, '$1\n');
-			page.lines = rows.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+			// Recover row boundaries while preserving the original evidence text.
+			const rows = page.text.replace(/((?:[.·…•][ \t]*){2,}(?:[—–-]\s*)?(?:[ivxlcdm]+|\d{1,4}))(?=\s+\S)/gi, '$1\n')
+				// Native PDF text also joins an unpaged chapter and its first
+				// subsection without dot leaders. Split at the subsection number.
+				.replace(/([^\r\n])([ \t]+)(\d+(?:[ \t]*\.[ \t]*\d+)+)(?=\s|$)/g, '$1\n$3');
+			// A section number may itself wrap: "3\n.1" is one token, not
+			// a printed page number followed by an unrelated title.
+			page.lines = rows.split(/\r?\n(?![ \t]*\.[ \t]*\d+(?:[ \t]*\.[ \t]*\d+)*[ \t]*(?:\r?\n|$))/).map(line => line.trim()).filter(Boolean);
 			page.entries = [];
 			let pending = [];
 			for (let index=0;index<page.lines.length;index++) {
 				const line=page.lines[index];
 				if (heading.test(line) || /^## PDF page|^# |^(?:chapter|part)\s+(?:[ivxlcdm]+|\d+)\b/i.test(line) && !entry(line)) { pending=[];continue; }
+				if (/^\d+\s+[I|]\s+/.test(line) && !entry(line)) { pending=[];continue; }
+				if (/^\d+(?:\s*\.\s*\d+)+$/.test(line)) { pending=[line];continue; }
 				// An explicit new numbered heading cannot continue the preceding one.
 				if (/^(?:§\s*\d+|\d+(?:\.\d+)*[.)]?\s)/.test(line)) pending=[];
 				const candidate = entry([...pending,line].join('\n').replace(/\s+/g,' '));
@@ -540,14 +547,34 @@ Object.assign(AbstractIn, {
 		// OCR introduces spaces inside words and wraps hyphenated words. Keep
 		// every letter/digit; tolerate typography, never substitute different words.
 		let text=String(value || '').normalize('NFKC').toLowerCase().trim();
+		// Some native extractions render a chapter's vertical rule as "I".
+		text=text.replace(/^(\d+)\s+[i|]\s+/, '$1 ');
 		if (stripNumber) text=text.replace(/^(?:(?:chapter|part|appendix|section)\s+|§\s*)?(?:\d+(?:\.\d+)*|[ivxlcdm]+|[a-z])[.():：\s-]+/i,'');
 		return text.replace(/[^\p{L}\p{N}]/gu,'');
 	},
 
 	contentsEntryMatches(entry, expected) {
+		if (!entry || !expected) return false;
 		const title=this.contentsTitleKey(entry.title), wanted=this.contentsTitleKey(expected.title);
 		const exact=this.contentsTitleKey(entry.title,false), original=this.contentsTitleKey(expected.title,false);
 		return !!exact && (exact===original || !!title && title===wanted) && String(entry.printedPageLabel ?? '').trim().toLowerCase()===String(expected.printedPageLabel ?? '').trim().toLowerCase();
+	},
+
+	groundContentsEntries(entries, expected) {
+		const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+		const section = title => String(title || '').match(/^\s*(?:§\s*)?(\d+(?:\s*\.\s*\d+)+)(?=\s|$)/)?.[1].replace(/\s/g, '');
+		return entries.map(entry => {
+			if (!entry || expected.some(row => this.contentsEntryMatches(entry, row))) return entry;
+			// Models sometimes silently fix OCR letters (or a malformed Roman page
+			// label). Anchor a unique row by its exact quotation, or by section ID
+			// AND printed page; then retain the plugin's source-derived text instead
+			// of treating the model's rewritten title as missing source coverage.
+			const id = section(entry.title), evidence = normalize(entry.evidence);
+			const candidates = expected.filter(row => evidence && evidence === normalize(row.line) ||
+				id && id === section(row.title) && String(entry.printedPageLabel ?? '').trim() === row.printedPageLabel);
+			if (candidates.length !== 1) return entry;
+			return { ...entry, title: candidates[0].title, printedPageLabel: candidates[0].printedPageLabel, evidence: candidates[0].line };
+		});
 	},
 
 	contentsTitleNeedsRepair(title) {
@@ -616,6 +643,7 @@ Object.assign(AbstractIn, {
 				if (pending.cancelled || result.cancelled || result.stopped || result.error) return {...result,text:'',error:result.error || 'Contents initialization was interrupted. No partial directory was saved.'};
 				const data=this.readingEnvelope(result.text,'workspace');
 				if (!data || data.kind!=='contents' || !Array.isArray(data.entries) || !data.entries.length) { error='No structured contents were returned; tool invocation text is not an executed tool call'; continue; }
+				data.entries=this.groundContentsEntries(data.entries,expected);
 				const missing=expected.filter(item=>!data.entries.some(entry=>this.contentsEntryMatches(entry,item)));
 				if (missing.length) { error='Missing contents entries: '+missing.map(item=>item.line).join('; ');continue; }
 				const repaired=await this.repairContentsTitles(backend,request,pending,data.entries);
