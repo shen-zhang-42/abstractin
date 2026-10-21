@@ -3781,7 +3781,7 @@ AbstractIn = {
 			let files = ctx.reading?.answerMode === "context" ? { metadata: "", annotations: "" } : await this.exportContext(ctx);
 			let pdfSource, sourceWarning;
 			if (ctx.reading) {
-				pending.progress({ status: ctx.reading.evidenceMode === "knowledge" ? "using saved discussion context" :
+				pending.progress({ status: pending.readingAction === "contents" ? "locating contents pages" : ctx.reading.evidenceMode === "knowledge" ? "using saved discussion context" :
 					ctx.reading.sourceLookup ? "verifying the requested passage" : "preparing PDF text" });
 				pdfSource = ctx.reading.answerMode === "context" ? { status: "context-only", signature: "context:" + ctx.attachmentItem.key } :
 					ctx.reading.evidenceMode === "knowledge" ? await this.knowledgeReadingSource(ctx) : await this.exportReadingSource(ctx);
@@ -3794,7 +3794,7 @@ AbstractIn = {
 					else await this.reuseCurrentReadingPage(ctx);
 					if (ctx.reading.answerMode === "context") ctx.reading.knowledgeContext = "";
 				}
-				else if (pdfSource.status === "ready") await this.prepareCurrentReadingPage(ctx);
+				else if (pdfSource.status === "ready" && pending.readingAction !== "contents") await this.prepareCurrentReadingPage(ctx);
 				if (ctx.reading.vocabularyTutor && ctx.reading.evidenceMode === "source" && pdfSource.status === "ready" && pdfSource.scoped) {
 					ctx.reading.tutorSourceContext = (await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"))).slice(0, 24000);
 				}
@@ -3905,6 +3905,7 @@ AbstractIn = {
 			let recordKey, recordWarning, recordNotice;
 			if (ctx.reading && !result.stopped && pending.readingAction) {
 				try {
+					if (pending.readingAction === "contents") pending.progress({ status: "Verifying chapter start pages" });
 					let saved = await this.saveReadingAction(ctx, pending.readingAction, result.text);
 					result.text = saved.answer; recordKey = saved.key;
 					recordNotice = saved.notice;

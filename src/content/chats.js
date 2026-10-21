@@ -126,8 +126,7 @@
    const data = this.readingArtifactData(this.readingArtifactNotes(ctx, "Contents")[0]);
    const entries = data?.entries || [];
    // Prefer top-level chapter headings; never promote theorem numbers to chapters.
-   const top = entries.filter(e => /^(?:chapter\s+\d+|第.+章|\d+\s|appendix\s+[A-Z0-9]+|附录\s*[A-Z0-9]+)/i.test(e.title) || /^(?:ch|chap|chapter)-(?:\d+|app-[a-z0-9]+)$/i.test(e.id));
-   const chosen = top.length ? top : entries;
+   const chosen = this.readingChapterEntries(entries);
    let main = 0, appendix = 0;
    for (let order = 0; order < chosen.length; order++) {
     const entry = chosen[order];
@@ -884,6 +883,7 @@
    return bounded;
   },
   async exportReadingSource(ctx) {
+   if (ctx.reading?.action === "contents") return this.exportReadingContentsSource(ctx);
    if (!ctx.discussion) return original.exportReadingSource.call(this, ctx);
    // The complete PDF cache is plugin-private and never copied into an agent
    // discussion directory. Only bounded, authorized text is exposed there.

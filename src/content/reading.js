@@ -130,7 +130,7 @@ Object.assign(AbstractIn, {
 		try {
 			const cached = JSON.parse(await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-manifest.json")));
 			const exists = path => typeof IOUtils !== "undefined" ? IOUtils.exists(path) : OS.File.exists(path);
-			if (cached.signature === signature && cached.status === "ready" && await exists(OS.Path.join(ctx.dir, "source-text.md")) && await exists(OS.Path.join(ctx.dir, "source.pdf"))) return cached;
+			if (cached.signature === signature && cached.status === "ready" && !cached.scoped && await exists(OS.Path.join(ctx.dir, "source-text.md")) && await exists(OS.Path.join(ctx.dir, "source.pdf"))) return cached;
 		} catch (_) { /* Rebuild derived source files when no complete cache exists. */ }
 		return null;
 	},
@@ -179,6 +179,7 @@ Object.assign(AbstractIn, {
 	},
 
 	async exportReadingSource(ctx) {
+		if (ctx.reading?.action === "contents") return this.exportReadingContentsSource(ctx);
 		let attachment = ctx.attachmentItem;
 		let stage = "prepare reading workspace";
 		try {

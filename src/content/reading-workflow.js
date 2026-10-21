@@ -370,6 +370,7 @@ Object.assign(AbstractIn, {
 			selected.add(at);
 			for (let next=at+1; next<pages.length; next++) {
 				const page=pages[next];
+				if (page.index !== pages[next-1].index + 1) break;
 				if (!page.heading && !(page.entries.length >= 2 && page.entries.length / page.lines.length >= 0.2 || page.entries.length && page.lines.length <= 8)) break;
 				selected.add(next);
 			}
@@ -378,6 +379,7 @@ Object.assign(AbstractIn, {
 		if (!selected.size) for (let at=0; at<pages.length; at++) if (pages[at].entries.filter(item => /\.{2,}|[·…]{2,}/.test(item.line)).length >= 3) selected.add(at);
 		for (const at of [...selected]) for (let next=at+1;next<pages.length;next++) {
 			const page=pages[next];
+			if (page.index !== pages[next-1].index + 1) break;
 			if (!page.heading && !(page.entries.length>=2 && page.entries.length/page.lines.length>=0.2 || page.entries.length && page.lines.length<=8)) break;
 			selected.add(next);
 		}
@@ -391,6 +393,138 @@ Object.assign(AbstractIn, {
 	},
 
 	contentsExcerpt(source) { return this.contentsSourcePlan(source).text; },
+
+	readingChapterEntries(entries) {
+		const top = entries.filter(e => /^(?:chapter\s+\d+|第.+章|\d+\s|[IVXLCDM]+[.)]\s|appendix\s+[A-Z0-9]+|附录\s*[A-Z0-9]+)/i.test(e.title) || /^(?:ch|chap|chapter)-(?:\d+|app-[a-z0-9]+)$/i.test(e.id));
+		return top.length ? top : entries;
+	},
+
+	async verifyContentsChapterPages(ctx, entries) {
+		const pdf = this.unwrapReadingValue(this.readingPDFApplication(ctx)?.pdfDocument);
+		if (!pdf || ctx.reading.pdfSource?.scope !== 'contents') return;
+		const chapters = this.readingChapterEntries(entries), contentsPages = new Set(ctx.reading.contentsPlan?.pages.map(page => page.index) || []);
+		const pages = new Map();
+		const read = async index => {
+			if (!pages.has(index)) pages.set(index, await this.readNativeReadingPage(ctx, index));
+			return pages.get(index).text;
+		};
+		const headingMatches = (text, chapter) => {
+			const title = this.contentsTitleKey(chapter.title), lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(0, 12);
+			if (!title || title.length < 4) return false;
+			for (let at = 0; at < lines.length; at++) for (let count = 1; count <= 3; count++) {
+				if (this.contentsTitleKey(lines.slice(at, at+count).join(' ')) === title) return true;
+			}
+			return false;
+		};
+		const printedFooterMatches = (text, label) => text.trim().split(/\r?\n/).slice(-3).some(line =>
+			line.trim().replace(/^[-–—]\s*|\s*[-–—]$/g, '') === label);
+		let labels;
+		try { labels = await pdf.getPageLabels?.(); } catch (e) { this.logError('chapter page labels', e); }
+		// Explicit PDF page labels work without bookmarks, but always check the
+		// actual chapter heading rather than trusting a page-number match alone.
+		for (const chapter of chapters) {
+			const matches = [];
+			for (let index = 0; index < (labels?.length || 0); index++) if (!contentsPages.has(index) && labels[index] === chapter.printedPageLabel) matches.push(index);
+			if (matches.length === 1 && headingMatches(await read(matches[0]), chapter)) chapter.pageIndex = matches[0];
+		}
+		const anchor = chapters.find(chapter => /^\d+$/.test(chapter.printedPageLabel || ''));
+		if (!anchor || chapters.every(chapter => Number.isInteger(chapter.pageIndex))) return;
+		const label = anchor.printedPageLabel, locations = [];
+		if (Number.isInteger(anchor.pageIndex)) locations.push(anchor.pageIndex);
+		else {
+			// Locate one printed-page anchor just after the contents, not throughout
+			// the book. A heading AND its printed footer must agree with the TOC.
+			const afterContents = contentsPages.size ? Math.max(...contentsPages)+1 : 0;
+			const current = this.currentReadingLocation(ctx)?.pageIndex;
+			const candidates = new Set();
+			for (let index = afterContents; index < Math.min(pdf.numPages, afterContents+24); index++) candidates.add(index);
+			if (Number.isInteger(current) && current >= 0 && current < pdf.numPages) candidates.add(current);
+			for (const index of candidates) {
+				const text = await read(index);
+				if (headingMatches(text, anchor) && printedFooterMatches(text, label)) locations.push(index);
+			}
+		}
+		if (locations.length !== 1) return;
+		const offset = locations[0] - Number(label);
+		for (const chapter of chapters) {
+			if (Number.isInteger(chapter.pageIndex) || !/^\d+$/.test(chapter.printedPageLabel || '')) continue;
+			const index = Number(chapter.printedPageLabel) + offset;
+			if (index < 0 || index >= pdf.numPages || contentsPages.has(index)) continue;
+			const text = await read(index);
+			// The offset only proposes a candidate. Each chapter is independently
+			// verified, so inserted plates/page-number resets never create false ranges.
+			if (headingMatches(text, chapter) && printedFooterMatches(text, chapter.printedPageLabel)) chapter.pageIndex = index;
+		}
+	},
+
+	async exportReadingContentsSource(ctx) {
+		// Directory initialization is independent of the complete PDF cache. Never
+		// copy the PDF or invoke getFullText merely to discover its contents pages.
+		try {
+			const pdf = this.unwrapReadingValue(this.readingPDFApplication(ctx)?.pdfDocument);
+			let text, totalPages, pageMapping = true, accessMethod = "reader-contents";
+			if (Number.isInteger(pdf?.numPages) && pdf.numPages > 0) {
+				totalPages = pdf.numPages;
+				const pages = new Map(), seeds = new Set();
+				for (let index = 0; index < Math.min(24, totalPages); index++) seeds.add(index);
+				const addWindow = index => {
+					if (!Number.isInteger(index) || index < 0 || index >= totalPages) return;
+					for (let near = Math.max(0, index - 2); near <= Math.min(totalPages - 1, index + 2); near++) seeds.add(near);
+				};
+				addWindow(this.currentReadingLocation(ctx)?.pageIndex);
+				// A contents bookmark can locate front matter beyond the search window.
+				const walk = async nodes => {
+					for (const node of nodes || []) {
+						if (/^(?:(?:table\s+of\s+|detailed\s+|brief\s+)?contents|目\s*[录錄次])(?:\s|$)/i.test(String(node.title || '').trim()) && node.dest) {
+							const dest = typeof node.dest === 'string' ? await pdf.getDestination(node.dest) : node.dest;
+							const ref = dest?.[0];
+							addWindow(Number.isInteger(ref) ? ref : ref ? await pdf.getPageIndex(ref) : null);
+						}
+						await walk(node.items);
+					}
+				};
+				try { if (pdf.getOutline) await walk(await pdf.getOutline()); }
+				catch (e) { this.logError('contents bookmarks', e); }
+				const read = async index => {
+					if (!pages.has(index)) pages.set(index, (await this.readNativeReadingPage(ctx, index)).text);
+				};
+				const snapshot = () => [...pages].sort((a,b) => a[0]-b[0]).map(([index, value]) =>
+					'## PDF page '+(index+1)+'; pageIndex '+index+'\n\n'+value).join('\n\n');
+				const initial = [...seeds];
+				for (let at = 0; at < initial.length; at += 4) await Promise.all(initial.slice(at, at+4).map(read));
+				let plan = this.contentsSourcePlan(snapshot());
+				// Continue every detected block to its end, even beyond the front window.
+				// No fixed page cap may silently truncate a long directory.
+				while (true) {
+					const next = [...new Set(plan.pages.map(page => page.index+1))].filter(index => index < totalPages && !pages.has(index));
+					if (!next.length) break;
+					await Promise.all(next.map(read));
+					plan = this.contentsSourcePlan(snapshot());
+				}
+				text = plan.text;
+			} else {
+				// An already validated full cache is safe to reuse, without extracting
+				// anything. Otherwise ask the reader to open the actual contents.
+				const documentCtx = { ...ctx, dir: ctx.documentDir || ctx.dir };
+				const info = await this.readingFileInfo(ctx.attachmentItem);
+				const cached = await this.cachedReadingSource(documentCtx, this.readingSourceSignature(ctx, info));
+				if (!cached) throw new Error('Open this PDF in Zotero, then open its contents pages and retry initialization.');
+				text = this.contentsExcerpt(await Zotero.File.getContentsAsync(OS.Path.join(documentCtx.dir, 'source-text.md')));
+				totalPages = cached.totalPages; pageMapping = cached.pageMapping; accessMethod = 'cached-contents';
+			}
+			const plan = this.contentsSourcePlan(text);
+			if (!text?.trim() || !plan.expected.length) throw new Error('No readable contents pages were found in the front matter or current location. Open the contents pages in Zotero and retry initialization. Scanned pages need OCR.');
+			const source = { status: 'ready', signature: 'contents:'+this.chatSyncID(), attachmentKey: ctx.attachmentItem.key,
+				totalPages, pageMapping, scoped: true, scope: 'contents', accessMethod, text: 'source-text.md',
+				allowedPages: pageMapping ? plan.pages.map(page => page.index) : [] };
+			await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, 'source-text.md'), text);
+			await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, 'source-manifest.json'), JSON.stringify(source));
+			return source;
+		} catch (e) {
+			this.logError('contents page preparation', e);
+			return { status: 'unavailable', attachmentKey: ctx.attachmentItem.key, error: 'Could not prepare contents pages. '+(e.message || e) };
+		}
+	},
 
 	async prepareContentsSource(ctx) {
 		const source = await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"));
@@ -591,6 +725,8 @@ Object.assign(AbstractIn, {
 				data.inspectedContentsPages=ctx.reading.pdfSource?.pageMapping ? ctx.reading.contentsPlan.pages.map(page=>page.index) : [];
 				data.sourceEntryCount=ctx.reading.contentsPlan.expected.length;
 			}
+			try { await this.verifyContentsChapterPages(ctx, verified); }
+			catch (e) { this.logError('chapter boundary verification', e); notices.push('Some chapter locations could not be verified; their contents entries remain available.'); }
 			data.entries = verified; data.omittedEntries = omitted;
 			if (omitted) notices.push("Saved " + verified.length + " verified contents entries; " + omitted + " unverified entries were omitted. The directory is incomplete.");
 			if (unlocated) notices.push(unlocated + " chapter page locations were unverified; structure was saved without those page links.");

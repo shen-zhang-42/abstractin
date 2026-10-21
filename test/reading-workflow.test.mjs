@@ -191,7 +191,9 @@ test("contents initialization supplies complete detected contents in a fresh con
 	const { plugin: p, window, ctx, notes, dir } = await setup();
 	p.prepareReadingSkills = async ctx => ctx.reading;
 	p.loadSessions = async () => ({ codex: { id: "old", model: "", sourceSignature: "old" } });
-	window.Zotero.PDFWorker = { getFullText: async () => ({ text: "Contents\n1 Foundations .... 3\fPreface\f1 Foundations\nArgument", extractedPages: 3, totalPages: 3 }) };
+	window.Zotero.PDFWorker = { getFullText() { throw new Error('Contents must not extract the whole PDF'); } };
+	p.readingPDFApplication = () => ({ pdfDocument: { numPages: 3 } });
+	p.readNativeReadingPage = async (_, pageIndex) => ({ pageIndex, text: ['Contents\n1 Foundations .... 3', 'Preface', '1 Foundations\nArgument'][pageIndex] });
 	p.runBackend = async (backend, request) => {
 		assert.equal(request.session, null);
 		assert.equal(request.history.length, 0);
@@ -896,7 +898,9 @@ test('unpaginated source excludes chapter prose and unheaded directory continuat
 
 test('final evidence validation failure is a retryable initialization error rather than a success message',async()=>{
  const {plugin:p,window,ctx,contents,notes}=await setup();p.prepareReadingSkills=async ctx=>ctx.reading;
- window.Zotero.PDFWorker={getFullText:async()=>({text:'Contents\n1 Foundations .... 3\fPreface\f1 Foundations\nArgument',extractedPages:3,totalPages:3})};
+ window.Zotero.PDFWorker={getFullText(){throw new Error('Contents must not extract the whole PDF');}};
+ p.readingPDFApplication=()=>({pdfDocument:{numPages:3}});
+ p.readNativeReadingPage=async(_,pageIndex)=>({pageIndex,text:['Contents\n1 Foundations .... 3','Preface','1 Foundations\nArgument'][pageIndex]});
  p.runBackend=async()=>({text:'Complete.\n<abstractin-workspace>'+JSON.stringify({...contents,entries:[...contents.entries,{title:'Invented appendix',evidence:'Never supplied'}]})+'</abstractin-workspace>'});
  const result=await p.ask(ctx,'Initialize',{backend:'codex',readingAction:'contents',progress(){}});
  assert.match(result.error,/incomplete/);assert.equal(result.recordKey,undefined);assert.equal(notes.length,0);
