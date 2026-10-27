@@ -173,14 +173,25 @@ for (const type of ["book", "paper"]) {
 		};
 		window.Subprocess.getEnvironment = () => ({ HOME: "/local", PATH: "/bin" });
 		window.Subprocess.pathSearch = async () => "/bin/codex";
-		let invocation, submittedPrompt;
+		let invocation, submittedPrompt, threadSettings;
 		window.Subprocess.call = async options => {
 			invocation = options;
-			let output = [JSON.stringify({ type: "thread.started", thread_id: "THREAD1" }) + "\n" +
-				JSON.stringify({ type: "item.completed", item: { type: "agent_message", text:
-					'由所选段落的假设可得 $x_1=0$（印刷页 xiv）。\n<abstractin-record>{"title":"Local proof","summary":"The hypothesis implies $x_1=0$.","openQuestions":[]}</abstractin-record>' } }) + "\n", ""];
-			return { stdin: { write: async buffer => { submittedPrompt = new TextDecoder().decode(buffer); }, close() {} }, stdout: { readString: async () => output.shift() || "" },
-				stderr: { readString: async () => "" }, wait: async () => ({ exitCode: 0 }) };
+			let output = [], waiting;
+			const push = message => { const line = JSON.stringify(message) + "\n"; if (waiting) { const resolve = waiting; waiting = null; resolve(line); } else output.push(line); };
+			return { stdin: { write: async buffer => {
+				const message = JSON.parse(new TextDecoder().decode(buffer));
+				if (message.method === "initialize") push({ id: 0, result: {} });
+				if (message.method === "thread/start") { threadSettings = message.params; push({ id: 1, result: { thread: { id: "THREAD1" } } }); }
+				if (message.method === "turn/start") {
+					submittedPrompt = message.params.input[0].text;
+					push({ id: 2, result: { turn: { id: "TURN1" } } });
+					push({ method: "item/agentMessage/delta", params: { threadId: "THREAD1", itemId: "ANSWER1", delta: '由所选段落的假设可得 $x_1=0$（印刷页 xiv）。\n' } });
+					push({ method: "item/completed", params: { threadId: "THREAD1", item: { id: "ANSWER1", type: "agentMessage", text:
+						'由所选段落的假设可得 $x_1=0$（印刷页 xiv）。\n<abstractin-record>{"title":"Local proof","summary":"The hypothesis implies $x_1=0$.","openQuestions":[]}</abstractin-record>' } } });
+					push({ method: "turn/completed", params: { threadId: "THREAD1", turn: { id: "TURN1", status: "completed" } } });
+				}
+			}, close() {} }, stdout: { readString: async () => output.length ? output.shift() : new Promise(resolve => waiting = resolve) },
+				stderr: { readString: async () => "" }, kill() { waiting?.(""); }, wait: async () => ({ exitCode: 0 }) };
 		};
 		const body = document.createElement("div"); document.body.appendChild(body);
 		p.renderSkeleton(document, body);
@@ -203,8 +214,9 @@ for (const type of ["book", "paper"]) {
 		await new Promise(resolve => setTimeout(resolve, 30));
 		assert.equal(result.recordKey, "NOTE0001");
 		assert.equal(invocation.workdir, view.ctx.dir);
-		assert.equal(invocation.arguments[invocation.arguments.indexOf("--sandbox") + 1], "read-only");
-		assert.equal(invocation.arguments.at(-1), "-");
+		assert.equal(invocation.arguments[0], "app-server");
+		assert.equal(threadSettings.sandbox, "read-only");
+		assert.equal(threadSettings.approvalPolicy, "never");
 		assert.match(submittedPrompt, /Always reply in English/);
 		assert.doesNotMatch(submittedPrompt, /Reply in 中文/);
 		assert.match(submittedPrompt, type === "book" ? /book-reading/ : /scientific-information-extraction/);

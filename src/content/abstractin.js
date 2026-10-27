@@ -3937,6 +3937,9 @@ AbstractIn = {
 				}
 				result = { text: pending.partial.trim(), sessionId: result.sessionId, stopped: true };
 			}
+			else if (backend === "codex" && result.error) {
+				return { error: result.error };
+			}
 			else if (!result.text) {
 				return { error: result.error || label + " returned no text." };
 			}
@@ -6395,38 +6398,117 @@ AbstractIn = {
 	},
 
 	async runCodex(request) {
-		let { ctx, onProgress, onSpawn } = request;
-		let command = await this.findBinary("codex");
-		let args = this.codexArgs({ ...request, stdin: true });
-
-		let onEvent = (event) => {
-			let item = event.item;
-			if (event.type === "item.completed" && item && item.type === "agent_message" && item.text) {
-				onProgress({ text: item.text, status: "writing" });
+		let { ctx, onProgress = () => {}, onSpawn, session, model, effort, images = [] } = request;
+		let args = ["app-server"], config = {};
+		// Keep the same per-request tool policy as exec; never change the user's config.
+		let execArgs = this.codexArgs({ ...request, stdin: true });
+		for (let i = 0; i < execArgs.length; i++) {
+			if (execArgs[i] === "-c") {
+				let override = execArgs[++i], equal = override.indexOf("=");
+				args.push("-c", override);
+				config[override.slice(0, equal)] = JSON.parse(override.slice(equal + 1));
 			}
-			else if (event.type === "item.started" && item && item.type === "command_execution") {
-				onProgress({ status: "reading the paper" });
-			}
-			else if (event.type === "item.completed" && item && item.type === "command_execution") {
-				let command = Array.isArray(item.command) ? item.command.join(" ") : item.command;
-				onProgress({ step: this.describeTool("exec", { command }) });
-			}
-			else if (event.msg && event.msg.type === "agent_message" && event.msg.message) {
-				onProgress({ text: event.msg.message, status: "writing" });
-			}
-		};
-
-		let { stdout, stderr, exitCode } = await this.runProcess(command, args, ctx.dir, onEvent, onSpawn, this.codexPrompt(request));
-		let result = this.parseCodexEvents(this.parseJsonLines(stdout));
-		if (exitCode !== 0 && !result.text) {
-			return {
-				text: "",
-				error: result.error || stderr.trim() || ("codex exited with code " + exitCode),
-				sessionId: result.sessionId,
-				resumeFailed: true,
-			};
 		}
-		return result;
+		let command = await this.findBinary("codex"), started = Date.now();
+		let proc = await Subprocess.call({ command, arguments: args, workdir: ctx.dir,
+			environment: this.buildChildEnvironment(), stderr: "pipe" });
+		let win = Zotero.getMainWindow(), timer, done = false, threadId = session?.id, turnId;
+		let messages = new Map(), error = "", stderrText = "", phase = "initialize", firstDelta = false;
+		let send = message => proc.stdin.write(new TextEncoder().encode(JSON.stringify(message) + "\n").buffer);
+		let text = () => [...messages.values()].join("\n\n").trim();
+		let mark = name => this.log("Codex streaming " + name + " after " + (Date.now() - started) + " ms");
+		let publish = () => onProgress({ text: text(), status: "writing" });
+		let stderr = (async () => {
+			let chunk; while ((chunk = await proc.stderr.readString())) stderrText = (stderrText + chunk).slice(-4000);
+		})().catch(e => this.logError("Codex stderr", e));
+		let read = (async () => {
+			let buffer = "";
+			while (!done) {
+				let chunk = await proc.stdout.readString();
+				if (!chunk) throw new Error("Codex closed before completing the reply.");
+				buffer += chunk;
+				let lines = buffer.split("\n"); buffer = lines.pop();
+				for (let line of lines) {
+					if (!line.trim()) continue;
+					let event; try { event = JSON.parse(line); } catch { continue; }
+					if (event.method && event.id !== undefined) {
+						// The reader has no interactive approval UI. Do not silently approve requests.
+						await send({ id: event.id, error: { code: -32601, message: "Interactive requests are unavailable in the reading sidebar." } });
+						continue;
+					}
+					if (event.id !== undefined) {
+						if (event.error) throw new Error(event.error.message || "Codex request failed.");
+						if (event.id === 0) {
+							mark("initialized"); phase = "thread";
+							await send({ method: "initialized", params: {} });
+							await send({ id: 1, method: session ? "thread/resume" : "thread/start", params: {
+								...(session ? { threadId: session.id, excludeTurns: true } : {}),
+								cwd: ctx.dir, sandbox: "read-only", approvalPolicy: "never", config, ...(model ? { model } : {}),
+							} });
+						}
+						else if (event.id === 1) {
+							if (!event.result?.thread?.id) throw new Error("Codex returned no thread ID.");
+							threadId = event.result.thread.id; mark("thread ready"); phase = "turn";
+							await send({ id: 2, method: "turn/start", params: { threadId,
+								input: [{ type: "text", text: this.codexPrompt(request) }, ...images.map(path => ({ type: "localImage", path }))],
+								...(model ? { model } : {}), ...(effort ? { effort } : {}),
+							} });
+						}
+						else if (event.id === 2) {
+							turnId = event.result?.turn?.id; phase = "answer";
+							win.clearTimeout(timer); mark("turn accepted"); onProgress({ status: "thinking" });
+						}
+						continue;
+					}
+					let p = event.params || {};
+					if (p.threadId && p.threadId !== threadId || turnId && p.turnId && p.turnId !== turnId) continue;
+					if (event.method === "item/agentMessage/delta" && typeof p.delta === "string") {
+						if (!firstDelta) { firstDelta = true; mark("first text"); }
+						messages.set(p.itemId, (messages.get(p.itemId) || "") + p.delta); publish();
+					}
+					else if (event.method === "item/completed" && p.item?.type === "agentMessage") {
+						messages.set(p.item.id, p.item.text || ""); publish();
+					}
+					else if (event.method === "item/started" && ["commandExecution", "mcpToolCall", "webSearch"].includes(p.item?.type)) {
+						onProgress({ status: "reading the paper" });
+					}
+					else if (event.method === "item/completed" && p.item?.type === "commandExecution") {
+						onProgress({ step: this.describeTool("exec", { command: p.item.command }) });
+					}
+					else if (event.method === "error" && !p.willRetry) {
+						throw new Error(p.error?.message || p.message || "Codex generation failed.");
+					}
+					else if (event.method === "turn/completed") {
+						if (turnId && p.turn?.id !== turnId) continue;
+						error = p.turn?.error?.message || (p.turn?.status === "failed" ? "Codex generation failed." :
+							p.turn?.status === "interrupted" ? "Codex turn was interrupted." : "");
+						done = true; mark("completed"); return;
+					}
+				}
+			}
+		})();
+		// Attach rejection handlers before writing: cancellation can close either pipe immediately.
+		let failure = new Promise((_, reject) => {
+				timer = win.setTimeout(() => reject(new Error("Codex startup timed out. Check the CLI and its MCP/plugin startup settings.")), 120000);
+		});
+		try {
+			onSpawn?.(proc); onProgress({ status: "starting Codex" });
+			await Promise.race([Promise.all([read, send({ id: 0, method: "initialize", params: {
+				clientInfo: { name: "abstractin", title: "AbstractIn", version: this.version || "dev" },
+			} })]), failure]);
+		}
+		catch (e) {
+			error = e.message || String(e);
+			if (/closed before completing/.test(error) && stderrText.trim()) error += " " + stderrText.trim();
+			mark("failed during " + phase);
+		}
+		finally {
+			done = true; win.clearTimeout(timer);
+			try { await proc.stdin.close(); } catch {}
+			try { proc.kill(); } catch {}
+			await Promise.allSettled([read, stderr, proc.wait()]);
+		}
+		return { text: text(), sessionId: threadId, ...(error ? { error, resumeFailed: phase === "thread" && !!session } : {}) };
 	},
 
 	// Handles both the current `codex exec --json` events (thread.started,

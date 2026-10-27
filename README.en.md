@@ -77,6 +77,8 @@ Vocabulary turns use the current question and selected sentence with general lan
 
 Each chat retains one Codex session across vocabulary, ordinary reading, source checks, and model or answer-mode changes. Resuming retains Codex's own conversation memory even though vocabulary requests do not append history again. Temporary connection failures retain the session. If it cannot be restored, a replacement is announced and recorded in the chat. Replacing or deleting messages resets the affected Codex context explicitly so removed content is not silently retained. New chats and restored/merged transcripts start their own context; configured Summary and Don't save lifetimes still apply.
 
+Codex uses the local `app-server` protocol to display incremental text while generating the full answer, including when resuming threads created by the previous `exec` integration. Word-card requirements are unchanged. Stopping retains the displayed text; generation errors are not saved as completed answers. Debug logs record initialization, thread readiness, turn acceptance, first text and completion timings to distinguish startup waits from generation time. This does not change global Codex configuration or terminate other Codex processes. A CLI with `app-server` support is required.
+
 ### Quick questions, images, and formulas
 
 - **Quick questions** appears at the top right of the composer. Selecting an option fills in a question that you can edit before sending; explanations appear on hover.

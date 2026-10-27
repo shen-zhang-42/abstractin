@@ -102,6 +102,20 @@ test("Codex parses structured model rejection errors", () => {
 	assert.equal(result.error, "Unsupported model");
 });
 
+test("failed Codex streams are not saved as completed answers, while explicit stop retains partial text", async () => {
+	for (const cancelled of [false, true]) {
+		const { plugin: p } = loadPlugin(); const store = fakeStore(p);
+		const pending = pendingFor(p, "codex");
+		p.runBackend = async () => {
+			pending.partial = "Partial answer"; pending.cancelled = cancelled;
+			return { text: "Partial answer", error: "Connection closed", sessionId: "thread" };
+		};
+		const result = await p.ask(base.ctx, "Why?", pending);
+		if (cancelled) { assert.equal(result.error, undefined); assert.equal(store.history.at(-1).text, "Partial answer"); }
+		else { assert.equal(result.error, "Connection closed"); assert.equal(store.history.length, 0); }
+	}
+});
+
 test("changing Codex model keeps its thread and explicitly passes the selected model", async () => {
 	const { plugin: p } = loadPlugin();
 	const store = fakeStore(p);
