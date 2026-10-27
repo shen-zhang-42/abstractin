@@ -38,6 +38,10 @@ Apply these rules to teaching entries, not incidental words in definitions/examp
 
 Nested sense sets V0 ⊂ V1 ⊂ V2 ... retain earlier senses. V0 is the minimal foundation: use examples, situations, contrasts, actions and visual descriptions; not every primitive has a simpler verbal definition. At V1+, prefer earlier-level senses in definitions. Strictly respect a verified database's allowed senses; without one, use basic English without claiming level compliance.
 
+## Word roots
+
+For a standalone word, add **Word roots** once before the word-family overview. Briefly identify its root/base and any useful prefixes or suffixes, explain each part's meaning or function, and connect them to the word's current meaning. Distinguish modern word formation from historical origin; mention relevant spelling or sound changes. Do not invent roots from similar-looking words or force a split: say when a word has no useful transparent breakdown, and mark uncertain etymology unverified. For focused passage or usage questions, include this analysis only when it helps explain the target word. Keep it concise; do not expand the existing family or sense-card requirements.
+
 ## Word family, forms and usage
 
 For a standalone word, give **Word family and forms** once before sense cards. The target's parts of speech do not replace related forms.
