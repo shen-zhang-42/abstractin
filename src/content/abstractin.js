@@ -3730,6 +3730,9 @@ AbstractIn = {
 		}
 
 		let history = await this.loadHistory(view.ctx.dir);
+		// Replacing the streamed reply calls append helpers that scroll to the end.
+		// Keep the reader's latest position, including scrolling during history I/O.
+		let readingScrollTop = logEl.scrollTop;
 		this.renderMessages(view, history);
 		if (result.pdfSource && view.ctx.reading) view.ctx.reading.pdfSource = result.pdfSource;
 		this.updateControls(view.root);
@@ -3762,7 +3765,8 @@ AbstractIn = {
 			});
 		}
 		this.setBusy(view, false);
-		view.input.focus();
+		logEl.scrollTop = readingScrollTop;
+		this.updateJump(view.root);
 	},
 
 	async ask(ctx, question, pending) {

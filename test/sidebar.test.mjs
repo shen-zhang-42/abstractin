@@ -32,6 +32,48 @@ function sidebar(prefs = {}, readerPanel = true) {
 }
 const menuLabels = root => [...root.querySelectorAll(".abstractin-menu .abstractin-menu-label")].map(n => n.textContent);
 
+test("finishing a streamed reply preserves the latest reading position after history loading and notices", async () => {
+	const { plugin, view, root, document } = sidebar();
+	Object.defineProperties(view.logEl, { scrollHeight: { value: 4000 }, clientHeight: { value: 500 } });
+	let finish, historyReady;
+	const history = [{ role: "user", text: "Explain this word" }, { role: "assistant", text: "The complete answer", backend: "codex" }];
+	plugin.loadHistory = () => new Promise(resolve => historyReady = resolve);
+	const pending = { backend: "codex", question: "Explain this word", images: [], partial: "Opening paragraph", startedAt: Date.now(),
+		listeners: new Set(), promise: new Promise(resolve => finish = resolve) };
+	const showing = plugin.showPending(view, pending);
+	view.logEl.scrollTop = 240;
+	pending.partial += "\n\nMore text below the paragraph being read.";
+	for (const listener of pending.listeners) listener();
+	await new Promise(resolve => setTimeout(resolve, 180));
+	assert.equal(view.logEl.scrollTop, 240, "streaming must respect scrolling up");
+	finish({ recordKey: "NOTE1", historySyncWarning: "A sync warning" });
+	await Promise.resolve(); await Promise.resolve();
+	assert.equal(typeof historyReady, "function");
+	view.logEl.scrollTop = 320; // The user keeps reading while saved history loads.
+	const readingControl = document.createElement("button"); document.body.append(readingControl); readingControl.focus();
+	historyReady(history); await showing;
+	assert.equal(view.logEl.scrollTop, 320);
+	assert.equal(document.activeElement, readingControl, "completion must not move focus back to the composer");
+	assert.ok(root.textContent.includes("The complete answer"));
+	assert.equal(root.querySelector(".abstractin-jump").hidden, false);
+	assert.equal(pending.listeners.size, 0);
+});
+
+test("stopping or failing a streamed reply does not jump away from the current paragraph", async () => {
+	for (const result of [{ cancelled: true }, { error: "Connection closed" }]) {
+		const { plugin, view } = sidebar();
+		Object.defineProperties(view.logEl, { scrollHeight: { value: 4000 }, clientHeight: { value: 500 } });
+		plugin.loadHistory = async () => [{ role: "user", text: "Question" }];
+		let finish;
+		const pending = { backend: "codex", question: "Question", images: [], partial: "Partial text", startedAt: Date.now(),
+			listeners: new Set(), promise: new Promise(resolve => finish = resolve) };
+		const showing = plugin.showPending(view, pending);
+		view.logEl.scrollTop = 200;
+		finish(result); await showing;
+		assert.equal(view.logEl.scrollTop, 200);
+	}
+});
+
 test("reading model menu uses the Codex catalog and saves a custom model ID", () => {
 	const { root, view, plugin, prefs } = sidebar();
 	view.ctx.reading = { type: "book", language: "English" };
