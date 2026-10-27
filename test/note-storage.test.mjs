@@ -26,6 +26,44 @@ test('full mode keeps the existing transcript and Zotero sync note',async()=>{
  assert.equal(f.notes.length,1);assert.ok(f.notes[0].getNote().includes('RAW ANSWER SECRET'));assert.equal(f.requests.length,0);
 });
 
+test('new documents default to full saving and survive an article round trip',async()=>{
+ const f=await fixture();assert.equal(f.p.noteSaveMode(f.ctx),'full');
+ await f.p.saveHistory(f.dir,f.history);f.p.endNoteSession(f.dir);
+ const otherDir=await mkdtemp(join(tmpdir(),'full-other-'));
+ const other={dir:otherDir,paperItem:{...f.ctx.paperItem,id:21,key:'OTHER'}};f.p.registerChatContext(other);
+ await f.p.saveHistory(otherDir,[{role:'user',text:'Other article'}]);f.p.endNoteSession(otherDir);
+ assert.deepEqual(Array.from(await f.p.loadHistory(f.dir),m=>m.text),f.history.map(m=>m.text));
+ assert.equal(f.p.chatNoteHistories(f.ctx)[0].history[1].text,'RAW ANSWER SECRET');
+});
+
+test('full saves are serialized so a delayed older write cannot replace the latest answer and note',async()=>{
+ const f=await fixture('full'), put=f.window.Zotero.File.putContentsAsync;
+ let release, entered;const gate=new Promise(resolve=>{release=resolve;}), started=new Promise(resolve=>{entered=resolve;});
+ let writes=0,active=0,peak=0;
+ f.window.Zotero.File.putContentsAsync=async(path,text)=>{
+  if(path!==join(f.dir,'chat.json'))return put(path,text);
+  peak=Math.max(peak,++active);try{if(++writes===1){entered();await gate;}return await put(path,text);}finally{active--;}
+ };
+ const older=f.p.saveHistory(f.dir,f.history);await started;
+ const latest=[...f.history,{role:'user',text:'Second question',ts:3},{role:'assistant',text:'Latest durable answer',ts:4}];
+ const newer=f.p.saveHistory(f.dir,latest);await new Promise(resolve=>setTimeout(resolve,20));release();await Promise.all([older,newer]);
+ assert.equal(peak,1);assert.deepEqual(JSON.parse(await readFile(join(f.dir,'chat.json'),'utf8')),latest);
+ assert.equal(f.p.chatNoteHistories(f.ctx)[0].history.at(-1).text,'Latest durable answer');
+});
+
+test('returning to an article waits for its full save rather than restoring an older snapshot',async()=>{
+ const f=await fixture('full');await f.p.saveHistory(f.dir,f.history);
+ const put=f.window.Zotero.File.putContentsAsync;let release,entered;
+ const gate=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+ f.window.Zotero.File.putContentsAsync=async(path,text)=>{if(path===join(f.dir,'chat.json')){entered();await gate;}return put(path,text);};
+ const latest=[...f.history,{role:'assistant',text:'Answer saved while reading another article',ts:3}];
+ const saving=f.p.saveHistory(f.dir,latest);await started;
+ let restored=false;const loading=f.p.loadHistory(f.dir).then(history=>{restored=true;return history;});
+ await new Promise(resolve=>setTimeout(resolve,20));const readBeforeSave=restored;
+ release();await saving;const history=await loading;
+ assert.equal(readBeforeSave,false);assert.equal(history.at(-1).text,latest.at(-1).text);
+});
+
 test('none mode keeps history and CLI sessions only in memory and creates no notes or transcript files',async()=>{
  const f=await fixture('none');await f.p.saveHistory(f.dir,f.history);await f.p.saveSessions(f.dir,{claude:{id:'temporary'}});
  await f.p.appendClarification(f.dir,{answer:'RAW ANSWER SECRET'});await f.p.saveReadingRecord(f.ctx,'question',null,{});
@@ -33,6 +71,40 @@ test('none mode keeps history and CLI sessions only in memory and creates no not
  assert.equal((await f.p.loadSessions(f.dir)).claude.id,'temporary');assert.equal(f.notes.length,0);
  for(const file of ['chat.json','session.json','clarifications.json'])assert.equal(await f.window.OS.File.exists(join(f.dir,file)),false);
  f.p.endNoteSession(f.dir);assert.equal((await f.p.loadHistory(f.dir)).length,0);assert.deepEqual(Object.keys(await f.p.loadSessions(f.dir)),[]);assert.equal(f.requests.length,0);
+});
+
+test('concurrent full appends retain both answers in the transcript and Zotero note',async()=>{
+ const f=await fixture('full');await f.p.saveHistory(f.dir,f.history);
+ await Promise.all([
+  f.p.appendHistory(f.dir,[{role:'assistant',text:'First appended answer',ts:3}]),
+  f.p.appendHistory(f.dir,[{role:'assistant',text:'Second appended answer',ts:4}]),
+ ]);
+ const expected=[...f.history.map(m=>m.text),'First appended answer','Second appended answer'];
+ assert.deepEqual(Array.from(await f.p.loadHistory(f.dir),m=>m.text),expected);
+ assert.deepEqual(Array.from(f.p.chatNoteHistories(f.ctx)[0].history,m=>m.text),expected);
+});
+
+test('full saving snapshots its input and recovers its queue after a failed write',async()=>{
+ const f=await fixture('full'),put=f.window.Zotero.File.putContentsAsync;let fail=true;
+ f.window.Zotero.File.putContentsAsync=async(path,text)=>{if(path===join(f.dir,'chat.json')&&fail){fail=false;throw new Error('Disk unavailable');}return put(path,text);};
+ await assert.rejects(f.p.saveHistory(f.dir,f.history),/Disk unavailable/);
+ const saving=f.p.saveHistory(f.dir,f.history);f.history[1].text='Caller mutated after saving';await saving;
+ assert.equal((await f.p.loadHistory(f.dir))[1].text,'RAW ANSWER SECRET');
+ assert.equal(f.p._historyJobs.size,0);
+});
+
+test('discussion result migration cannot overwrite an answer appended while it is awaiting the index',async()=>{
+ const f=await fixture('full');await f.p.saveHistory(f.dir,f.history);
+ f.ctx.discussion={id:'test',chapterID:null};
+ let release,entered;const gate=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+ f.p._pending.set(f.dir,{});
+ let reads=0;f.p.discussionIndex=async()=>{if(++reads===1){entered();await gate;}return {chapters:[]};};
+ f.p.numberDiscussionResults=(ctx,history)=>{if(history[1].referenceID)return false;history[1].referenceID='stable-result';return true;};
+ const loading=f.p.loadHistory(f.dir);await started;
+ const appending=f.p.appendHistory(f.dir,[{role:'assistant',text:'Answer during migration',ts:3}]);
+ release();await Promise.all([loading,appending]);
+ assert.equal((await f.p.loadHistory(f.dir)).at(-1).text,'Answer during migration');
+ assert.equal(f.p.chatNoteHistories(f.ctx)[0].history.at(-1).text,'Answer during migration');
 });
 
 test('summary mode persists only an agent-generated summary while keeping full messages until close',async()=>{

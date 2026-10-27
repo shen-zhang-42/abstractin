@@ -5774,7 +5774,25 @@ AbstractIn = {
 	// Conversation persistence
 	// ---------------------------------------------------------------------
 
+	_historyJobs: new Map(),
+	// Keep restore/migration, appends, and both transcript copies in one order.
+	// A different discussion can continue while this directory is being saved.
+	withHistoryLock(dir, task) {
+		const prior = this._historyJobs.get(dir) || Promise.resolve();
+		const job = prior.catch(() => {}).then(task);
+		this._historyJobs.set(dir, job);
+		return job.finally(() => { if (this._historyJobs.get(dir) === job) this._historyJobs.delete(dir); });
+	},
+
 	async loadHistory(dir) {
+		return this.withHistoryLock(dir, async () => {
+			const history = await this.readHistory(dir);
+			if (await this.prepareHistory(dir, history)) await this.writeHistory(dir, history);
+			return history;
+		});
+	},
+
+	async readHistory(dir) {
 		let path = OS.Path.join(dir, "chat.json"), local = [], exists = false;
 		try {
 			exists = await OS.File.exists(path);
@@ -5789,12 +5807,31 @@ AbstractIn = {
 	},
 
 	async appendHistory(dir, messages) {
+		if (!this.noteSaveMode || this.noteSaveMode(dir) === "full") {
+			const additions = JSON.parse(JSON.stringify(messages));
+			return this.withHistoryLock(dir, async () => {
+				const history = await this.readHistory(dir);
+				history.push(...additions);
+				await this.prepareHistory(dir, history);
+				return this.writeHistory(dir, history);
+			});
+		}
 		let history = await this.loadHistory(dir);
 		history.push(...messages);
 		return await this.saveHistory(dir, history);
 	},
 
 	async saveHistory(dir, history) {
+		const snapshot = JSON.parse(JSON.stringify(history));
+		return this.withHistoryLock(dir, async () => {
+			await this.prepareHistory(dir, snapshot);
+			return this.writeHistory(dir, snapshot);
+		});
+	},
+
+	async prepareHistory(dir, history) {},
+
+	async writeHistory(dir, history) {
 		await Zotero.File.putContentsAsync(
 			OS.Path.join(dir, "chat.json"),
 			JSON.stringify(history, null, 2)

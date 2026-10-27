@@ -193,7 +193,9 @@ for (const type of ["book", "paper"]) {
 		const sending = p.startRequest(view, "Why does this step work?", [], [], { selection: {
 			text: "The hypothesis", attachmentID: 7, pageLabel: "xiv", position: { pageIndex: 8 },
 		} });
-		await new Promise(resolve => setTimeout(resolve, 20));
+		for (let attempt = 0; attempt < 200 && !p._pending.has(view.ctx.dir) && !root.querySelector(".abstractin-chapter-choice button"); attempt++) {
+			await new Promise(resolve => setTimeout(resolve, 10));
+		}
 		root.querySelector(".abstractin-chapter-choice button")?.click();
 		await sending;
 		const pending = p._pending.get(view.ctx.dir);

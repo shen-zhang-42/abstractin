@@ -4,7 +4,7 @@
 // never receive its inputs or gain access to another discussion implicitly.
 (() => {
  const previous = {};
- for (const name of ["discussionName", "legacyDiscussions", "openHistoryMenu", "updateReadingControls", "renderMessages", "linkTheorems", "loadHistory", "saveHistory", "assignDiscussionChapter", "readingPrompt", "resolveDiscussionChapter", "requestsReadingSource", "requestsKnowledgeDiscussion"]) previous[name] = AbstractIn[name];
+ for (const name of ["discussionName", "legacyDiscussions", "openHistoryMenu", "updateReadingControls", "renderMessages", "linkTheorems", "assignDiscussionChapter", "readingPrompt", "resolveDiscussionChapter", "requestsReadingSource", "requestsKnowledgeDiscussion"]) previous[name] = AbstractIn[name];
  Object.assign(AbstractIn, {
   discussionQuestionSubject(text) {
    if (!/\[result:[a-z0-9:-]+(?:\|[^\]\n]+)?\]/.test(text)) return text;
@@ -341,15 +341,9 @@
    try { await this.saveChatNotes(view.ctx.dir, await this.loadHistory(view.ctx.dir)); }
    catch (e) { this.logError("discussion result numbering sync", e); }
   },
-  async loadHistory(dir) {
-   const history = await previous.loadHistory.call(this, dir), ctx = this._chatContexts.get(dir);
-   if (ctx?.discussion && this.numberDiscussionResults(ctx, history, await this.discussionIndex(ctx))) await previous.saveHistory.call(this, dir, history);
-   return history;
-  },
-  async saveHistory(dir, history) {
+  async prepareHistory(dir, history) {
    const ctx = this._chatContexts.get(dir);
-   if (ctx?.discussion) this.numberDiscussionResults(ctx, history, await this.discussionIndex(ctx));
-   return previous.saveHistory.call(this, dir, history);
+   return ctx?.discussion && this.numberDiscussionResults(ctx, history, await this.discussionIndex(ctx));
   },
   resultReference(chat, message, index) { return "result:" + (message.referenceID || chat.id + "-" + index); },
   quoteDiscussionResult(view, chat, message, index, selectedText = "", result = null) {
