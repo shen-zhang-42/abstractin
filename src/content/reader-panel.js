@@ -55,6 +55,37 @@ Object.assign(AbstractIn, {
 		return reader._window || Zotero.getMainWindow();
 	},
 
+	visibleReaderSelectionView(reader) {
+		const doc = this.readerPanelWindow(reader).document;
+		const dir = this.contextDirFor(Zotero.Items.get(reader.itemID));
+		let candidates = [];
+		for (const root of doc.querySelectorAll(".abstractin-root")) {
+			const view = this._views.get(root);
+			if (!view || !this.readerPanelNodeAlive(root)) continue;
+			if (view.ctx.attachmentItem ? view.ctx.attachmentItem.id !== reader.itemID : view.ctx.dir !== dir) continue;
+			let visible = true;
+			for (let node = root; node; node = node.parentElement) {
+				const collapsed = node.getAttribute("collapsed");
+				if (node.hidden || collapsed !== null && collapsed !== "false" || node.getAttribute("aria-hidden") === "true") { visible = false; break; }
+				const style = doc.defaultView.getComputedStyle(node);
+				if (style.display === "none" || style.visibility === "hidden") { visible = false; break; }
+			}
+			if (visible) candidates.push(view);
+		}
+		return candidates.find(view => view.root.contains(doc.activeElement)) || candidates[0] || null;
+	},
+
+	readerPanelState(win) {
+		// Gecko can expose different window wrappers for the same document.
+		return this._readerPanelWindows.get(win) || [...this._readerPanelWindows.values()].find(state => {
+			try { return state.panel.ownerDocument === win.document; } catch { return false; }
+		});
+	},
+
+	sameReaderPanelTab(a, b) {
+		return a === b || !!a && !!b && a.itemID === b.itemID && a.tabID === b.tabID;
+	},
+
 	readerPanelMount(doc) {
 		let context = doc.getElementById("zotero-context-pane");
 		let splitter = doc.getElementById("zotero-context-splitter");
@@ -152,7 +183,7 @@ Object.assign(AbstractIn, {
 				if (!pending) this._readerToolbarButtons.get(win)?.delete(reader);
 				continue;
 			}
-			let active = !!state?.active && state.reader === reader;
+			let active = !!state?.active && this.sameReaderPanelTab(state.reader, reader);
 			button.setAttribute("aria-pressed", String(active));
 			button.classList.toggle("active", active);
 		}
@@ -232,9 +263,10 @@ Object.assign(AbstractIn, {
 	async openReaderPanel(reader, { toggle = false } = {}) {
 		if (reader.type !== "pdf") throw new Error("Open a PDF to use the AbstractIn reading panel.");
 		let win = this.readerPanelWindow(reader);
-		let state = this._readerPanelWindows.get(win);
+		let state = this.readerPanelState(win);
+		if (state) win = state.win;
 		if (state && (!this.readerPanelNodeAlive(state.panel) || !this.readerPanelNodeAlive(state.splitter))) { this.removeReaderPanel(win); state = null; }
-		if (toggle && state?.active && state.reader === reader) { this.closeReaderPanel(win); return; }
+		if (toggle && state?.active && this.sameReaderPanelTab(state.reader, reader)) { this.closeReaderPanel(win); return; }
 		let item = Zotero.Items.get(reader.itemID);
 		if (!item) throw new Error("The selected PDF attachment is no longer available.");
 		state = state || this.createReaderPanel(win);
@@ -244,6 +276,20 @@ Object.assign(AbstractIn, {
 		state.panel.querySelector(".abstractin-reader-loading")?.remove();
 		state.panel.hidden = false; state.splitter.hidden = false; state.splitter.setAttribute("state", "open");
 		let entry = state.views.get(reader);
+		if (!entry) {
+			// Reader event wrappers can change while the same PDF tab remains open.
+			for (const [cachedReader, existing] of state.views) {
+				if (this.sameReaderPanelTab(cachedReader, reader)) {
+					entry = existing;
+					state.views.delete(cachedReader); state.views.set(reader, entry);
+					const binding = this._positionBindings.get(cachedReader);
+					if (binding) { this._positionBindings.delete(cachedReader); this._positionBindings.set(reader, binding); }
+					const view = this._views.get(entry.root);
+					if (view) view.ctx.reader = reader;
+					break;
+				}
+			}
+		}
 		for (let [cachedReader, existing] of state.views) {
 			if (!this.readerPanelNodeAlive(existing.body) || !this.readerPanelNodeAlive(existing.root)) {
 				this.releaseReaderPanelView(state, cachedReader, existing);

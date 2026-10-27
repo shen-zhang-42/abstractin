@@ -2725,9 +2725,12 @@ AbstractIn = {
 		let button = (text, send) => {
 			let el = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
 			el.className = "toolbar-button wide-button";
+			el.type = "button";
 			el.setAttribute("data-tabstop", "1");
 			el.textContent = text;
-			el.addEventListener("click", () => {
+			el.addEventListener("click", event => {
+				event.preventDefault();
+				event.stopPropagation();
 				try {
 					this.askAboutSelection(reader, annotation, send);
 				}
@@ -2761,7 +2764,10 @@ AbstractIn = {
 		if (!item) {
 			return;
 		}
-		let dir = this.contextDirFor(item);
+		// Selection actions belong to the visible chat, which may differ from the
+		// document's last saved active discussion. Do not open a second surface first.
+		let view = this.visibleReaderSelectionView(reader);
+		let dir = view?.ctx.dir || this.contextDirFor(item);
 		this._drafts.set(dir, {
 			text: this.selectionPrompt(annotation.text, annotation.pageLabel, send),
 			send,
@@ -2773,19 +2779,16 @@ AbstractIn = {
 				attachmentID: item.id,
 			},
 		});
-		let win = reader._window || Zotero.getMainWindow();
+		if (view) {
+			this.applyDraft(view);
+			return;
+		}
 		// Reveal the dedicated reading panel for this exact PDF.
 		try {
 			this.openReaderPanel(reader).catch(e => this.logError("selection reader panel", e));
 		}
 		catch (e) {
 			this.log("askAboutSelection: could not reveal the sidebar: " + e);
-		}
-		for (let root of win.document.querySelectorAll(".abstractin-root")) {
-			let view = this._views.get(root);
-			if (view && view.ctx.dir === dir) {
-				this.applyDraft(view);
-			}
 		}
 	},
 

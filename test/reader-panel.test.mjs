@@ -137,6 +137,70 @@ test("selection actions reveal the dedicated panel with the exact attachment's d
 	assert.equal(win.ZoteroContextPane.collapsed, false, "selection action no longer opens native metadata");
 });
 
+test("Explain language reuses the visible PDF chat without opening another sidebar or changing discussions", async () => {
+	const { plugin: p, document: doc, window: win, a } = setup();
+	p.contextDirFor = () => "last-saved-discussion";
+	await p.openReaderPanel(a);
+	const panel = doc.querySelector(".abstractin-reader-panel"), root = panel.querySelector(".abstractin-root");
+	const view = p._views.get(root); view.ctx.dir = "visible-discussion";
+	let requests = [];
+	p.startRequest = (target, text, images, modes, options) => requests.push({ target, text, options });
+	p.openReaderPanel = () => assert.fail("a visible matching chat must be reused directly");
+	const popup = doc.createElement("div"); doc.body.append(popup);
+	let bubbled = 0; popup.addEventListener("click", () => bubbled++);
+	p.renderSelectionButtons({ reader: a, doc, params: { annotation: { text: "A sentence.", position: { pageIndex: 3 } } }, append: node => popup.append(node) });
+	const explain = [...popup.querySelectorAll("button")].find(button => button.textContent === "Explain language");
+	explain.click(); explain.click();
+	assert.equal(bubbled, 0);
+	assert.equal(doc.querySelectorAll(".abstractin-reader-panel").length, 1);
+	assert.equal(doc.querySelector(".abstractin-reader-panel"), panel);
+	assert.equal(p._views.get(root), view); assert.equal(view.ctx.dir, "visible-discussion");
+	assert.equal(requests.length, 2); assert.equal(requests[0].target, view);
+	assert.equal(requests[0].options.vocabularyTutor, true);
+	assert.equal(requests[0].options.selection.attachmentID, a.itemID);
+	assert.equal(p._drafts.size, 0);
+});
+
+test("selection actions reuse an existing visible sidebar outside the managed panel registry", () => {
+	const { plugin: p, document: doc, a } = setup();
+	const body = doc.createElement("div"); doc.body.append(body); p.renderSkeleton(doc, body);
+	const root = body.querySelector(".abstractin-root");
+	const view = { doc, root, ctx: { dir: "existing-chat", attachmentItem: { id: a.itemID } }, input: root.querySelector("textarea") };
+	p._views.set(root, view); p.contextDirFor = () => "another-discussion";
+	p.openReaderPanel = () => assert.fail("selection must not create a second sidebar");
+	p.askAboutSelection(a, { text: "Selected passage" }, false);
+	assert.match(view.input.value, /Selected passage/);
+	assert.equal(doc.querySelectorAll(".abstractin-root").length, 1);
+});
+
+test("hidden or other-PDF chats cannot consume a selection", async () => {
+	const { plugin: p, document: doc, a, b } = setup();
+	p.contextDirFor = item => "reading-" + item.id;
+	await p.openReaderPanel(b);
+	let opened = 0; p.openReaderPanel = async reader => { opened++; assert.equal(reader, a); };
+	p.askAboutSelection(a, { text: "For PDF A" }, true);
+	assert.equal(opened, 1); assert.ok(p._drafts.has("reading-11"));
+	const view = p._views.get(doc.querySelector(".abstractin-root")); view.ctx.attachmentItem.id = a.itemID;
+	doc.querySelector(".abstractin-reader-view").hidden = true;
+	p.askAboutSelection(a, { text: "Still for A" }, true);
+	assert.equal(opened, 2);
+});
+
+test("window and Reader wrappers for the same PDF tab reuse one panel and composer", async () => {
+	const { plugin: p, document: doc, window: win, a } = setup();
+	await p.openReaderPanel(a);
+	const panel = doc.querySelector(".abstractin-reader-panel"), root = panel.querySelector(".abstractin-root");
+	root.querySelector("textarea").value = "Unsent draft";
+	const wrappedWindow = { document: doc }, wrappedReader = { ...a, _window: wrappedWindow };
+	await p.openReaderPanel(wrappedReader);
+	assert.equal(doc.querySelectorAll(".abstractin-reader-panel").length, 1);
+	assert.equal(doc.querySelectorAll(".abstractin-reader-view").length, 1);
+	assert.equal(panel.querySelector(".abstractin-root"), root);
+	assert.equal(root.querySelector("textarea").value, "Unsent draft");
+	assert.equal(p._readerPanelWindows.size, 1);
+	p.removeReaderPanel(win);
+});
+
 test("selecting an unloaded PDF hides the previous attachment until its reader loads", async () => {
 	const { plugin: p, document: doc, window: win, a, b, observer } = setup();
 	await p.openReaderPanel(a);

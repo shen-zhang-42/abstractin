@@ -79,6 +79,8 @@ Each chat retains one Codex session across vocabulary, ordinary reading, source 
 
 Codex uses the local `app-server` protocol to display incremental text while generating the full answer, including when resuming threads created by the previous `exec` integration. Word-card requirements are unchanged. Stopping retains the displayed text; generation errors are not saved as completed answers. Debug logs record initialization, thread readiness, turn acceptance, first text and completion timings to distinguish startup waits from generation time. This does not change global Codex configuration or terminate other Codex processes. A CLI with `app-server` support is required.
 
+Selection actions Explain language and Ask reuse the visible chat for the exact PDF, without opening another sidebar or switching to the document's last saved discussion. They open the reading panel only when no matching chat is visible. Different object wrappers for the same window document and PDF tab reuse the panel and composer draft.
+
 ### Quick questions, images, and formulas
 
 - **Quick questions** appears at the top right of the composer. Selecting an option fills in a question that you can edit before sending; explanations appear on hover.
