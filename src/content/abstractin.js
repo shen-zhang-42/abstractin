@@ -2680,18 +2680,34 @@ AbstractIn = {
 	// ---------------------------------------------------------------------
 
 	registerReaderHooks() {
-		Zotero.Reader.registerEventListener("renderToolbar", event => {
+		this.unregisterReaderHooks();
+		const hooks = this._readerHooks = { active: true, handlers: new Map() };
+		hooks.handlers.set("renderToolbar", event => {
+			if (!hooks.active) return;
 			try { this.renderReaderToolbar(event); }
 			catch (e) { this.logError("renderReaderToolbar", e); }
-		}, this.id);
-		Zotero.Reader.registerEventListener("renderTextSelectionPopup", (event) => {
+		});
+		hooks.handlers.set("renderTextSelectionPopup", (event) => {
+			if (!hooks.active) return;
 			try {
 				this.renderSelectionButtons(event);
 			}
 			catch (e) {
 				this.logError("renderSelectionButtons", e);
 			}
-		}, this.id);
+		});
+		for (const [type, handler] of hooks.handlers) Zotero.Reader.registerEventListener(type, handler, this.id);
+	},
+
+	unregisterReaderHooks() {
+		const hooks = this._readerHooks;
+		if (!hooks) return;
+		hooks.active = false;
+		this._readerHooks = null;
+		for (const [type, handler] of hooks.handlers) {
+			try { Zotero.Reader?.unregisterEventListener?.(type, handler); }
+			catch (e) { this.logError("unregister reader hook", e); }
+		}
 	},
 
 	// Two buttons in the reader's text selection popup, styled like its own "Add to Note".

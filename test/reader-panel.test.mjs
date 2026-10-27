@@ -204,6 +204,70 @@ test("installing into an already loaded PDF restores one visible toolbar entry",
  p.removeAllReaderPanels(); assert.equal(toolbar.querySelectorAll('.abstractin-reader-toggle').length, 0);
 });
 
+test('toolbar restoration and delayed native append share one working button', async () => {
+ const { plugin: p, document: doc, window: win, a } = setup();
+ const toolbar = doc.createElement('div'); toolbar.className = 'toolbar'; toolbar.innerHTML = '<div class="end"></div>'; doc.body.append(toolbar);
+ a._iframeWindow = { document: doc }; win.Zotero.Reader._readers = [a];
+ const queued = []; p.renderReaderToolbar({ reader: a, doc, append: node => queued.push(node) });
+ assert.equal(p._readerToolbarButtons.get(win).get(a), queued[0], 'a queued node remains tracked before it is attached');
+ await p.restoreReaderToolbarEntries();
+ for (const node of queued) toolbar.querySelector('.end').append(node);
+ await new Promise(resolve => win.setTimeout(resolve, 0));
+ assert.equal(toolbar.querySelectorAll('.abstractin-reader-toggle').length, 1);
+ const button = toolbar.querySelector('.abstractin-reader-toggle');
+ button.click(); await Promise.resolve();
+ assert.equal(doc.querySelector('.abstractin-reader-panel').hidden, false);
+ assert.equal(button.getAttribute('aria-pressed'), 'true');
+ p.removeAllReaderPanels();
+ assert.equal(p._readerToolbarGuards.size, 0);
+});
+
+test('a previous instance guard cannot remove the new instance toolbar button', async () => {
+ const { plugin: p, document: doc, window: win, a } = setup();
+ const toolbar = doc.createElement('div'); toolbar.className = 'toolbar'; toolbar.innerHTML = '<div class="end"></div>'; doc.body.append(toolbar);
+ p.renderReaderToolbar({reader:a,doc,append:node=>toolbar.querySelector('.end').append(node)});
+ const replacement = loadPlugin().plugin;
+ replacement.renderReaderToolbar({reader:a,doc,append:node=>toolbar.querySelector('.end').append(node)});
+ await new Promise(resolve=>win.setTimeout(resolve,0));
+ const button = replacement._readerToolbarButtons.get(win).get(a);
+ assert.equal(toolbar.querySelectorAll('.abstractin-reader-toggle').length,1);
+ assert.equal(toolbar.querySelector('.abstractin-reader-toggle'),button);
+ p.removeAllReaderPanels();
+ assert.equal(button.isConnected,true,'old instance shutdown does not remove the replacement');
+ replacement.removeAllReaderPanels();
+});
+
+test('rendering heals untracked buttons from an old plugin instance, including late insertions', async () => {
+ const { plugin: p, document: doc, window: win, a } = setup();
+ const toolbar = doc.createElement('div'); toolbar.className = 'toolbar'; toolbar.innerHTML = '<div class="end"><button class="abstractin-reader-toggle">Old</button><button id="native-control">Native</button></div>'; doc.body.append(toolbar);
+ const old = toolbar.querySelector('.abstractin-reader-toggle'); let staleClicks = 0; old.addEventListener('click', () => staleClicks++);
+ p.renderReaderToolbar({ reader: a, doc, append: node => toolbar.querySelector('.end').append(node) });
+ assert.equal(old.isConnected, false);
+ const late = old.cloneNode(true); toolbar.querySelector('.end').append(late);
+ await new Promise(resolve => win.setTimeout(resolve, 0));
+ assert.equal(toolbar.querySelectorAll('.abstractin-reader-toggle').length, 1);
+ assert.equal(late.isConnected, false); assert.ok(doc.getElementById('native-control'));
+ toolbar.querySelector('.abstractin-reader-toggle').click(); await Promise.resolve();
+ assert.equal(staleClicks, 0); assert.equal(doc.querySelector('.abstractin-reader-panel').hidden, false);
+ p.removeAllReaderPanels();
+});
+
+test('reader hook registration is idempotent and queued old callbacks stop after unregistering', () => {
+ const { plugin: p, window: win, a, document: doc } = setup();
+ let listeners = [];
+ win.Zotero.Reader.registerEventListener = (type, handler) => listeners.push({ type, handler });
+ win.Zotero.Reader.unregisterEventListener = (type, handler) => { listeners = listeners.filter(listener => listener.type !== type || listener.handler !== handler); };
+ let renders = 0; p.renderReaderToolbar = () => renders++;
+ p.registerReaderHooks(); const old = listeners.slice(); p.registerReaderHooks();
+ assert.equal(listeners.length, 2);
+ for (const listener of old) listener.handler({reader:a,doc});
+ assert.equal(renders, 0);
+ listeners.find(listener => listener.type === 'renderToolbar').handler({reader:a,doc}); assert.equal(renders, 1);
+ const queued = listeners.slice(); p.unregisterReaderHooks(); assert.equal(listeners.length, 0);
+ for (const listener of queued) listener.handler({reader:a,doc});
+ assert.equal(renders, 1);
+});
+
 
 test("late toolbar rendering restores an entry and shutdown removes pending observers", async () => {
  const { plugin: p, document: doc, window: win, a } = setup();

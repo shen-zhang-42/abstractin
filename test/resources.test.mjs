@@ -7,7 +7,7 @@ import { loadPlugin } from "./load-plugin.mjs";
 test("startup registers resources before loading scripts and releases them on shutdown", async () => {
 	const events = [];
 	const rootURI = "jar:file:///C:/Users/User/plugin.xpi!/";
-	const plugin = Object.fromEntries(["init", "getKatex", "addToAllWindows", "registerReaderHooks", "restoreReaderToolbarEntries", "watchPrefs", "registerPrefsPane", "startNoteIn", "stopNoteIn", "closeSettings", "unwatchPrefs", "stopReadingPositionTracking", "removeAllReaderPanels", "removeFromAllWindows"].map(name => [name, arg => { events.push({ name, arg }); return true; }]));
+	const plugin = Object.fromEntries(["init", "getKatex", "addToAllWindows", "registerReaderHooks", "unregisterReaderHooks", "restoreReaderToolbarEntries", "watchPrefs", "registerPrefsPane", "startNoteIn", "stopNoteIn", "closeSettings", "unwatchPrefs", "stopReadingPositionTracking", "removeAllReaderPanels", "removeFromAllWindows"].map(name => [name, arg => { events.push({ name, arg }); return true; }]));
 	const scope = {
 		Zotero: { debug() {} },
 		Cc: { "@mozilla.org/addons/addon-manager-startup;1": { getService: () => ({ registerChrome: (uri, entries) => {
@@ -28,6 +28,7 @@ test("startup registers resources before loading scripts and releases them on sh
 	assert.ok(events.findIndex(e => e.name === "getKatex") < events.findIndex(e => e.name === "addToAllWindows"));
 	assert.ok(events.findIndex(e => e.name === "registerReaderHooks") < events.findIndex(e => e.name === "restoreReaderToolbarEntries"));
 	scope.shutdown();
+	assert.ok(events.findIndex(e => e.name === "unregisterReaderHooks") < events.findIndex(e => e.name === "removeAllReaderPanels"));
 	assert.ok(events.findIndex(e => e.name === "closeSettings") < events.findIndex(e => e.name === "destruct"));
 	assert.equal(events.at(-1).name, "destruct");
 });

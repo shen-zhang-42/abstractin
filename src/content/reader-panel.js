@@ -6,6 +6,7 @@ Object.assign(AbstractIn, {
 	_readerPanelWindows: new Map(),
 	_readerToolbarButtons: new Map(),
 	_readerToolbarObservers: new Map(),
+	_readerToolbarGuards: new Map(),
 	_readerToolbarGeneration: 0,
 
 	readerPanelNodeAlive(node) {
@@ -29,6 +30,7 @@ Object.assign(AbstractIn, {
 				let doc = reader._iframeWindow?.document;
 				if (!doc) return;
 				let restore = () => {
+					if (generation !== this._readerToolbarGeneration) return true;
 					let button = this._readerToolbarButtons.get(this.readerPanelWindow(reader))?.get(reader);
 					if (this.readerPanelNodeAlive(button)) return true;
 					let end = doc.querySelector(".toolbar .end");
@@ -73,7 +75,19 @@ Object.assign(AbstractIn, {
 		let buttons = this._readerToolbarButtons.get(win);
 		if (!buttons) { buttons = new Map(); this._readerToolbarButtons.set(win, buttons); }
 		let old = buttons.get(reader);
+		// append() may queue a node until Zotero commits its toolbar render.
+		// Reuse even a disconnected node from this document: the startup restore
+		// and the native render must not each create their own button.
+		let sameDocument = false;
+		try { sameDocument = old?.ownerDocument === doc; } catch (_) {}
+		if (sameDocument) {
+			this.guardReaderToolbar(reader, doc, old);
+			append(old);
+			this.updateReaderPanelButtons(win);
+			return;
+		}
 		if (this.readerPanelNodeAlive(old)) old.remove();
+		let generation = this._readerToolbarGeneration;
 		let button = this.el(doc, "button", "toolbar-button abstractin-reader-toggle");
 		button.type = "button";
 		button.title = "Toggle AbstractIn panel";
@@ -96,6 +110,7 @@ Object.assign(AbstractIn, {
 		}).catch(e => this.logError("reader toolbar icon", e));
 		button.append(icon, this.el(doc, "span", null, "AbstractIn"));
 		button.addEventListener("click", () => {
+			if (generation !== this._readerToolbarGeneration) return;
 			this.openReaderPanel(reader, { toggle: true }).catch(e => {
 				this.logError("openReaderPanel", e);
 				button.title = "AbstractIn: " + (e.message || e);
@@ -103,14 +118,40 @@ Object.assign(AbstractIn, {
 			});
 		});
 		buttons.set(reader, button);
+		this.guardReaderToolbar(reader, doc, button);
 		append(button);
 		this.updateReaderPanelButtons(win);
+	},
+
+	guardReaderToolbar(reader, doc, button) {
+		let guard = this._readerToolbarGuards.get(doc);
+		guard?.observer.disconnect();
+		this._readerToolbarOwner ||= this.chatSyncID();
+		doc.documentElement.setAttribute("data-abstractin-toolbar-owner", this._readerToolbarOwner);
+		const generation = this._readerToolbarGeneration;
+		const clean = () => {
+			if (generation !== this._readerToolbarGeneration || doc.documentElement.getAttribute("data-abstractin-toolbar-owner") !== this._readerToolbarOwner) {
+				guard?.observer.disconnect(); return;
+			}
+			// Old versions' buttons are not present in this instance's Map. Inspect
+			// the actual toolbar too, including nodes appended after startup.
+			for (const node of doc.querySelectorAll('.abstractin-reader-toggle')) if (node !== button) node.remove();
+		};
+		guard = { reader, observer: new doc.defaultView.MutationObserver(clean) };
+		this._readerToolbarGuards.set(doc, guard);
+		clean();
+		guard.observer.observe(doc.querySelector('.toolbar') || doc.documentElement, { childList: true, subtree: true });
 	},
 
 	updateReaderPanelButtons(win) {
 		let state = this._readerPanelWindows.get(win);
 		for (let [reader, button] of this._readerToolbarButtons.get(win) || []) {
-			if (!this.readerPanelNodeAlive(button)) { this._readerToolbarButtons.get(win)?.delete(reader); continue; }
+			if (!this.readerPanelNodeAlive(button)) {
+				let pending = false;
+				try { pending = this._readerToolbarGuards.get(button.ownerDocument)?.reader === reader && !button.ownerDocument.defaultView?.closed; } catch (_) {}
+				if (!pending) this._readerToolbarButtons.get(win)?.delete(reader);
+				continue;
+			}
 			let active = !!state?.active && state.reader === reader;
 			button.setAttribute("aria-pressed", String(active));
 			button.classList.toggle("active", active);
@@ -256,6 +297,11 @@ Object.assign(AbstractIn, {
 	},
 
 	removeReaderPanel(win) {
+		for (const [doc, guard] of this._readerToolbarGuards) this.cleanupReaderPanelResource(() => {
+			if (this.readerPanelWindow(guard.reader) === win) {
+				guard.observer.disconnect(); this._readerToolbarGuards.delete(doc);
+			}
+		});
 		for (let [reader, observer] of this._readerToolbarObservers) {
 			this.cleanupReaderPanelResource(() => {
 				if (this.readerPanelWindow(reader) === win) {
@@ -294,6 +340,8 @@ Object.assign(AbstractIn, {
 
 	removeAllReaderPanels() {
 		this._readerToolbarGeneration++;
+		for (const guard of this._readerToolbarGuards.values()) this.cleanupReaderPanelResource(() => guard.observer.disconnect());
+		this._readerToolbarGuards.clear();
 		for (let observer of this._readerToolbarObservers.values()) observer.disconnect();
 		this._readerToolbarObservers.clear();
 		for (let win of new Set([...this._readerPanelWindows.keys(), ...this._readerToolbarButtons.keys()])) this.removeReaderPanel(win);

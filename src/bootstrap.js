@@ -42,7 +42,7 @@ async function startup({ id, version, rootURI }) {
 	// The settings pane runs in the Settings window and reaches the plugin through Zotero.
 	Zotero.AbstractIn = AbstractIn;
 	AbstractIn.addToAllWindows();
-	// Zotero removes the reader listeners itself when the plugin shuts down.
+	// Keep explicit listener ownership across plugin updates and shutdown.
 	AbstractIn.registerReaderHooks();
 	// Installing/enabling while PDFs are open need not rerender their toolbar.
 	AbstractIn.restoreReaderToolbarEntries();
@@ -68,6 +68,7 @@ function shutdown() {
 		chromeHandle = null;
 		return;
 	}
+	AbstractIn.unregisterReaderHooks();
 	AbstractIn.closeSettings();
 	AbstractIn.stopNoteIn();
 	AbstractIn.unwatchPrefs();
