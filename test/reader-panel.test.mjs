@@ -52,6 +52,54 @@ test("reader toolbar uses the public append hook and toggles a panel outside ite
 	assert.equal(win.ZoteroContextPane.collapsed, false, "closing restores the previously open native pane");
 });
 
+test("cold startup restores the toolbar from a separate PDF iframe without using its observer realm", async () => {
+	const { plugin: p, document: doc, window: win, a } = setup();
+	const iframe = doc.createElement("iframe"); doc.body.append(iframe);
+	const pdfWindow = iframe.contentWindow, pdfDoc = pdfWindow.document;
+	pdfDoc.body.innerHTML = '<div class="toolbar"><div class="end"></div></div>';
+	pdfWindow.MutationObserver = class {
+		constructor() { assert.fail("PDF content observer must not receive chrome-scope options"); }
+	};
+	a._iframeWindow = pdfWindow; win.Zotero.Reader._readers = [a];
+	await p.restoreReaderToolbarEntries();
+	const button = pdfDoc.querySelector(".abstractin-reader-toggle");
+	assert.ok(button, "restart must restore the entry before a selection is made");
+	button.click(); await new Promise(resolve => setTimeout(resolve, 0));
+	assert.equal(doc.querySelector(".abstractin-reader-panel").hidden, false);
+	p.removeAllReaderPanels();
+});
+
+test("late iframe toolbar restoration uses the chrome observer and keeps one button", async () => {
+	const { plugin: p, document: doc, window: win, a } = setup();
+	const iframe = doc.createElement("iframe"); doc.body.append(iframe);
+	const pdfWindow = iframe.contentWindow, pdfDoc = pdfWindow.document;
+	pdfWindow.MutationObserver = class { constructor() { assert.fail("wrong observer realm"); } };
+	a._iframeWindow = pdfWindow; win.Zotero.Reader._readers = [a];
+	await p.restoreReaderToolbarEntries();
+	assert.equal(p._readerToolbarObservers.size, 1);
+	pdfDoc.body.innerHTML = '<div class="toolbar"><div class="end"></div></div>';
+	await new Promise(resolve => setTimeout(resolve, 0));
+	assert.equal(pdfDoc.querySelectorAll(".abstractin-reader-toggle").length, 1);
+	assert.equal(p._readerToolbarObservers.size, 0);
+	p.removeAllReaderPanels();
+});
+
+test("an observer setup error cannot hide the toolbar entry or prevent opening the panel", async () => {
+	const { plugin: p, document: doc, window: win, a } = setup();
+	const NativeObserver = win.MutationObserver;
+	win.MutationObserver = class extends NativeObserver {
+		observe() { throw new TypeError("MutationObserver.observe: One of childList, attributes, characterData must not be false."); }
+	};
+	const toolbar = doc.createElement("div"); doc.body.append(toolbar);
+	p.renderReaderToolbar({ reader: a, doc, append: node => toolbar.append(node) });
+	const button = toolbar.querySelector(".abstractin-reader-toggle");
+	assert.ok(button, "observer failure must not interrupt append");
+	win.MutationObserver = NativeObserver;
+	button.click(); await new Promise(resolve => setTimeout(resolve, 0));
+	assert.equal(doc.querySelector(".abstractin-reader-panel").hidden, false);
+	p.removeAllReaderPanels();
+});
+
 test("closing and reopening retains composer draft and a running request", async () => {
 	const { plugin: p, document: doc, a } = setup();
 	await p.openReaderPanel(a);

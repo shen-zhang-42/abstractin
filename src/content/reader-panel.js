@@ -40,7 +40,7 @@ Object.assign(AbstractIn, {
 					return true;
 				};
 				if (!restore() && !this._readerToolbarObservers.has(reader)) {
-					let observer = new doc.defaultView.MutationObserver(() => {
+					let observer = new (this.readerPanelWindow(reader).MutationObserver)(() => {
 						if (restore()) { observer.disconnect(); this._readerToolbarObservers.delete(reader); }
 					});
 					observer.observe(doc.documentElement, { childList: true, subtree: true });
@@ -168,10 +168,19 @@ Object.assign(AbstractIn, {
 			// the actual toolbar too, including nodes appended after startup.
 			for (const node of doc.querySelectorAll('.abstractin-reader-toggle')) if (node !== button) node.remove();
 		};
-		guard = { reader, observer: new doc.defaultView.MutationObserver(clean) };
-		this._readerToolbarGuards.set(doc, guard);
 		clean();
-		guard.observer.observe(doc.querySelector('.toolbar') || doc.documentElement, { childList: true, subtree: true });
+		// The PDF iframe is a different Gecko security compartment. Construct the
+		// observer in the chrome window so its options remain readable to WebIDL.
+		// Observer setup must never prevent the actual toolbar button being appended.
+		try {
+			guard = { reader, observer: new (this.readerPanelWindow(reader).MutationObserver)(clean) };
+			guard.observer.observe(doc.querySelector('.toolbar') || doc.documentElement, { childList: true, subtree: true });
+			this._readerToolbarGuards.set(doc, guard);
+		}
+		catch (e) {
+			guard?.observer.disconnect(); this._readerToolbarGuards.delete(doc);
+			this.logError("reader toolbar observer", e);
+		}
 	},
 
 	updateReaderPanelButtons(win) {
