@@ -58,7 +58,7 @@ function pendingFor(p, backend = "claude") {
 	return pending;
 }
 
-test("unsupported Codex model retries once with local defaults and a fresh session", async () => {
+test("unsupported Codex model retries once with local defaults in the same session", async () => {
 	const { plugin: p, prefs } = loadPlugin({ prefs: { "extensions.abstractin.codex.model": "gpt-6.1-sol" } });
 	const store = fakeStore(p);
 	store.sessions.codex = { id: "old", seen: 0 };
@@ -74,7 +74,7 @@ test("unsupported Codex model retries once with local defaults and a fresh sessi
 	assert.equal(requests.length, 2);
 	assert.equal(requests[1].model, "");
 	assert.equal(requests[1].effort, "");
-	assert.equal(requests[1].session, null);
+	assert.equal(requests[1].session.id, 'old');
 	assert.ok(!p.codexArgs(requests[1]).includes("-m"));
 	assert.equal(prefs["extensions.abstractin.codex.model"], "");
 	assert.equal(store.history[1].model, undefined);
@@ -102,15 +102,15 @@ test("Codex parses structured model rejection errors", () => {
 	assert.equal(result.error, "Unsupported model");
 });
 
-test("changing Codex model starts a fresh thread and explicitly passes the selected model", async () => {
+test("changing Codex model keeps its thread and explicitly passes the selected model", async () => {
 	const { plugin: p } = loadPlugin();
 	const store = fakeStore(p);
 	store.sessions.codex = { id: "old", seen: 0, model: "gpt-6.1-sol" };
 	const pending = { ...pendingFor(p, "codex"), model: "gpt-6-sol" };
 	p.runBackend = async (backend, request) => {
-		assert.equal(request.session, null);
+		assert.equal(request.session.id, 'old');
 		assert.equal(valueAfter(p.codexArgs(request), "-m"), "gpt-6-sol");
-		return { text: "Answer", sessionId: "new" };
+		return { text: "Answer", sessionId: "old" };
 	};
 	const result = await p.ask(base.ctx, "Why?", pending);
 	assert.equal(result.error, undefined);

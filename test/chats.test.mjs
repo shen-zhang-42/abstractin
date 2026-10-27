@@ -51,11 +51,23 @@ async function setup(type = "book") {
  p.runBackend = async (_, request) => { requests.push(request); return { text: "Answer: " + request.question.split("\n")[0], sessionId: request.session?.id || "thread-" + ++threads }; };
  async function send(question, options = {}) {
   await p.startRequest(view, question, [], [], options);
-  const pending = p._pending.get(view.ctx.dir); if (pending) await pending.promise;
+  const pending = p._pending.get(view.ctx.dir); if (pending) assert.equal((await pending.promise).error,undefined);
   await new Promise(resolve => setTimeout(resolve, 20));
  }
  return { ...env, p, ctx, view, dir, notes, parent, attachment, toc, requests, send, setLocation: value => { location = value; } };
 }
+
+test('vocabulary questions and sentence feedback stay in the visible chat across PDF chapter changes',async()=>{
+ const {p,view,send,setLocation,requests}=await setup();await send('Chapter 1: first topic');
+ p.loadVocabularyTutorSkill=async()=>await readFile(new URL('../skills/english-vocabulary-tutor/SKILL.md',import.meta.url),'utf8');
+ const chatID=view.ctx.discussion.id,sessionID=(await p.loadSessions(view.ctx.dir)).codex.id;
+ setLocation({pageIndex:7});await send('enhance',{selection:{attachmentID:7,text:'Enhance this argument.',position:{pageIndex:7}}});
+ assert.equal(view.ctx.discussion.id,chatID);assert.equal(requests.at(-1).session.id,sessionID);assert.equal(requests.at(-1).history.length,0);
+ assert.equal(requests.at(-1).ctx.reading.vocabularyTutor,true);
+ await send('Adding another memory card really enhanced the computing power of our server.');
+ assert.equal(view.ctx.discussion.id,chatID);assert.equal(requests.at(-1).session.id,sessionID);
+ assert.equal(requests.at(-1).ctx.reading.vocabularyTutor,true);assert.doesNotMatch(requests.at(-1).question,/<english-vocabulary-tutor>/);
+});
 
 test("discussion index saves run in order with separate temporary files", async () => {
  const { p, ctx, window } = await setup();
@@ -233,7 +245,7 @@ test("ordinary knowledge discussion stays local unless original evidence is miss
   assert.match(request.question, /Theorem 2.3: verified proof/);
   assert.match(request.question, /original-source verification is authorized/);
   assert.doesNotMatch(request.question, /Do not open or search the PDF|using local file tools/);
-  assert.equal(request.session, null);
+  assert.equal(request.session.id, requests[0].session?.id || 'thread-1');
   return { text: "Verified proof answer" };
  };
  await send("Why did the author use that index set?"); assert.equal(calls, 2);

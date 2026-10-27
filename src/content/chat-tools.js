@@ -528,7 +528,9 @@
    throw new Error("This earlier result is unavailable locally. Its quoted excerpt remains in the conversation.");
   },
   readingPrompt(ctx, selection) {
-   return previous.readingPrompt.call(this, ctx, selection) + "\nFor mathematical definitions and theorem-like statements use separate formal environments (theorem, definition, lemma, proposition, corollary) with unique labels; give important displayed equations tags when later referring to them, unless the user explicitly requests another format.\nThe application assigns stable chapter.discussion.turn.result numbers to saved statements; do not invent these conversation numbers or confuse them with book theorem numbers. User-supplied [result:ID|Kind number] quotations (and legacy [result:ID] quotations) are explicitly selected earlier discussion excerpts, not verified book evidence. You may reason from those quoted excerpts only; never retrieve unquoted chats. Preserve their result IDs in citations when reusing a conclusion, identify assumptions, and distinguish prior assistant results from original-source theorems.";
+   const text = previous.readingPrompt.call(this, ctx, selection);
+   if (ctx.reading.vocabularyTutor) return text;
+   return text + "\nFor mathematical definitions and theorem-like statements use separate formal environments (theorem, definition, lemma, proposition, corollary) with unique labels; give important displayed equations tags when later referring to them, unless the user explicitly requests another format.\nThe application assigns stable chapter.discussion.turn.result numbers to saved statements; do not invent these conversation numbers or confuse them with book theorem numbers. User-supplied [result:ID|Kind number] quotations (and legacy [result:ID] quotations) are explicitly selected earlier discussion excerpts, not verified book evidence. You may reason from those quoted excerpts only; never retrieve unquoted chats. Preserve their result IDs in citations when reusing a conclusion, identify assumptions, and distinguish prior assistant results from original-source theorems.";
   },
  });
 })();

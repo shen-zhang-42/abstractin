@@ -384,7 +384,9 @@
     const location = sendTimeLocation;
     const selection = options.selection || (view.pageImageSource && images.includes(view.pageImageSource.path) ? view.pageImageSource.selection : null);
     if (selection && selection.attachmentID !== view.ctx.attachmentItem.id) throw new Error("The selection belongs to a different PDF.");
-    let route = options.readingAction ? { chapterID: this.INITIALIZATION_CHAPTER } : this.resolveDiscussionChapter(view.ctx, index, question, selection, location);
+    const vocabularyTutor = !options.readingAction && (options.vocabularyTutor || this.isVocabularyQuestion(question, selection) ||
+     this.isVocabularyFollowUp(question, (await this.loadSessions(view.ctx.dir))[this.readingAgent()]?.vocabularyTutor));
+    let route = options.readingAction ? { chapterID: this.INITIALIZATION_CHAPTER } : vocabularyTutor ? { chapterID: view.ctx.discussion.chapterID } : this.resolveDiscussionChapter(view.ctx, index, question, selection, location);
     if (route.ambiguous) {
      const chapterID = await this.chooseDiscussionChapter(view, index);
      if (chapterID === undefined) return;
@@ -407,7 +409,7 @@
     if (chat.topic === "discussion" && !options.readingAction) chat.topic = question || "image-question";
     chat.updatedAt = Date.now(); view.ctx.discussion = { ...chat };
     await this.writeDiscussionIndex(view.ctx, index); this.updateReadingControls(view);
-    return original.startRequest.call(this, view, text, images, modes, { ...options, selection, currentPage: sendTimeLocation });
+    return original.startRequest.call(this, view, text, images, modes, { ...options, selection, vocabularyTutor, currentPage: sendTimeLocation });
    } catch (e) { this.appendError(view, e.message || String(e)); }
    finally { this._discussionLocks.delete(documentDir); }
   },
@@ -764,6 +766,8 @@
   },
   readingPrompt(ctx, selection) {
    let text = original.readingPrompt.call(this, ctx, selection);
+   if (ctx.reading.vocabularyTutor) return text;
+   text = "Ordinary reading is active for this turn. Earlier vocabulary-only or English-only instructions do not apply; follow this turn's reading mode and response language. " + text;
    if (ctx.reading.action === "contents") return text;
    if (!ctx.discussion) return text;
    text = text.replace("saved notes and previous conversation", "this discussion's messages")
@@ -982,6 +986,7 @@
    return args;
   },
   async agentReadingContext(id, ctx) {
+   if (ctx.reading.vocabularyTutor) return "";
    if (ctx.reading.action === "contents") return "\nAll contents source text is supplied inline by the plugin. No file tools are required; do not print tool invocation markup.";
    let text = await original.agentReadingContext.call(this, id, ctx);
    if (!ctx.discussion) return text;

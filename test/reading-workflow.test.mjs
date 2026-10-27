@@ -293,14 +293,14 @@ test("failure to refresh a derived cache after Zotero save is reported as a noti
 	assert.match(saved.notice, /saved.*cache/i);
 });
 
-test("changed source starts a new agent thread and unnamed questions receive the current page", async () => {
+test("changed source keeps its Codex thread and unnamed questions receive the current page", async () => {
 	const { plugin: p, window, ctx } = await setup();
 	p.prepareReadingSkills = async ctx => ctx.reading;
 	p.loadSessions = async () => ({ codex: { id: "old", model: "", sourceSignature: "old-pdf" } });
 	window.Zotero.PDFWorker = { getFullText: async () => ({ text: "Title\fContents\fCurrent page argument", extractedPages: 3, totalPages: 3 }) };
 	window.Zotero.Reader = { _readers: [{ itemID: 7, type: "pdf", _internalReader: { _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfViewer: { currentPageNumber: 3, getPageView: () => ({ pageLabel: "1" }) } } } } } }] };
 	p.runBackend = async (backend, request) => {
-		assert.equal(request.session, null);
+		assert.equal(request.session.id, 'old');
 		assert.match(request.question, /Current page argument/);
 		assert.match(request.question, /pdfPageIndex|pageIndex/);
 		return { text: 'Explained.\n<abstractin-record>{"title":"Argument","summary":"A verified point","openQuestions":[]}</abstractin-record>' };
@@ -426,11 +426,11 @@ test("knowledge discussion skips full PDF extraction, supplies corrected notes i
  assert.equal(button.getAttribute('aria-expanded'), 'false'); assert.equal(view.root.querySelector('.abstractin-menu'), null);
 });
 
-test("switching evidence modes starts a fresh thread while preserving chat history", async () => {
+test("switching evidence modes keeps the Codex thread and chat history", async () => {
  const { plugin: p, prefs, ctx } = await setup(); prefs['extensions.abstractin.readingEvidenceMode'] = 'knowledge';
  await p.saveSessions(ctx.dir, { codex: { id: 'old-source-thread', model: '', sourceSignature: 'source-A', evidenceMode: 'source', seen: 2 } });
  await p.saveHistory(ctx.dir, [{ role: 'user', text: 'Old question' }, { role: 'assistant', text: 'Old answer' }]);
- p.runBackend = async (_, request) => { assert.equal(request.session, null); assert.equal(request.history.length, 2); return { text: 'Answer\n<abstractin-record>{"title":"Note","summary":"Conclusion","openQuestions":[]}</abstractin-record>' }; };
+ p.runBackend = async (_, request) => { assert.equal(request.session.id, 'old-source-thread'); assert.equal(request.history.length, 2); return { text: 'Answer\n<abstractin-record>{"title":"Note","summary":"Conclusion","openQuestions":[]}</abstractin-record>' }; };
  const result = await p.ask(ctx, 'Continue', { backend: 'codex', progress() {} }); assert.equal(result.error, undefined);
 });
 
@@ -750,7 +750,7 @@ for (const refusal of ["I cannot access the PDF. Please provide the proof.", "�
  assert.equal(history.at(-1).text, 'Inspected original argument');
 });
 
-test("switching Context only to Balanced resets a thread even with the same evidence state", async () => {
+test("switching Context only to Balanced keeps the same Codex thread", async () => {
  const { plugin: p, prefs, ctx } = await setup();
  prefs['extensions.abstractin.readingEvidenceMode'] = 'context';
  p.runBackend = async () => ({ text: 'Supplied explanation', sessionId: 'context-thread' });
@@ -758,7 +758,7 @@ test("switching Context only to Balanced resets a thread even with the same evid
  prefs['extensions.abstractin.readingEvidenceMode'] = 'balanced';
  let calls = 0;
  p.runBackend = async (_, request) => {
-  calls++; assert.equal(request.session, null);
+  calls++; assert.equal(request.session.id, 'context-thread');
   assert.equal(request.ctx.reading.answerMode, 'balanced');
   assert.equal(request.history.at(-1).text, 'Supplied explanation');
   return { text: 'General explanation' };
@@ -793,7 +793,7 @@ test("vocabulary tutoring loads the supplied skill, forces English and returns t
    assert.match(request.question, /IPA \(US\)/);
    const prompt = p.codexPrompt(request);
    assert.doesNotMatch(prompt, /Always reply in 中文/);
-   assert.match(prompt, /Always reply in English/);
+   assert.match(prompt, /Answer in English/);
    const args = p.codexArgs({ ...request, stdin: true });
    assert.ok(args.includes('features.shell_tool=false'));
    const claude = p.claudeArgs(request);
@@ -801,7 +801,7 @@ test("vocabulary tutoring loads the supplied skill, forces English and returns t
    return { text: 'Despite means without being prevented by something.', sessionId: 'tutor-thread' };
   }
   assert.equal(request.ctx.reading.vocabularyTutor, false);
-  assert.equal(request.session, null);
+  assert.equal(request.session.id, 'tutor-thread');
   assert.doesNotMatch(request.question, /English Vocabulary Tutor/);
   assert.match(p.codexPrompt(request), /Always reply in 中文/);
   return { text: '普通阅读回答' };
@@ -834,7 +834,7 @@ test("Context only vocabulary tutoring does not access the PDF or saved notes", 
  }
  p.runBackend = async (_, request) => {
   assert.equal(request.ctx.reading.answerMode, 'context');
-  assert.match(request.question, /Do not fill absent meanings/);
+  assert.match(request.question, /general language knowledge is allowed/);
   return { text: 'Please provide the sentence containing this word.' };
  };
  const result = await p.ask(ctx, '解释这个单词的意思', { backend: 'codex', progress() {} });

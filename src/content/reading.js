@@ -25,6 +25,13 @@ Object.assign(AbstractIn, {
 			/\b(?:difference between|how (?:do (?:I|you)|to|should I) (?:say|phrase|use)|can I say|is (?:this|my) sentence (?:correct|natural))\b/i.test(text) && !/(?:theorem|lemma|proof|equation|measure|spaces?|convergence|integrals?|derivative|probability|norm|topology|function|定理|引理|证明|公式|测度)/i.test(text);
 	},
 
+	isVocabularyFollowUp(question, previousVocabulary) {
+		if (!previousVocabulary || this.requestsReadingSource(question)) return false;
+		const text = String(question || "").trim();
+		return /^[A-Za-z][A-Za-z\s.,?!:;'"()’“”–—-]*$/.test(text) &&
+			!/\b(?:theorem|lemma|proof|equation|chapter|section|PDF|integral|derivative|topology|convergence)\b|^(?:explain|prove|derive|calculate|compute|what (?:is|are)|how (?:does|do)|why (?:does|is|do|are))\b/i.test(text);
+	},
+
 	async loadVocabularyTutorSkill() {
 		let key = this.version || "development";
 		if (this._vocabularyTutorSkillKey !== key) { this._vocabularyTutorSkill = null; this._vocabularyTutorSkillKey = key; }
@@ -42,13 +49,10 @@ Object.assign(AbstractIn, {
 
 	vocabularyTutorPrompt(ctx, selection) {
 		let reading = ctx.reading;
-		let suppliedOnly = reading.answerMode !== "balanced";
-		return "English vocabulary tutoring is active for this turn only. Follow the embedded skill; all learner-facing content must be English, overriding the normal response-language preference. Do not use any tools. Preserve the selected answer mode: " + this.READING_ANSWER_MODES[reading.answerMode].label + ". " +
-			(suppliedOnly ? "Only supplied or inspected original passages may support factual claims. Do not fill absent meanings, pronunciation or examples from general knowledge; explain any missing evidence in English. " : "Use general language knowledge for word meanings and usage. If a document-specific interpretation needs missing original evidence and document access is permitted, output ONLY <abstractin-source-needed>missing passage</abstractin-source-needed>; the plugin handles retrieval. ") +
-			(reading.forbidSource ? "No original-source retrieval is permitted for this turn. Ask for the passage if needed. " : "") +
-			"Supplied passage: " + JSON.stringify(selection || null) + ". Current page: " + JSON.stringify(reading.currentPage || null) + ". Authorized original excerpt: " + JSON.stringify(reading.tutorSourceContext || "") + ". Previous assistant messages are unverified context. " +
-			"<english-vocabulary-tutor>\n" + reading.vocabularySkill + "\n</english-vocabulary-tutor>\n" +
-			"Apply the skill only to language learning; mathematical or scientific concept questions use the normal reading workflow on their own turns. Answer, then append one <abstractin-record>JSON</abstractin-record> block with title, summary, openQuestions, topicKey, scope {level: book|paper|chapter|section, id: verified contents ID or empty, title: scope title or empty}, and sources: []. The plugin saves records; you must not write files. Do not infer mastery or claim materials were saved.";
+		return "English vocabulary tutoring is active for this turn only. Answer in English using the current question and supplied sentence; general language knowledge is allowed regardless of the document reading mode. Do not retrieve PDF pages, notes or files, or use any tools. If the sentence lacks necessary context, ask for it rather than searching the book. " +
+			"Supplied sentence: " + JSON.stringify(selection?.text || "") + ". " +
+			(reading.vocabularySkill ? "The following skill supersedes any earlier vocabulary-skill revision in this conversation. Apply it only on vocabulary turns.\n<english-vocabulary-tutor>\n" + reading.vocabularySkill + "\n</english-vocabulary-tutor>\n" : "Continue following the English Vocabulary Tutor skill already supplied in this session. ") +
+			"Mathematical/scientific questions return to the reading workflow on their own turns. Answer, then append <abstractin-record>JSON</abstractin-record> with title, summary, openQuestions, topicKey, scope {level: book|paper|chapter|section, id: verified contents ID or empty, title: scope title or empty}, and sources: []. The plugin saves records; do not write files, infer mastery or claim a save.";
 	},
 
 	getReadingAnswerMode() {
