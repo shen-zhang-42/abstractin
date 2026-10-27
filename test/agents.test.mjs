@@ -66,8 +66,8 @@ test('adaptation keeps original skills intact, verifies source access and invali
  assert.match(await p.agentReadingContext('custom-demo', { reading: { type: 'book' } }), /Original book skill/);
  await writeFile(join(dir, 'original-book', 'new-reference.md'), 'A changed supporting resource.');
  await assert.rejects(p.assertAgentReadingReady('custom-demo', 'source'), /skills changed/);
- assert.equal(p.readingAgent(), 'codex');
- assert.equal(p.getAgentValidation('custom-demo'), null);
+ assert.equal(p.readingAgent(), 'custom-demo');
+ assert.equal(p.getAgentValidation('custom-demo').discussion, true);
 });
 
 test('invented adaptation tools are rejected rather than enabled', async () => {
@@ -151,7 +151,7 @@ test('discussion-only readiness switches to knowledge mode and blocks source ver
  await assert.rejects(p.assertAgentReadingReady('custom-demo', 'source'), /cannot read original sources/);
  p.queryAgentCapabilities = async () => ({ version: '2' });
  await assert.rejects(p.assertAgentReadingReady('custom-demo', 'knowledge'), /version changed/);
- assert.equal(p.readingAgent(), 'codex');
+ assert.equal(p.readingAgent(), 'custom-demo');
 });
 
 test('settings add/edit/remove custom agents without running commands or changing font size', async () => {

@@ -23,27 +23,56 @@
    for (const id of Object.keys(this.BACKENDS)) if (!registry[id]) delete this.BACKENDS[id];
    for (const [id, agent] of Object.entries(registry)) {
     const checked = (this.getJSONPref("agentValidation", {}) || {})[id];
-    const key = JSON.stringify([this.version || "development", id, agent.command, agent.args || [], agent.protocol || "native", this.getPref(agent.pathPref) || "", id === "claude" ? !!this.getPref("useClaudeUserSettings") : false]);
+    const key = JSON.stringify(["agent-config-v1", id, agent.command, agent.args || [], agent.protocol || "native", this.getPref(agent.pathPref) || "", id === "claude" ? !!this.getPref("useClaudeUserSettings") : false]);
     if (agent.custom) this.BACKEND_ICONS[id] = "terminal";
-    if (agent.custom && checked?.configKey === key) agent.images = checked.images === true;
+    if (agent.custom && this.agentValidationMatches(checked?.configKey, key)) agent.images = checked.images === true;
    }
    Object.assign(this.BACKENDS, registry);
    return registry;
   },
-  init(options) { this.agentRegistry(); return nativeInit.call(this, options); },
+  init(options) { this.agentRegistry(); const result = nativeInit.call(this, options); this.migrateAgentSettings(); return result; },
+  hasUserAgentPref(name) {
+   if (typeof Services.prefs?.prefHasUserValue === "function") return Services.prefs.prefHasUserValue(this.PREF_PREFIX + name);
+   return this.getPref(name) !== undefined && this.getPref(name) !== null;
+  },
+  migrateAgentSettings() {
+   if (this.getJSONPref("agentSettingsMigration", null)?.version === 1) return;
+   const registry = this.agentRegistry(), validations = this.getJSONPref("agentValidation", {}) || {};
+   const reading = this.getPref("readingAgent"), backend = this.getPref("backend");
+   const configured = Object.keys(registry).find(id => registry[id].pathPref && (this.getPref(registry[id].pathPref) || this.getPref(id + ".model") || this.getPref(id + ".effort") || (id === "claude" && this.getPref("useClaudeUserSettings")))) ||
+    Object.keys(registry).find(id => this.getAgentValidation(id)?.discussion);
+   const selected = registry[reading] ? reading : this.hasUserAgentPref("backend") && registry[backend] ? backend :
+    configured || (this.getPref("onboarded") ? registry[backend] ? backend : "codex" : null);
+   const native = {};
+   // Older native CLI integrations predate the compatibility-test screen.
+   // Preserve their exact configuration without inventing a passed test.
+   if (["claude", "agy"].includes(selected) && !validations[selected]) native[selected] = this.agentConfigKey(selected);
+   this.setPref("agentSettingsMigration", JSON.stringify({ version: 1, native }));
+   if (selected) {
+    if (!reading) this.setPref("readingAgent", selected);
+    if (!this.hasUserAgentPref("backend")) this.setPref("backend", selected);
+    if (!this.getPref("onboarded")) this.setPref("onboarded", true);
+   }
+  },
+  needsAgentSetup() { this.migrateAgentSettings(); return !this.getPref("onboarded"); },
+  inheritedNativeAgent(id) {
+   return ["claude", "agy"].includes(id) && !(this.getJSONPref("agentValidation", {}) || {})[id] &&
+    this.getJSONPref("agentSettingsMigration", null)?.native?.[id] === this.agentConfigKey(id);
+  },
+  agentReadyForDiscussion(id) { return id === "codex" || !!this.getAgentValidation(id)?.discussion || this.inheritedNativeAgent(id); },
   getBackend() { this.agentRegistry(); return nativeGetBackend.call(this); },
   readingAgent() {
    const registry = this.agentRegistry();
-   const selected = this.getPref("readingAgent") || "codex";
+   const selected = this.getPref("readingAgent") || this.getPref("backend");
    return registry[selected] ? selected : "codex";
   },
   selectReadingAgent(id) {
    if (!this.agentRegistry()[id]) throw new Error("Unknown agent.");
-   if (id !== "codex" && !this.getAgentValidation(id)?.discussion) throw new Error("Test this agent before enabling it for reading.");
+   if (!this.agentReadyForDiscussion(id)) throw new Error("Test this agent before enabling it for reading.");
    this.setPref("readingAgent", id);
    if (!this.agentCanReadSources(id)) this.setPref("readingEvidenceMode", "context");
   },
-  agentCanReadSources(id = this.readingAgent()) { return id === "codex" || this.getAgentValidation(id)?.source === true; },
+  agentCanReadSources(id = this.readingAgent()) { return id === "codex" || this.getAgentValidation(id)?.source === true || this.inheritedNativeAgent(id); },
   validateAgentConfig(input) {
    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Import an agent configuration object.");
    const id = input.id || "custom-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
@@ -83,15 +112,24 @@
    const results = this.getJSONPref("agentValidation", {}) || {};
    delete results[id];
    this.setPref("agentValidation", JSON.stringify(results));
-   if (this.getPref("readingAgent") === id) this.setPref("readingAgent", "codex");
   },
   agentConfigKey(id) {
    const agent = this.agentRegistry()[id];
-   return JSON.stringify([this.version || "development", id, agent?.command, agent?.args || [], agent?.protocol || "native", this.getPref(agent?.pathPref) || "", id === "claude" ? !!this.getPref("useClaudeUserSettings") : false]);
+   return JSON.stringify(["agent-config-v1", id, agent?.command, agent?.args || [], agent?.protocol || "native", this.getPref(agent?.pathPref) || "", id === "claude" ? !!this.getPref("useClaudeUserSettings") : false]);
+  },
+  agentValidationMatches(saved, current) {
+   if (saved === current) return true;
+   try {
+    const parts = JSON.parse(saved), expected = JSON.parse(current);
+    if (!Array.isArray(parts) || !Array.isArray(expected) || !/^(?:development|\d+\.\d+\.\d+(?:[-+].*)?)$/.test(parts[0])) return false;
+    parts[0] = expected[0];
+    return JSON.stringify(parts) === current;
+   } catch (_) { return false; }
   },
   getAgentValidation(id) {
    const result = (this.getJSONPref("agentValidation", {}) || {})[id];
-   return result?.configKey === this.agentConfigKey(id) ? result : null;
+   const key = this.agentConfigKey(id);
+   return result && this.agentValidationMatches(result.configKey, key) ? { ...result, configKey: key } : null;
   },
   getModels(id) {
    this.agentRegistry();
@@ -134,13 +172,13 @@
   },
   async assertAgentReadingReady(id, mode) {
    if (id === "codex") return; // Existing, supported native integration.
+   if (this.inheritedNativeAgent(id)) return;
    const result = this.getAgentValidation(id);
    if (!result?.discussion) throw new Error("Test and adapt this agent in Settings → Assistants before using it for reading.");
    const actual = await this.queryAgentCapabilities(id, { dir: this.getDataDir() });
-   if (actual.version !== result.agentVersion) { this.clearAgentValidation(id); throw new Error("Agent version changed. Test and adapt it again."); }
+   if (actual.version !== result.agentVersion) throw new Error("Agent version changed. Check its compatibility in Settings; your configuration has been kept.");
    const snapshot = await this.agentSkillSnapshot();
    if (snapshot.fingerprint !== result.skillFingerprint) {
-    this.clearAgentValidation(id);
     throw new Error("Reading skills changed. Test and adapt this agent again.");
    }
    if (mode !== "knowledge" && !result.source) throw new Error("This agent passed discussion tests but cannot read original sources. Choose Context only or a source-capable agent.");
@@ -157,9 +195,10 @@
    if (id === "codex") return "";
    const snapshot = await this.agentSkillSnapshot();
    const result = this.getAgentValidation(id);
-   if (!result || result.skillFingerprint !== snapshot.fingerprint) throw new Error("Agent skill adaptation is out of date. Test again in Settings.");
+   if (!this.inheritedNativeAgent(id) && (!result || result.skillFingerprint !== snapshot.fingerprint)) throw new Error("Agent skill adaptation is out of date. Test again in Settings.");
    const relevant = snapshot.files.filter(file => file.type === ctx.reading.type || (ctx.reading.type === "paper" && file.type === "extraction"));
-   return "\n\n" + this.agentMappingText(result) + "\n" + relevant.map(file =>
+   const mapping = this.inheritedNativeAgent(id) ? "Continue using the existing native CLI configuration. Original skill resources are supplied below; no compatibility-test result is claimed." : this.agentMappingText(result);
+   return "\n\n" + mapping + "\n" + relevant.map(file =>
     "<original-skill-resource type=" + JSON.stringify(file.type) + " file=" + JSON.stringify(file.name) + ">\n" + file.content + "\n</original-skill-resource>").join("\n");
   },
   async testAndAdaptAgent(id, onProgress = () => {}) {

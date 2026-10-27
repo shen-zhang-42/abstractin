@@ -785,7 +785,7 @@ AbstractIn = {
 
 	refreshRoot(root) {
 		this.applyAppearance(root);
-		if (!this.getPref("onboarded") && root.closest(".abstractin-reader-panel") && !root.querySelector(".abstractin-wizard")) {
+		if (this.needsAgentSetup() && root.closest(".abstractin-reader-panel") && !root.querySelector(".abstractin-wizard")) {
 			this.showWizard(root);
 		}
 		this.updateControls(root);
@@ -1334,7 +1334,7 @@ AbstractIn = {
 		this.updateControls(root);
 		this.renderQuickPrompts(root, quick);
 		this.checkInstalledBackends(root);
-		if (!this.getPref("onboarded") && root.closest(".abstractin-reader-panel")) {
+		if (this.needsAgentSetup() && root.closest(".abstractin-reader-panel")) {
 			this.showWizard(root);
 		}
 	},
@@ -1412,7 +1412,7 @@ AbstractIn = {
 						desc: model.id ? "" : model.desc,
 						checked: key === current && model.id === this.getModel(key),
 						onSelect: () => {
-							if ((key === "deepseek" && model.id !== this.getModel(key)) || (key !== "codex" && !this.getAgentValidation(key)?.discussion)) {
+							if ((key === "deepseek" && model.id !== this.getModel(key)) || !this.agentReadyForDiscussion(key)) {
 								this.openAgentSetup(root, key, { model: model.id, reading: !!reading }); return;
 							}
 							this.setPref(key + ".model", model.id);

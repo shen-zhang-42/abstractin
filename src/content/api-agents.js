@@ -30,7 +30,7 @@
    this.clearAgentValidation("deepseek");
   },
   agentConfigKey(id) {
-   return id === "deepseek" ? JSON.stringify([this.version || "development", id, origin,
+   return id === "deepseek" ? JSON.stringify(["agent-api-config-v1", id, origin,
     this.getPref("deepseek.credentialsRevision") || "", this.getPref("deepseek.model") || ""]) : configKey.call(this, id);
   },
   getModels(id) {
