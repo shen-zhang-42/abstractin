@@ -6,12 +6,13 @@ function setup() {
 	const env=loadPlugin({prefs:{'extensions.abstractin.onboarded':true}}),{plugin:p,window:win,document:doc}=env;
 	doc.body.innerHTML='<div id="zotero-tabs-toolbar"><button id="zotero-tb-tabs-menu"></button><button id="zotero-tb-sync"></button></div><div id="layout"><div id="reader-deck"></div><div id="zotero-context-splitter"></div><div id="zotero-context-pane"></div></div>';
 	doc.createXULElement=name=>doc.createElement(name);win.MozXULElement={insertFTLIfNeeded(){}};
-	win.ZoteroPane={getSelectedLibraryIDs:()=>[5]};win.Zotero_Tabs={selectedType:'library',selectedID:'library',getTabIDByItemID:()=> 'pdf-tab'};
+	let selectedItems=[];
+	win.ZoteroPane={itemsView:{getSelectedItems:()=>selectedItems}};win.Zotero_Tabs={selectedType:'library',selectedID:'library',getTabIDByItemID:()=> 'pdf-tab'};
 	let collapsed=false;win.ZoteroContextPane={get collapsed(){return collapsed;},set collapsed(value){collapsed=value;doc.getElementById('zotero-context-pane').toggleAttribute('collapsed',value);}};
 	win.Zotero.Notifier={registerObserver:()=>1,unregisterObserver(){}};
 	const item=(id,title)=>({id,key:'ITEM'+id,libraryID:5,isRegularItem:()=>true,isAttachment:()=>false,getField:field=>field==='title'?title:'',getNotes:()=>[],getAttachments:()=>[12]});
 	const a=item(1,'Alpha paper'),b=item(2,'Beta book');
-	const pdf={id:12,key:'PDF',libraryID:5,parentItem:a,isPDFAttachment:()=>true,isAttachment:()=>true};
+	const pdf={id:12,key:'PDF',libraryID:5,parentID:a.id,parentItem:a,isPDFAttachment:()=>true,isAttachment:()=>true};
 	const note={id:31,key:'NOTE',libraryID:5,parentID:a.id,isNote:()=>true,getTags:()=>[{tag:'AbstractIn:NoteIn'}],getNote:()=>'<h1>NoteIn</h1><pre>{"format":"abstractin-notein-v1","itemKey":"ITEM1"}</pre>'};
 	const items=new Map([[1,a],[2,b],[12,pdf],[31,note]]),loads=[],opens=[];
 	win.Zotero.Items={get:id=>items.get(id),getAsync:async ids=>Array.isArray(ids)?ids.map(id=>items.get(id)):items.get(ids),loadDataTypes:async(objects,types)=>loads.push({ids:objects.map(o=>o.id),types:[...types]})};
@@ -26,7 +27,7 @@ function setup() {
 		p._views.set(root,view);p.renderMessages(view,[{role:'user',text:'Earlier question'},{role:'assistant',text:'Saved answer',backend:'codex'}]);
 	};
 	p.contextDirFor=()=>ctx.dir;
-	return {...env,p,a,b,pdf,note,reader,ctx,loads,opens,searchedLibrary:()=>searchedLibrary};
+	return {...env,p,a,b,pdf,note,reader,ctx,loads,opens,searchedLibrary:()=>searchedLibrary,select:items=>{selectedItems=items;}};
 }
 
 test('title-bar entry is icon only, immediately before a thin separator and the native dropdown',()=>{
@@ -41,17 +42,48 @@ test('title-bar entry is icon only, immediately before a thin separator and the 
 	p.removeFromWindow(win);assert.equal(doc.getElementById('abstractin-main-toggle'),null);assert.ok(doc.getElementById('zotero-tb-tabs-menu'));
 });
 
-test('library chooser searches the current library and supports multiple selections without starting an unsupported reading',async()=>{
-	const {p,window:win,document:doc,searchedLibrary}=setup();p.addToWindow(win);
-	await p.openLibraryLauncher(win);assert.equal(searchedLibrary(),5);
-	const boxes=[...doc.querySelectorAll('.abstractin-library-item input')],start=doc.querySelector('.abstractin-library-start');
-	assert.equal(start.disabled,true);boxes[0].click();assert.equal(start.disabled,false);
-	boxes[1].click();assert.equal(start.disabled,true);assert.match(doc.querySelector('.abstractin-library-status').textContent,/2 documents selected/);
-	const filter=doc.querySelector('.abstractin-library-filter');filter.value='Beta';filter.dispatchEvent(new win.Event('input'));
-	assert.equal(doc.querySelectorAll('.abstractin-library-item').length,1);assert.equal(doc.querySelector('.abstractin-library-item input').checked,true);
-	doc.querySelector('.abstractin-library-item input').click();assert.equal(start.disabled,false);
+const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+
+test('library welcome shows the chosen companion without querying or listing the library or adding existing selection',async()=>{
+	const {p,window:win,document:doc,a,select,loads}=setup();select([a]);
+	win.Zotero.Search=class{constructor(){assert.fail('welcome must not search the library');}};
+	await p.openLibraryLauncher(win);
+	assert.ok(doc.querySelector('.abstractin-library-welcome .abstractin-mascot'));
+	assert.match(doc.querySelector('.abstractin-library-welcome').textContent,/Read with Ohberto/);
+	assert.match(doc.querySelector('.abstractin-library-welcome').textContent,/document list on the left/);
+	assert.equal(doc.querySelectorAll('.abstractin-library-item').length,0);assert.equal(loads.length,0);
+	assert.equal(doc.querySelector('.abstractin-library-start').disabled,true);
+});
+
+test('explicit native selection adds only chosen documents, deduplicates and permits removing before single-document start',async()=>{
+	const {p,window:win,document:doc,a,b,select,loads}=setup();await p.openLibraryLauncher(win);
+	const add=doc.querySelector('.abstractin-library-add'),start=doc.querySelector('.abstractin-library-start');
+	select([a]);add.click();await tick();assert.equal(start.disabled,false);
+	assert.deepEqual([...loads.at(-1).ids],[1]);
+	select([a,b]);add.click();await tick();assert.equal(doc.querySelectorAll('.abstractin-library-item').length,2);
+	assert.equal(start.disabled,true);assert.match(doc.querySelector('.abstractin-library-status').textContent,/2 documents added/);
+	doc.querySelector('[data-item-id="2"] button').click();assert.equal(start.disabled,false);
 	let chosen;p.startLibraryReading=async(_,item)=>chosen=item;
-	start.click();await new Promise(resolve=>setTimeout(resolve,0));assert.equal(chosen.id,1,'a selected row remains selected while filtered out');
+	start.click();await tick();assert.equal(chosen.id,1);
+});
+
+test('selected child PDF and NoteIn resolve to one parent; standalone notes, annotations and deleted items are skipped',async()=>{
+	const {p,window:win,document:doc,a,b,pdf,note,select}=setup();await p.openLibraryLauncher(win);
+	b.deleted=true;
+	select([pdf,note,a,b,{id:99,isNote:()=>true},{id:100,isAnnotation:()=>true}]);
+	doc.querySelector('.abstractin-library-add').click();await tick();
+	assert.equal(doc.querySelectorAll('.abstractin-library-item').length,1);
+	assert.equal(doc.querySelector('.abstractin-library-item').dataset.itemId,'1');
+});
+
+test('empty selection gives guidance and reopening preserves added documents without adding the new native selection',async()=>{
+	const {p,window:win,document:doc,a,b,select}=setup();await p.openLibraryLauncher(win);
+	doc.querySelector('.abstractin-library-add').click();await tick();
+	assert.match(doc.querySelector('.abstractin-library-status').textContent,/Select a book or paper/);
+	select([a]);doc.querySelector('.abstractin-library-add').click();await tick();
+	await p.openLibraryLauncher(win);select([b]);await p.openLibraryLauncher(win);
+	assert.equal(doc.querySelectorAll('.abstractin-library-item').length,1);
+	assert.equal(doc.querySelector('.abstractin-library-item').dataset.itemId,'1');
 });
 
 test('startup removes a leftover in-PDF entry when moving the launcher to the title bar',async()=>{

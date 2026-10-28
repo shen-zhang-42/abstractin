@@ -33,14 +33,18 @@
 .abstractin-library-picker-head h2 { font-size: 15px; margin: 0; }
 .abstractin-library-picker-head button { border: 0; background: transparent; color: inherit; padding: 4px; cursor: pointer; }
 .abstractin-library-picker-head svg { width: 18px; height: 18px; }
-.abstractin-library-filter { padding: 7px 9px; border: 1px solid var(--fill-quarternary, #ccc); border-radius: 5px; color: inherit; background: var(--material-background, transparent); }
+.abstractin-library-welcome { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 8px; text-align: center; }
+.abstractin-library-welcome .abstractin-mascot { flex: none; width: 112px; height: 112px; }
+.abstractin-library-welcome h3 { margin: 0; font-size: 16px; }
+.abstractin-library-welcome p { margin: 0; max-width: 32em; line-height: 1.6; }
 .abstractin-library-list { flex: 1; min-height: 0; overflow-y: auto; }
-.abstractin-library-item { display: flex; align-items: flex-start; gap: 8px; padding: 9px 4px; border-bottom: 1px solid var(--fill-quinary, #eee); cursor: pointer; }
-.abstractin-library-item input { flex: 0 0 auto; margin-top: 2px; }
-.abstractin-library-item span { overflow-wrap: anywhere; }
+.abstractin-library-item { display: flex; align-items: center; gap: 8px; padding: 9px 4px; border-bottom: 1px solid var(--fill-quinary, #eee); }
+.abstractin-library-item > span { flex: 1; overflow-wrap: anywhere; }
+.abstractin-library-item button { flex: none; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.abstractin-library-item button svg { width: 18px; height: 18px; }
 .abstractin-library-status { margin: 0; color: var(--fill-secondary, #666); font-size: 12px; }
-.abstractin-library-start { padding: 8px 12px; border: 1px solid var(--fill-quarternary, #ccc); border-radius: 5px; cursor: pointer; }
-.abstractin-library-start:disabled { cursor: default; opacity: .5; }
+.abstractin-library-start, .abstractin-library-add { padding: 8px 12px; border: 1px solid var(--fill-quarternary, #ccc); border-radius: 5px; cursor: pointer; }
+.abstractin-library-start:disabled, .abstractin-library-add:disabled { cursor: default; opacity: .5; }
 
 .abstractin-root,
 .abstractin-prefs {
