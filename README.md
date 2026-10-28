@@ -20,8 +20,8 @@ AbstractIn 在 Zotero 的 PDF 阅读器中提供独立的讨论面板。你可�
 1. 安装并登录本地 Codex CLI，确认它能在终端中正常回答问题。
 2. 从 [最新 Release](https://github.com/shen-zhang-42/abstractin/releases/latest) 下载 **`abstractin.xpi`**。
 3. 在 Zotero 中选择 **工具 → 插件 → 齿轮菜单 → 从文件安装插件**，选中 XPI；如有提示，重启 Zotero。
-4. 打开书籍或论文的 PDF，点击阅读器工具栏中的 **AbstractIn** 图标，打开右侧阅读面板。Zotero 原生条目侧栏不再显示 AbstractIn 区块。
-5. 点击 **`Let's start reading!`**，在同一页检查并修改预填的标题、材料类型和阅读目标（多份 PDF 时同时选择附件），点击一次 **Confirm** 即可开始。
+4. 点击 Zotero 顶部下拉箭头左侧的 **AbstractIn 图标**（无文字，与箭头之间有细竖线）。在文献库主界面会打开文献选择页，可搜索并多选；当前仅支持选择一篇后点击 **Start Reading**，多篇阅读尚未启用。
+5. 已有阅读记录或 NoteIn 的文献会打开对应 PDF，并恢复原来的讨论面板。新文献进入原有确认流程，检查标题、材料类型和阅读目标后点击 **Confirm**。已经在 PDF 标签中时，同一图标直接切换阅读面板；独立 PDF 窗口保留无文字的阅读器图标。
 
 新文档需要完成阅读初始化，输入框和会话管理功能才会开放。已经确认的文档在再次打开时会恢复阅读状态和讨论。安装 XPI 后不需要运行 Codespace，也不需要下载项目源码或安装 Node.js。
 

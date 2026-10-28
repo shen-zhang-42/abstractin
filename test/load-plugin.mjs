@@ -30,6 +30,7 @@ export function loadPlugin({ prefs = {} } = {}) {
 	window.eval(read("src/content/reading.js"));
 	window.eval(read("src/content/reading-workflow.js"));
 	window.eval(read("src/content/reader-panel.js"));
+	window.eval(read("src/content/library-launcher.js"));
 	window.eval(read("src/content/agents.js"));
 	window.eval(read("src/content/api-agents.js"));
 	window.eval(read("src/content/agent-setup.js"));

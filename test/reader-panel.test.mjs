@@ -311,7 +311,8 @@ test("installing into an already loaded PDF restores one visible toolbar entry",
  a._iframeWindow = { document: doc }; win.Zotero.Reader._readers = [a];
  await p.restoreReaderToolbarEntries(); await p.restoreReaderToolbarEntries();
  const buttons = toolbar.querySelectorAll('.abstractin-reader-toggle'); assert.equal(buttons.length, 1);
- assert.match(buttons[0].textContent, /AbstractIn/);
+ assert.equal(buttons[0].textContent.trim(), '');
+ assert.match(buttons[0].getAttribute('aria-label'), /AbstractIn/);
  await p.openReaderPanel(a); assert.equal(doc.querySelector('.abstractin-reader-panel').hidden, false);
  p.removeAllReaderPanels(); assert.equal(toolbar.querySelectorAll('.abstractin-reader-toggle').length, 0);
 });

@@ -20,8 +20,8 @@ The plugin works through an AI assistant CLI installed on your computer, with **
 1. Install and sign in to the local Codex CLI. Check that it can answer questions in your terminal.
 2. Download **`abstractin.xpi`** from the [latest release](https://github.com/shen-zhang-42/abstractin/releases/latest).
 3. In Zotero, open **Tools → Plugins → gear menu → Install Add-on From File**, select the XPI, and restart Zotero if prompted.
-4. Open a book or paper PDF and click **AbstractIn** in the reader toolbar to open the panel on the right. AbstractIn no longer adds a section to Zotero’s native item pane.
-5. Click **`Let's start reading!`**, confirm the document, material type, and reading goal as prompted, then begin discussing it.
+4. Click the **AbstractIn icon** to the left of Zotero's top dropdown arrow, separated by a thin vertical line. From the library, this opens a searchable document chooser with multiple selection. Currently, select one document and click **Start Reading**; multi-document reading is not enabled yet.
+5. Documents with saved reading state or NoteIn open their PDF and restore the existing discussion panel. New documents continue through the existing title, material-type and reading-goal confirmation. In a PDF tab, the same icon toggles the reading panel directly; detached PDF windows retain an icon-only reader entry.
 
 New documents require reading initialization before the composer and chat management become available. Previously confirmed documents restore their reading state and discussions when reopened. Installing the XPI does not require a Codespace, the project source code, or Node.js.
 

@@ -27,6 +27,10 @@ Object.assign(AbstractIn, {
 				if (reader._initPromise) await reader._initPromise;
 				if (generation !== this._readerToolbarGeneration) return;
 				if (reader.type !== "pdf") return;
+				if (this.mountLibraryLauncher(this.readerPanelWindow(reader))) {
+					if (reader._iframeWindow?.document) this.removeReaderToolbarEntry(reader, reader._iframeWindow.document);
+					return;
+				}
 				let doc = reader._iframeWindow?.document;
 				if (!doc) return;
 				let restore = () => {
@@ -103,6 +107,10 @@ Object.assign(AbstractIn, {
 	renderReaderToolbar({ reader, doc, append }) {
 		if (reader.type !== "pdf") return;
 		let win = this.readerPanelWindow(reader);
+		if (this.mountLibraryLauncher(win)) {
+			this.removeReaderToolbarEntry(reader, doc);
+			return;
+		}
 		let buttons = this._readerToolbarButtons.get(win);
 		if (!buttons) { buttons = new Map(); this._readerToolbarButtons.set(win, buttons); }
 		let old = buttons.get(reader);
@@ -139,7 +147,7 @@ Object.assign(AbstractIn, {
 				for (let layer of svg.querySelectorAll(".abstractin-duo")) layer.style.opacity = "0.2";
 			}
 		}).catch(e => this.logError("reader toolbar icon", e));
-		button.append(icon, this.el(doc, "span", null, "AbstractIn"));
+		button.append(icon);
 		button.addEventListener("click", () => {
 			if (generation !== this._readerToolbarGeneration) return;
 			this.openReaderPanel(reader, { toggle: true }).catch(e => {
@@ -152,6 +160,12 @@ Object.assign(AbstractIn, {
 		this.guardReaderToolbar(reader, doc, button);
 		append(button);
 		this.updateReaderPanelButtons(win);
+	},
+
+	removeReaderToolbarEntry(reader, doc) {
+		for (const node of doc.querySelectorAll(".abstractin-reader-toggle")) node.remove();
+		this._readerToolbarGuards.get(doc)?.observer.disconnect(); this._readerToolbarGuards.delete(doc);
+		this._readerToolbarButtons.get(this.readerPanelWindow(reader))?.delete(reader);
 	},
 
 	guardReaderToolbar(reader, doc, button) {
@@ -185,6 +199,7 @@ Object.assign(AbstractIn, {
 
 	updateReaderPanelButtons(win) {
 		let state = this._readerPanelWindows.get(win);
+		win.document.getElementById("abstractin-main-toggle")?.setAttribute("aria-expanded", String(!!state?.active));
 		for (let [reader, button] of this._readerToolbarButtons.get(win) || []) {
 			if (!this.readerPanelNodeAlive(button)) {
 				let pending = false;
@@ -282,6 +297,7 @@ Object.assign(AbstractIn, {
 		if (!state.active) state.contextWasOpen = win.ZoteroContextPane?.collapsed === false;
 		if (win.ZoteroContextPane && this.readerPanelMount(win.document)?.context) win.ZoteroContextPane.collapsed = true;
 		state.reader = reader; state.active = true;
+		if (state.launcher) state.launcher.hidden = true;
 		state.panel.querySelector(".abstractin-reader-loading")?.remove();
 		state.panel.hidden = false; state.splitter.hidden = false; state.splitter.setAttribute("state", "open");
 		let entry = state.views.get(reader);

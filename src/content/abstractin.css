@@ -11,6 +11,37 @@
  * Zotero. The only custom colour is --abstractin-accent (Settings → Appearance).
  */
 
+.abstractin-main-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 28px;
+	padding: 4px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+}
+.abstractin-main-toggle:hover { background: var(--fill-quinary, rgba(0, 0, 0, .05)); }
+.abstractin-main-toggle .abstractin-i, .abstractin-main-toggle svg { display: block; width: 20px; height: 20px; }
+.abstractin-main-separator { width: 1px; height: 20px; margin-inline: 6px; background: var(--fill-quarternary, rgba(0, 0, 0, .15)); }
+.abstractin-library-picker { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 12px; padding: 14px; color: var(--fill-primary, #222); font: 13px system-ui, sans-serif; }
+.abstractin-library-picker[hidden] { display: none; }
+.abstractin-library-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.abstractin-library-picker-head h2 { font-size: 15px; margin: 0; }
+.abstractin-library-picker-head button { border: 0; background: transparent; color: inherit; padding: 4px; cursor: pointer; }
+.abstractin-library-picker-head svg { width: 18px; height: 18px; }
+.abstractin-library-filter { padding: 7px 9px; border: 1px solid var(--fill-quarternary, #ccc); border-radius: 5px; color: inherit; background: var(--material-background, transparent); }
+.abstractin-library-list { flex: 1; min-height: 0; overflow-y: auto; }
+.abstractin-library-item { display: flex; align-items: flex-start; gap: 8px; padding: 9px 4px; border-bottom: 1px solid var(--fill-quinary, #eee); cursor: pointer; }
+.abstractin-library-item input { flex: 0 0 auto; margin-top: 2px; }
+.abstractin-library-item span { overflow-wrap: anywhere; }
+.abstractin-library-status { margin: 0; color: var(--fill-secondary, #666); font-size: 12px; }
+.abstractin-library-start { padding: 8px 12px; border: 1px solid var(--fill-quarternary, #ccc); border-radius: 5px; cursor: pointer; }
+.abstractin-library-start:disabled { cursor: default; opacity: .5; }
+
 .abstractin-root,
 .abstractin-prefs {
 	--abstractin-accent: var(--accent-blue, #4072e5);
