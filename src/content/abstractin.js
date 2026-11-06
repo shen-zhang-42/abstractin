@@ -1941,11 +1941,6 @@ AbstractIn = {
 			return "";
 		}
 		let count = images.length === 1 ? "an image" : images.length + " images";
-		if (backend === "claude") {
-			return "\n\n[The user attached " + count + " to this message. Look at " +
-				(images.length === 1 ? "it" : "each") + " with the Read tool before answering: " +
-				images.join(", ") + "]";
-		}
 		return "\n\n[The user attached " + count + " to this message.]";
 	},
 
@@ -3850,6 +3845,8 @@ AbstractIn = {
 				if (ctx.reading.vocabularyTutor && ctx.reading.evidenceMode === "source" && pdfSource.status === "ready" && pdfSource.scoped) {
 					ctx.reading.tutorSourceContext = (await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"))).slice(0, 24000);
 				}
+				await this.prepareReadingImages(ctx, pending, pdfSource);
+				if (pending.cancelled) return { cancelled: true };
 				if (pdfSource.status !== "ready" && ctx.reading.evidenceMode !== "knowledge") {
 					if (!pending.selection?.text && !pending.images?.length) return { error: pdfSource.error, pdfSource };
 					sourceWarning = pdfSource.error + " This answer uses only the supplied passage or image.";
@@ -3898,6 +3895,7 @@ AbstractIn = {
 				};
 				if (ctx.reading && !ctx.reading.vocabularyTutor) request.question += await this.agentReadingContext(backend, ctx);
 				if (ctx.reading?.paperGuide && !ctx.reading.forbidSource) request.question += this.paperGuidePrompt(ctx);
+				if (ctx.reading) request.question += this.readingImagePrompt(ctx);
 				return request;
 			};
 			let request = await makeRequest(session), sessionNotice = pending.sessionNotice || "";
@@ -3936,7 +3934,7 @@ AbstractIn = {
 			if (pending.readingAction === "contents" && result.error) return { error: result.error };
 
 			const retrievalLimit = ctx.reading ? this.readingRetrievalLimit(ctx) : null;
-			if (ctx.reading && !pending.readingAction && ctx.reading.answerMode !== "context" && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && (retrievalLimit === null || (pending.sourceLookupAttempts || 0) < retrievalLimit) &&
+			if (ctx.reading && (!pending.readingAction || pending.readingAction === "summary") && ctx.reading.answerMode !== "context" && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && (retrievalLimit === null || (pending.sourceLookupAttempts || 0) < retrievalLimit) &&
 				!ctx.reading.vocabularyTutor && !pending.cancelled && !result.stopped && !result.error && this.missingReadingEvidence(result.text)) {
 				// Continue source verification in the same Codex thread, without replaying
 				// messages it has already seen or repeating the initial request.
@@ -6250,12 +6248,13 @@ AbstractIn = {
 		return this.transcriptFor(history, session) + question + this.formattingReminder(ctx?.reading?.vocabularyTutor ? "English" : this.getLanguage());
 	},
 
-	claudeArgs({ ctx, question, history, session, model, effort, stdin = false }) {
+	claudeArgs({ ctx, question, history, session, model, effort, images = [], stdin = false }) {
 		let args = [
 			"-p", ...(stdin ? [] : [this.claudePrompt({ ctx, question, history, session })]),
 			"--output-format", "stream-json",
 			"--verbose",
 			"--include-partial-messages",
+			...(stdin && images.length ? ["--input-format", "stream-json"] : []),
 			"--tools", (ctx?.reading?.vocabularyTutor || ctx?.reading?.action === "contents") ? "" : "Read,Grep,Glob",
 			"--allowedTools", (ctx?.reading?.vocabularyTutor || ctx?.reading?.action === "contents") ? "" : "Read,Grep,Glob",
 			"--strict-mcp-config",
@@ -6336,6 +6335,22 @@ AbstractIn = {
 		return args;
 	},
 
+	async claudeInput(request) {
+		const text = this.claudePrompt(request);
+		if (!request.images?.length) return text;
+		const content = [{ type: "text", text }];
+		for (const path of request.images) {
+			const bytes = await OS.File.read(path);
+			let binary = "";
+			for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+			const extension = path.split(".").pop().toLowerCase();
+			const media_type = Object.entries(this.IMAGE_TYPES).find(([, ext]) => ext === extension)?.[0] || (extension === "jpeg" ? "image/jpeg" : null);
+			if (!media_type) throw new Error("Unsupported image format.");
+			content.push({ type: "image", source: { type: "base64", media_type, data: Zotero.getMainWindow().btoa(binary) } });
+		}
+		return JSON.stringify({ type: "user", message: { role: "user", content }, parent_tool_use_id: null }) + "\n";
+	},
+
 	async runClaude(request) {
 		let { ctx, onProgress, onSpawn } = request;
 		let command = await this.findBinary("claude");
@@ -6390,7 +6405,7 @@ AbstractIn = {
 			}
 		};
 
-		let { stdout, stderr, exitCode } = await this.runProcess(command, args, ctx.dir, onEvent, onSpawn, this.claudePrompt(request));
+		let { stdout, stderr, exitCode } = await this.runProcess(command, args, ctx.dir, onEvent, onSpawn, await this.claudeInput(request));
 		if (exitCode !== 0) {
 			return {
 				text: "",

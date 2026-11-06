@@ -29,6 +29,7 @@ export function loadPlugin({ prefs = {} } = {}) {
 	window.eval(read("src/content/icon-assets.js"));
 	window.eval(read("src/content/reading.js"));
 	window.eval(read("src/content/reading-workflow.js"));
+	window.eval(read("src/content/source-images.js"));
 	window.eval(read("src/content/paper-guide.js"));
 	window.eval(read("src/content/reader-panel.js"));
 	window.eval(read("src/content/library-launcher.js"));

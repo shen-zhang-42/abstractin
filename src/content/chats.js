@@ -786,6 +786,7 @@
     text += "\nFor this turn, original-source verification is authorized. This supersedes earlier context-only instructions in the conversation. Verify the requested statement and proof against the supplied original-source excerpt before answering. Do not refuse verification because local tools are disabled: the original text is supplied inline. The excerpt is a search result, not the whole book, and the current page does not limit the search scope. If evidence is insufficient, request another plugin search instead of guessing or asking the user to paste text. Return only <abstractin-source-needed>{\"queries\":[\"specific term or phrase in the book's language\"],\"pageIndices\":[]}</abstractin-source-needed>. Use up to six alternative queries (translate terms into the source language when needed) and up to eight zero-based physical page indices; use empty arrays when not needed. Use page requests for continuation of a proof or argument. Do not return an answer or reading record with a search request. " + this.readingRetrievalInstruction(ctx);
    }
    if (ctx.reading.type === "book" && ctx.reading.evidenceMode !== "knowledge") text += "\nBook lookup discipline: resolve the question's target before expanding. An explicit location takes priority; inspect current-page context first only for a contextual question. Clarify an unidentified referent instead of searching unrelated chapters. For an identified target with insufficient evidence, name the missing definition, hypothesis, statement or proof step and request headings, statement numbers, distinctive phrases or cited dependencies. Queries are matched locally against book text before the assistant reads bounded matching passages. Use specific words in the source language; do not request whole chapters or batches of pages as a substitute for text matching. For broad overviews start with contents and relevant opening paragraphs. Stop retrieval as soon as the question is adequately answered.";
+   if (ctx.reading.evidenceMode !== "knowledge") text += "\nVisual evidence is available for both books and papers. When a figure, chart, formula or scanned page requires inspection, first locate its caption/page using text matching, then request up to four page images in a search round: <abstractin-source-needed>{\"queries\":[],\"pageIndices\":[],\"imagePageIndices\":[0]}</abstractin-source-needed>. These are zero-based physical PDF pages, not printed page numbers. Images are delivered directly in the next turn; disabled file tools do not prevent image inspection. Read only relevant images and stop when evidence suffices.";
    return text + "\nContext boundary: use only this discussion, this turn's supplied passage/page, and authorized original-source excerpts. Supporting passages from another chapter are permitted when supplied by the plugin for this question. Do not read parent directories, other chats, unrelated notes or external sources. The current question's subject determines chapter ownership; supporting evidence never moves this discussion.";
   },
   async discussionSourceTarget(ctx) {
@@ -802,15 +803,16 @@
    return { question, references };
   },
   discussionSearchRequest(ctx) {
-   const queries = [], pages = [];
+   const queries = [], pages = [], imagePages = [];
    // Keep earlier retrieval targets so later proof pages retain their premises.
    for (const raw of [ctx.reading.missingSourceEvidence || "", ...(ctx.reading.sourceSearchHistory || []).slice(-3).reverse()]) {
     let request;
     try { request = JSON.parse(raw); } catch (e) { /* Plain-text evidence requests remain supported. */ }
     if (Array.isArray(request?.queries)) queries.push(...request.queries.filter(q => typeof q === "string" && q.trim()).slice(0, 6).map(q => q.trim().slice(0, 200)));
     if (Array.isArray(request?.pageIndices)) pages.push(...request.pageIndices.filter(p => Number.isInteger(p) && p >= 0).slice(0, 8));
+    if (raw === ctx.reading.missingSourceEvidence && Array.isArray(request?.imagePageIndices)) imagePages.push(...request.imagePageIndices.filter(p => Number.isInteger(p) && p >= 0).slice(0, 4));
    }
-   return { queries: [...new Set(queries)], pages: [...new Set(pages)] };
+   return { queries: [...new Set(queries)], pages: [...new Set(pages)], imagePages: [...new Set(imagePages)] };
   },
   discussionConceptMatches(text, question, queries = []) {
    // Search extracted book text locally; only matching passages reach the model.
@@ -1108,7 +1110,15 @@
   },
   claudeArgs(request) {
    const args = original.claudeArgs.call(this, request);
-   if (request.ctx?.discussion) for (const flag of ["--tools", "--allowedTools"]) args[args.indexOf(flag) + 1] = "";
+   if (request.ctx?.discussion) for (const flag of ["--tools", "--allowedTools"]) {
+    const index = args.findIndex(arg => arg === flag || arg.startsWith(flag + "="));
+    if (index < 0) continue;
+    if (Zotero.isWin) {
+     if (args[index] === flag) args.splice(index, 2, flag + "=");
+     else args[index] = flag + "=";
+    } else if (args[index] === flag) args[index + 1] = "";
+    else args[index] = flag + "=";
+   }
    return args;
   },
   async agentReadingContext(id, ctx) {

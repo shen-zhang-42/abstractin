@@ -57,6 +57,44 @@ async function setup(type = "book") {
  return { ...env, p, ctx, view, dir, notes, parent, attachment, toc, requests, send, setLocation: value => { location = value; } };
 }
 
+for (const type of ['book', 'paper']) test(type + ' source lookup supplies the referenced figure page image', async () => {
+ const { p, send, window } = await setup(type);
+ p.setPref('readingEvidenceMode', 'source');
+ window.Zotero.File.pathToFileURI = path => 'file://' + path;
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15,
+  text: Array.from({ length: 15 }, (_, page) => page === 11 ? 'Figure 2. A visual comparison of experimental results.' : 'Unrelated page ' + page).join('\f') }) };
+ const rendered = [];
+ p.readingPageImage = async (_, page) => { rendered.push(page); return { status: 'available', path: '/figure-' + page + '.png' }; };
+ p.runBackend = async (_, request) => {
+  assert.ok(request.images.includes('/figure-11.png'));
+  assert.match(request.question, /pageIndex.*11/);
+  return { text: 'Answer from the actual figure image.' };
+ };
+ await send('请解释图2的结果');
+ assert.deepEqual(rendered, [11]);
+});
+
+test('source-needed requests can explicitly retrieve an image page', async () => {
+ const { p, send, window } = await setup('paper');
+ p.setPref('readingEvidenceMode', 'source'); window.Zotero.File.pathToFileURI = path => 'file://' + path;
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array(15).fill('Source text.').join('\f') }) };
+ p.readingPageImage = async (_, page) => ({ status: 'available', path: '/page-' + page + '.png' });
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  if (++calls === 1) return { text: '<abstractin-source-needed>{"queries":[],"imagePageIndices":[12]}</abstractin-source-needed>' };
+  assert.ok(request.images.includes('/page-12.png'));
+  return { text: 'Answer from the requested page image.' };
+ };
+ await send('Check the evidence for this conclusion'); assert.equal(calls, 2);
+});
+
+test('Context only never automatically renders figure images', async () => {
+ const { p, send } = await setup('paper'); p.setPref('readingEvidenceMode', 'context');
+ p.readingPageImage = async () => { throw new Error('Document access prohibited'); };
+ p.runBackend = async (_, request) => { assert.equal(request.images.length, 0); return { text: 'Only supplied context.' }; };
+ await send('请解释图2的结果');
+});
+
 test('paper quick questions include summary and guide workflows with custom prompts', async () => {
  const { p, view } = await setup('paper');
  p.savePrompts([], 'paper'); p.renderQuickPrompts(view.root, view.root.querySelector('.abstractin-quick'));

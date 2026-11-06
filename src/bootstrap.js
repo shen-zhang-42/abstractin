@@ -26,6 +26,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(resourceURI + "content/icon-assets.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading-workflow.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/source-images.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/paper-guide.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/reader-panel.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/library-launcher.js");

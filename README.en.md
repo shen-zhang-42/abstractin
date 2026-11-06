@@ -63,6 +63,8 @@ Context only does not access the PDF even when a question requests source lookup
 
 Lookup follows **current page → four pages before and after → current chapter → entire document**. If location or text extraction fails, the plugin reports the gap instead of presenting guesses as the book's conclusions. Physical PDF page numbers and printed page numbers are handled separately, and page links are generated only for verified locations. Automatic verification requires an assistant that supports source reading; scanned PDFs need OCR or page images supplied by the user.
 
+Source verification supports PDF page images for both books and papers. The plugin first matches figure labels, captions or relevant text locally, then supplies relevant page images. The assistant can also request specific physical page images, up to four per retrieval round. Images are capped at 2000 pixels on their longest edge and cached for reuse. Open the corresponding PDF in Zotero and choose an image-capable assistant. Unavailable images are marked explicitly; captions alone do not establish visual inspection. Context only and explicit requests to avoid source access never generate page images automatically.
+
 The former Knowledge discussion setting maps to Balanced. Existing Source verification selections are retained as Source only.
 
 ### English vocabulary and usage tutoring

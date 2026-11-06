@@ -77,6 +77,7 @@ Object.assign(AbstractIn, {
 	},
 
 	needsReadingSource(question, selection) {
+		if (this.requestsReadingImage(question)) return true;
 		let text = selection?.text || "";
 		let specific = this.readingSourceReferences(text).length > 0 ||
 			/(?:这本书|本书|书中|原文|这个定理|这个证明|这一证明)|\b(?:this theorem|this proof|(?:in|the|this) book)\b/i.test(question);

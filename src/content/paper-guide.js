@@ -191,24 +191,7 @@ Object.assign(AbstractIn, {
  },
 
  async paperGuidePageImage(ctx, pageIndex, backend) {
-  if (!Number.isInteger(pageIndex)) return { status: "unavailable: figure page location is unverified" };
-  if (!this.BACKENDS[backend]?.images) return { status: "unavailable: this agent cannot inspect images" };
-  const key = ctx.dir + ":" + ctx.reading.pdfSource?.signature + ":" + pageIndex;
-  if (this._paperGuideImages.has(key)) return { status: "available", path: this._paperGuideImages.get(key) };
-  try {
-   const pdf = this.unwrapReadingValue(this.readingPDFApplication(ctx)?.pdfDocument);
-   if (!pdf?.getPage) return { status: "unavailable: open the paper in the PDF reader to inspect its figure" };
-   const page = this.unwrapReadingValue(await this.unwrapReadingValue(pdf.getPage(pageIndex + 1)));
-   const viewport = page.getViewport({ scale: 1.5 });
-   const canvas = Zotero.getMainWindow().document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
-   canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
-   await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-   const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
-   if (!blob) throw new Error("The figure page could not be rendered.");
-   const folder = OS.Path.join(ctx.dir, "attachments"); await Zotero.File.createDirectoryIfMissingAsync(folder);
-   const path = this.attachmentPath(ctx.dir, "png"); await Zotero.File.putContentsAsync(path, blob);
-   this._paperGuideImages.set(key, path); return { status: "available", path };
-  } catch (error) { this.logError("figure page image", error); return { status: "unavailable: " + error.message }; }
+  return this.readingPageImage(ctx, pageIndex, backend);
  },
 
  paperGuidePrompt(ctx) {

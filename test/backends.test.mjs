@@ -7,6 +7,32 @@ const { plugin } = loadPlugin();
 const base = { ctx: { dir: "/tmp/p" }, question: "Why?", history: [], session: null, files: { metadata: "# T\n", annotations: "- [highlight] p.2 key idea" } };
 const valueAfter = (args, flag) => args[args.indexOf(flag) + 1];
 
+test('Claude receives actual image content through structured stdin with file tools disabled', async () => {
+ const { plugin: p, window } = loadPlugin();
+ window.OS = { File: { read: async () => new Uint8Array([1, 2, 3, 4]) } };
+ p.findBinary = async () => '/bin/claude';
+ p.runProcess = async (_, args, __, ___, ____, stdin) => {
+  assert.equal(valueAfter(args, '--input-format'), 'stream-json');
+  assert.equal(valueAfter(args, '--tools'), '');
+  const message = JSON.parse(stdin), image = message.message.content.find(block => block.type === 'image');
+  assert.equal(image.source.type, 'base64'); assert.equal(image.source.media_type, 'image/png');
+  assert.equal(image.source.data, 'AQIDBA==');
+  assert.doesNotMatch(message.message.content[0].text, /with the Read tool/);
+  return { stdout: JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Image received' }] } }), stderr: '', exitCode: 0 };
+ };
+ const result = await p.runClaude({ ...base, ctx: { dir: '/tmp/p', discussion: { id: 'chat' }, reading: { type: 'paper', evidenceMode: 'source' } }, images: ['/page.png'], onProgress() {} });
+ assert.equal(result.text, 'Image received');
+});
+
+test('Claude source images preserve Windows empty tool arguments', () => {
+ const { plugin: p, window } = loadPlugin(); window.Zotero.isWin = true;
+ for (const action of ['discuss', 'contents']) {
+  const args = p.claudeArgs({ ...base, ctx: { dir: '/tmp/p', discussion: { id: 'chat' }, reading: { action, evidenceMode: 'source' } }, images: ['/page.png'], stdin: true });
+  assert.equal(args[0], '-p'); assert.ok(args.includes('--tools=')); assert.ok(args.includes('--allowedTools='));
+  assert.equal(valueAfter(args, '--input-format'), 'stream-json'); assert.ok(!args.includes(''));
+ }
+});
+
 test("claude: model and effort flags only when chosen", () => {
 	let args = plugin.claudeArgs(base);
 	assert.ok(!args.includes("--model") && !args.includes("--effort"));
