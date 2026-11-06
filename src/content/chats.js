@@ -779,9 +779,10 @@
     text = text.replace(/Read and follow the original skill at .*?\. Resolve its supporting resources relative to that skill directory; preserve the skill and its files\. /, "Follow the original skill resources supplied inline below. ")
      .replace(/Use the original scientific-information-extraction skill at .*? for narrow local checks\. /, "Use the supplied scientific-information-extraction resources for narrow checks. ")
      .replace("Its complete text is in current-page.md when file is specified.", "Its complete text is supplied by the plugin.")
-     .replace(/Read the requested portions of source-text\.md using local file tools; you do not need a Zotero browser or reader tool to access it\./, "The plugin has already located the requested original-source passages and supplied them in <authorized-source-excerpt> below. Read that excerpt directly; no file tools are required.");
-    text += "\nFor this turn, original-source verification is authorized. This supersedes earlier context-only instructions in the conversation. Verify the requested statement and proof against the supplied original-source excerpt before answering. Do not refuse verification because local tools are disabled: the original text is supplied inline. If the excerpt is insufficient, identify precisely what is missing.";
+     .replace(/Read the requested portions of source-text\.md using local file tools; you do not need a Zotero browser or reader tool to access it\./, "The plugin supplies the available original-source search results in <authorized-source-excerpt> below. Read those results directly; no file tools are required. Check their relevance before treating them as evidence for the question.");
+    text += "\nFor this turn, original-source verification is authorized. This supersedes earlier context-only instructions in the conversation. Verify the requested statement and proof against the supplied original-source excerpt before answering. Do not refuse verification because local tools are disabled: the original text is supplied inline. The excerpt is a search result, not the whole book, and the current page does not limit the search scope. If evidence is insufficient, request another plugin search instead of guessing or asking the user to paste text. Return only <abstractin-source-needed>{\"queries\":[\"specific term or phrase in the book's language\"],\"pageIndices\":[0]}</abstractin-source-needed>. Use up to six alternative queries (translate terms into the source language when needed) and up to eight zero-based physical page indices; use empty arrays when not needed. Use page requests for continuation of a proof or argument. Do not return an answer or reading record with a search request. Retrieval attempts used: " + (ctx.reading.sourceLookupAttempts || 0) + "/3. After three attempts, explain precisely what evidence remains missing; do not claim the book omits it.";
    }
+   if (ctx.reading.type === "book" && ctx.reading.evidenceMode !== "knowledge") text += "\nBook lookup discipline: resolve the question's target before expanding. An explicit location takes priority; inspect current-page context first only for a contextual question. Clarify an unidentified referent instead of searching unrelated chapters. For an identified target with insufficient evidence, name the missing definition, hypothesis, statement or proof step and request headings, statement numbers, distinctive phrases or cited dependencies. Queries are matched locally against book text before the assistant reads bounded matching passages. Use specific words in the source language; do not request whole chapters or batches of pages as a substitute for text matching. For broad overviews start with contents and relevant opening paragraphs. Stop retrieval as soon as the question is adequately answered.";
    return text + "\nContext boundary: use only this discussion, this turn's supplied passage/page, and authorized original-source excerpts. Supporting passages from another chapter are permitted when supplied by the plugin for this question. Do not read parent directories, other chats, unrelated notes or external sources. The current question's subject determines chapter ownership; supporting evidence never moves this discussion.";
   },
   async discussionSourceTarget(ctx) {
@@ -796,6 +797,44 @@
     }
    }
    return { question, references };
+  },
+  discussionSearchRequest(ctx) {
+   const queries = [], pages = [];
+   // Keep earlier retrieval targets so later proof pages retain their premises.
+   for (const raw of [ctx.reading.missingSourceEvidence || "", ...(ctx.reading.sourceSearchHistory || []).slice(-3).reverse()]) {
+    let request;
+    try { request = JSON.parse(raw); } catch (e) { /* Plain-text evidence requests remain supported. */ }
+    if (Array.isArray(request?.queries)) queries.push(...request.queries.filter(q => typeof q === "string" && q.trim()).slice(0, 6).map(q => q.trim().slice(0, 200)));
+    if (Array.isArray(request?.pageIndices)) pages.push(...request.pageIndices.filter(p => Number.isInteger(p) && p >= 0).slice(0, 8));
+   }
+   return { queries: [...new Set(queries)], pages: [...new Set(pages)] };
+  },
+  discussionConceptMatches(text, question, queries = []) {
+   // Search extracted book text locally; only matching passages reach the model.
+   const stop = new Set("a an the in on at to of for and or is are was were be been this that these those how what why where does do did can could would should please explain define book author source search find check verify original text according use used it its from with as by about into have has meaning".split(" "));
+   const terms = value => [...new Set((value.toLowerCase().match(/[a-z][a-z'-]{2,}|[\u3400-\u9fff]{2,}/g) || []).filter(term => !stop.has(term)))];
+   const groups = (queries.length ? queries : [question.slice(0, 4000)]).map(query => {
+    const words = terms(query);
+    const tokens = words.flatMap(word => /[\u3400-\u9fff]/.test(word) && word.length > 3 ? Array.from({ length: word.length - 1 }, (_, i) => word.slice(i, i + 2)) : [word]);
+    return { phrase: query.trim().toLowerCase(), tokens: [...new Set(tokens)].slice(0, 64) };
+   });
+   const lower = text.toLowerCase(), hits = [];
+   for (const group of groups) {
+    const positions = new Set();
+    const literals = queries.length && group.phrase ? [group.phrase, ...group.tokens] : group.tokens;
+    for (const token of literals) {
+     let offset = 0, count = 0;
+     while ((offset = lower.indexOf(token, offset)) !== -1 && count++ < 100) { positions.add(offset); offset += token.length; }
+    }
+    for (const position of positions) {
+     const nearby = lower.slice(Math.max(0, position - 250), position + 750);
+     const matched = group.tokens.filter(token => nearby.includes(token)).length;
+     const exact = group.phrase && nearby.includes(group.phrase);
+     const score = (group.tokens.length ? matched / group.tokens.length : 0) + (exact ? 2 : 0);
+     if ((matched || exact) && score >= 0.3) hits.push({ index: position, score });
+    }
+   }
+   return hits.sort((a, b) => b.score - a.score || a.index - b.index);
   },
   sourceStatementMatches(text, references) {
    const hits = [];
@@ -812,6 +851,57 @@
     }
    }
    return hits.sort((a, b) => b.score - a.score || a.index - b.index);
+  },
+  async exportMatchedBookSource(ctx, source, full) {
+   const target = await this.discussionSourceTarget(ctx), search = this.discussionSearchRequest(ctx);
+   const references = search.queries.length ? this.readingSourceReferences(search.queries.join("\n")) : target.references;
+   const candidates = [], sections = [], allowedPages = [], ranges = new Map();
+   let remaining = 12000;
+   const add = (text, offset, pageIndex, explicitPage = false) => {
+    const start = explicitPage ? 0 : Math.max(0, offset - 400);
+    const end = Math.min(text.length, explicitPage ? 6000 : offset + 3200, start + remaining - 160);
+    if (end <= start) return;
+    const key = pageIndex ?? "unmapped", previous = ranges.get(key) || [];
+    if (previous.some(range => start < range.end && end > range.start)) return;
+    const label = Number.isInteger(pageIndex) ? "PDF page " + (pageIndex + 1) + "; pageIndex " + pageIndex : "Original PDF text excerpt — physical page location unverified";
+    const section = "## " + label + "; characters " + start + "–" + end + " of " + text.length + "\n\n" + text.slice(start, end);
+    sections.push(section); remaining -= section.length;
+    previous.push({ start, end }); ranges.set(key, previous);
+    if (Number.isInteger(pageIndex)) allowedPages.push(pageIndex);
+   };
+   // Explicit continuations are read directly. All other pages are matched
+   // locally before any passage is supplied to the assistant.
+   for (const page of search.pages.filter(page => page < source.totalPages)) {
+    if (remaining < 400) break;
+    if (source.pageMapping) add(this.pdfPageText(full, page), 0, page, true);
+    else {
+     try { const native = await this.readNativeReadingPage(ctx, page); add(native.text, 0, page, true); }
+     catch (e) { this.logError("requested book continuation", e); }
+    }
+   }
+   const match = (text, pageIndex) => {
+    const hits = references.length ? this.sourceStatementMatches(text, references) : this.discussionConceptMatches(text, target.question, search.queries);
+    // Retain the strongest hit on each page; additional passages can be
+    // requested with more distinctive text rather than sending whole chapters.
+    if (hits.length) candidates.push({ text, pageIndex, ...hits[0] });
+   };
+   if (source.pageMapping) {
+    for (let page = 0; page < source.totalPages; page++) match(this.pdfPageText(full, page), page);
+   } else {
+    const hits = references.length ? this.sourceStatementMatches(full, references) : this.discussionConceptMatches(full, target.question, search.queries);
+    for (const hit of hits) candidates.push({ text: full, pageIndex: null, ...hit });
+   }
+   candidates.sort((a, b) => b.score - a.score || (a.pageIndex ?? 0) - (b.pageIndex ?? 0) || a.index - b.index);
+   for (const hit of candidates) {
+    if (sections.length >= 4 || remaining < 400) break;
+    add(hit.text, hit.index, hit.pageIndex);
+   }
+   const excerpt = sections.length ? sections.join("\n\n") + "\n\nOnly matched passages and explicitly requested continuations are supplied. Character ranges show excerpt coverage; request a more specific phrase or continuation when evidence is incomplete." :
+    "No matching passage was located by local text search of the available book text. Try alternative headings, statement numbers, distinctive phrases or terms in the book's language. A missing match does not establish absence from the book.";
+   const bounded = { ...source, pdf: undefined, text: "source-text.md", scoped: true, matchedOnly: true, allowedPages: [...new Set(allowedPages)] };
+   await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "source-text.md"), excerpt);
+   await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "source-manifest.json"), JSON.stringify(bounded));
+   return bounded;
   },
   async unmappedDiscussionSource(ctx, source, full) {
    // Text extraction and page-link verification are separate capabilities.
@@ -831,7 +921,22 @@
     }
    }
    if (ctx.reading.explicitSourceRequest || ctx.reading.sourceLookup) {
-    const { references } = await this.discussionSourceTarget(ctx);
+    const { question, references } = await this.discussionSourceTarget(ctx);
+    const search = this.discussionSearchRequest(ctx);
+    const conceptRanges = [];
+    for (const hit of search.queries.length || !references.length ? this.discussionConceptMatches(full, question, search.queries) : []) {
+     const start = Math.max(0, hit.index - 600), end = Math.min(full.length, hit.index + 6000);
+     if (conceptRanges.some(range => start < range.end && end > range.start)) continue;
+     conceptRanges.push({ start, end });
+     if (conceptRanges.length === 4) break;
+    }
+    for (const pageIndex of search.pages.filter(page => page < source.totalPages)) {
+     try {
+      const page = await this.readNativeReadingPage(ctx, pageIndex);
+      if (page.text.trim()) { allowedPages.push(pageIndex); sections.unshift("## PDF page " + (pageIndex + 1) + "; pageIndex " + pageIndex + "\n\n" + page.text); }
+     } catch (e) { this.logError("requested native source page", e); }
+    }
+    if (conceptRanges.length) sections.unshift(...conceptRanges.map(range => "## Original PDF text excerpt — physical page location unverified\n\n" + full.slice(range.start, range.end)));
     // Preserve source offsets; allow line wrapping between heading/number components.
     // These excerpts establish original wording, never physical page indices.
     const ranges = [];
@@ -880,6 +985,7 @@
     }
     for (const range of ranges) sections.push("## Original PDF text excerpt — physical page location unverified\n\n" + full.slice(range.start, range.end));
    }
+   if (!sections.length && full.trim()) sections.push("No matching passage was located for this query. Request a plugin search using alternative terms in the book's language. Physical page boundaries are unverified; do not invent page indices.");
    if (!sections.length) return { ...source, status: "unavailable", error: "The original text could not be located and native reader page text is unavailable. Open the relevant PDF page or provide its image." };
    const bounded = { ...source, pdf: undefined, text: "source-text.md", scoped: true, allowedPages, pageMapping: false };
    await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "source-text.md"), sections.join("\n\n"));
@@ -896,6 +1002,7 @@
    if (source.status !== "ready") return source;
    source = await original.recoverReadingPageMapping.call(this, documentCtx, source);
    const full = await Zotero.File.getContentsAsync(OS.Path.join(ctx.documentDir, "source-text.md"));
+   if (ctx.reading.type === "book" && ctx.reading.sourceLookupAttempts > 0) return this.exportMatchedBookSource(ctx, source, full);
    let excerpt = "", allowed = [];
    const nativePages = new Map();
    if (ctx.reading.action === "contents") excerpt = this.contentsExcerpt(full);
@@ -918,6 +1025,20 @@
     // explicit chapter, theorem or exact quoted phrase locally, without tokens.
     if (ctx.reading.explicitSourceRequest || ctx.reading.sourceLookup) {
      const { question: q, references: requested } = await this.discussionSourceTarget(ctx);
+     const search = this.discussionSearchRequest(ctx);
+     const conceptPages = [];
+     if (search.queries.length || !requested.length) {
+      const candidates = [];
+      for (let page = 0; page < source.totalPages; page++) {
+       const hits = this.discussionConceptMatches(this.pdfPageText(full, page), q, search.queries);
+       if (hits.length) candidates.push({ page, score: hits[0].score });
+      }
+      candidates.sort((a, b) => b.score - a.score || a.page - b.page);
+      for (const { page } of candidates.slice(0, 4)) {
+       conceptPages.push(page);
+       for (const near of [page - 1, page + 1]) if (near >= 0 && near < source.totalPages) conceptPages.push(near);
+      }
+     }
      const route = this.resolveDiscussionChapter({ ...ctx, reading: { ...ctx.reading } }, index, q.replace(/这里|此处|这一步|\bhere\b|\bthis\b/ig, ""), null, null);
      const target = !route.ambiguous && index.chapters.find(c => c.id === route.chapterID);
      if (target && target.id !== chapter?.id && Number.isInteger(target.pageIndex) && Number.isInteger(target.endPageIndex)) for (let page = target.pageIndex; page <= target.endPageIndex; page++) allowed.push(page);
@@ -963,11 +1084,12 @@
       for (let near = Math.max(0, page - 1); near <= Math.min(source.totalPages - 1, page + 2); near++) targetPages.push(near);
      }
      // Put the target ahead of contextual pages so prompt limits cannot hide it.
-     allowed = localStatement ? [...localPages, ...allowed] : [...targetPages, ...localPages, ...allowed];
+     allowed = [...search.pages, ...conceptPages, ...(localStatement ? [...localPages, ...allowed] : [...targetPages, ...localPages, ...allowed])];
     }
     allowed = [...new Set(allowed)].filter(page => page >= 0 && page < source.totalPages);
     excerpt = allowed.map(page => "## PDF page " + (page + 1) + "; pageIndex " + page + "\n\n" + (nativePages.get(page) || this.pdfPageText(full, page))).join("\n\n");
    }
+   if (!excerpt.trim() && full.trim()) excerpt = "No matching passage was located for this query. Request a plugin search using alternative terms in the book's language. This is not evidence that the book omits the subject.";
    if (!excerpt.trim()) return { ...source, status: "unavailable", error: "No authorized source excerpt is located. Select a passage or explicitly request the relevant chapter." };
    const bounded = { ...source, pdf: undefined, text: "source-text.md", scoped: true, allowedPages: allowed };
    await Zotero.File.putContentsAsync(OS.Path.join(ctx.dir, "source-text.md"), excerpt);

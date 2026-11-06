@@ -3786,7 +3786,7 @@ AbstractIn = {
 				let forbidSource = !pending.readingAction && (vocabularyTutor || answerMode === "context" || this.requestsKnowledgeDiscussion(question));
 				let preferred = vocabularyTutor ? "knowledge" : pending.evidenceMode || (answerMode === "source" ? "source" : "knowledge");
 				let explicitSourceRequest = this.requestsReadingSource(question);
-				let sourceLookup = !forbidSource && (pending.sourceLookup || (answerMode === "balanced" && this.agentCanReadSources(backend) &&
+				let sourceLookup = !forbidSource && (pending.sourceLookup || answerMode === "source" || (answerMode === "balanced" && this.agentCanReadSources(backend) &&
 					(explicitSourceRequest || this.needsReadingSource(question, pending.selection))));
 				let evidenceMode = pending.readingAction ? "source" : forbidSource ? "knowledge" : sourceLookup ? "source" : preferred;
 				await this.assertAgentReadingReady(backend, evidenceMode);
@@ -3802,6 +3802,8 @@ AbstractIn = {
 				ctx.reading.sourceQuestion = question;
 				ctx.reading.sourceSelection = pending.selection?.text || "";
 				ctx.reading.missingSourceEvidence = pending.missingSourceEvidence || "";
+				ctx.reading.sourceLookupAttempts = pending.sourceLookupAttempts || 0;
+				ctx.reading.sourceSearchHistory = pending.sourceSearchHistory || [];
 				ctx.reading.selectedPageIndex = pending.selection?.position?.pageIndex ?? pending.selection?.pageIndex;
 				ctx.reading.action = pending.readingAction || "discuss";
 				ctx.reading.currentPage = vocabularyTutor ? null : pending.currentPage !== undefined ? pending.currentPage : this.currentReadingLocation(ctx);
@@ -3826,6 +3828,7 @@ AbstractIn = {
 					else await this.reuseCurrentReadingPage(ctx);
 					if (ctx.reading.answerMode === "context") ctx.reading.knowledgeContext = "";
 				}
+				else if (pdfSource.matchedOnly) ctx.reading.currentPage = null;
 				else if (pdfSource.status === "ready" && pending.readingAction !== "contents") await this.prepareCurrentReadingPage(ctx);
 				if (ctx.reading.vocabularyTutor && ctx.reading.evidenceMode === "source" && pdfSource.status === "ready" && pdfSource.scoped) {
 					ctx.reading.tutorSourceContext = (await Zotero.File.getContentsAsync(OS.Path.join(ctx.dir, "source-text.md"))).slice(0, 24000);
@@ -3914,7 +3917,7 @@ AbstractIn = {
 
 			if (pending.readingAction === "contents" && result.error) return { error: result.error };
 
-			if (ctx.reading?.answerMode === "balanced" && ctx.reading.evidenceMode === "knowledge" && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && !pending.sourceLookup &&
+			if (ctx.reading && !pending.readingAction && ctx.reading.answerMode !== "context" && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && (pending.sourceLookupAttempts || 0) < 3 &&
 				!ctx.reading.vocabularyTutor && !pending.cancelled && !result.stopped && !result.error && this.missingReadingEvidence(result.text)) {
 				// Continue source verification in the same Codex thread, without replaying
 				// messages it has already seen or repeating the initial request.
@@ -3925,11 +3928,13 @@ AbstractIn = {
 				pending.progress({ text: "", status: "missing document evidence; verifying the requested passage" });
 				pending.evidenceMode = "source";
 				pending.sourceLookup = true;
+				pending.sourceLookupAttempts = (pending.sourceLookupAttempts || 0) + 1;
 				pending.missingSourceEvidence = (result.text || "").match(/<abstractin-source-needed>([\s\S]*?)<\/abstractin-source-needed>/)?.[1] || (result.text || "").slice(0, 1000);
+				pending.sourceSearchHistory = [...(pending.sourceSearchHistory || []), pending.missingSourceEvidence];
 				return await this.ask(ctx, question, pending);
 			}
 			if (/<abstractin-source-needed>/.test(result.text || "")) {
-				result.text = ctx.reading?.answerMode === "context" ? "The supplied context does not establish this document-specific statement. Please provide the passage, or switch to Balanced or Source only to check the PDF." : "The supplied context does not establish this document-specific statement. Please provide the passage or allow source verification.";
+				result.text = ctx.reading?.forbidSource ? "The supplied context does not establish this document-specific statement. Please provide the passage, or allow source verification in Balanced or Source only." : "The book search could not locate sufficient evidence after the available retrieval attempts. This does not establish that the book omits the requested content. Please specify a term, section or passage to narrow the search.";
 			}
 
 			let meta = { backend, model: pending.model || undefined, effort: pending.effort || undefined };

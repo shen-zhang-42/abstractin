@@ -67,7 +67,7 @@ Object.assign(AbstractIn, {
 	needsReadingSource(question, selection) {
 		let text = selection?.text || "";
 		let specific = this.readingSourceReferences(text).length > 0 ||
-			/(?:这本书|书中|原文|这个定理|这个证明|这一证明)|\b(?:this theorem|this proof|in the book)\b/i.test(question);
+			/(?:这本书|本书|书中|原文|这个定理|这个证明|这一证明)|\b(?:this theorem|this proof|(?:in|the|this) book)\b/i.test(question);
 		if (!specific) return false;
 		return text.trim().length < 180 || (/(?:证明|proof)/i.test(question) && !/(?:证明|proof)/i.test(text));
 	},
@@ -642,7 +642,7 @@ Object.assign(AbstractIn, {
 			"PDF source status: " + JSON.stringify(reading.pdfSource || { status: "not checked" }) + ". " +
 			"When PDF source status is ready, source.pdf is the exact attachment and source-text.md contains its extracted text in this working directory. " +
 			"Read the requested portions of source-text.md using local file tools; you do not need a Zotero browser or reader tool to access it. " +
-			(reading.sourceLookup ? "This turn automatically verifies missing evidence in Balanced mode. Search the exact requested theorem/section/claim, read only its statement and relevant nearby definitions or proof, and answer from that evidence. Use cached source-text.md first; do not scan the whole book or perform general initialization. If the passage cannot be found, say so and ask for clarification rather than guessing. " : "") +
+			(reading.sourceLookup ? "This turn verifies original-source evidence. Search the exact requested theorem/section/claim or concept anywhere in the book, using targeted plugin searches when the supplied excerpt is insufficient. Inspect relevant definitions, dependencies and proof continuations before answering. Do not perform general initialization or read the whole book by default. " : "") +
 			"For a book overview, inspect the actual contents and chapter openings; for a chapter or proof question, locate the requested section and its dependencies. " +
 			"Start from the selected passage or attached page when supplied. Expand only to answer the user's request, not by reading the whole book by default. " +
 			"Do not claim to have read content you have not inspected, or to have verified a whole-book synthesis from metadata or highlights alone. " +

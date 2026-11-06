@@ -67,6 +67,34 @@ bounded excerpts, so early chapter citations cannot hide a late appendix theorem
 Repeated follow-up requests inherit the most recent earlier question with a
 source reference, even if intervening follow-ups contain no theorem number. Older agent threads with blanket no-source instructions restart
 with the transcript preserved.
+
+Source only enables targeted book lookup for every ordinary source-backed turn.
+Besides numbered statements, the plugin ranks concept and phrase matches across
+the extracted book text and supplies bounded matching passages before local page
+context. A discussion's chapter ownership does not restrict supporting evidence.
+When a result is insufficient, the assistant can return only
+`<abstractin-source-needed>{"queries":["term in the source language"],"pageIndices":[]}</abstractin-source-needed>`.
+The plugin accepts up to six queries and eight zero-based physical page indices
+per request, retains earlier retrieval targets during that turn, and permits up
+to three additional retrieval rounds. This supports translated queries and proof
+continuations without exposing other chats or enabling general command tools.
+Intermediate retrieval requests are not saved as discussion answers. Unmapped
+text can be searched, but matches never establish physical page links. Missing
+matches allow query reformulation and do not establish absence from the book.
+Context only and explicit prohibitions on document access disable this loop.
+
+For insufficient-evidence follow-ups in books, search breadth and reading depth
+are separate. The plugin matches text locally across the available book cache
+using headings, statement numbers, distinctive phrases and query terms. It then
+supplies at most four non-overlapping matching excerpts within a 12,000-character
+source budget (plus coverage labels), rather than whole chapters or automatic
+neighboring pages. Explicit continuation requests may supply the requested page.
+Each excerpt records its character range; page links require verified mapping.
+The unrelated current page is not injected again during this retrieval round.
+Local text matching does not call a model; only the selected evidence is read by
+the assistant. The book-reading scope rules still govern which evidence is needed:
+resolve an unclear referent first, follow actual dependencies, and stop when the
+question is adequately answered.
 The full PDF cache stays outside discussion workspaces. Scoped workspaces expose
 only authorized source excerpts. Scoped exports first repair recoverable blank-page
 boundaries in the private document cache. When boundaries remain unverified,

@@ -57,6 +57,109 @@ async function setup(type = "book") {
  return { ...env, p, ctx, view, dir, notes, parent, attachment, toc, requests, send, setLocation: value => { location = value; } };
 }
 
+test('source mode finds unnumbered concepts beyond the current pages', async () => {
+ const { p, send, requests, window } = await setup();
+ p.setPref('readingEvidenceMode', 'source');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15,
+  text: Array.from({ length: 15 }, (_, i) => i === 13 ? 'Compactness means every open cover has a finite subcover.' : 'Unrelated page ' + i).join('\f') }) };
+ await send('How does the book define compactness?');
+ assert.equal(requests.at(-1).ctx.reading.sourceLookup, true);
+ assert.match(requests.at(-1).question, /every open cover has a finite subcover/);
+});
+
+test('source mode lets the model reformulate a query and request further pages', async () => {
+ const { p, send, window, view } = await setup();
+ p.setPref('readingEvidenceMode', 'source');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15,
+  text: Array.from({ length: 15 }, (_, i) => i === 13 ? 'Compactness: every open cover has a finite subcover.' : i === 14 ? 'A necessary qualification to the preceding argument.' : 'Unrelated page ' + i).join('\f') }) };
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  calls++;
+  if (calls === 1) return { text: '<abstractin-source-needed>{"queries":["compactness"],"pageIndices":[]}</abstractin-source-needed>', sessionId: 'lookup-thread' };
+  assert.match(request.question, /every open cover has a finite subcover/);
+  if (calls === 2) return { text: '<abstractin-source-needed>{"queries":[],"pageIndices":[14]}</abstractin-source-needed>', sessionId: 'lookup-thread' };
+  assert.match(request.question, /necessary qualification/);
+  return { text: 'Verified answer', sessionId: 'lookup-thread' };
+ };
+ await send('书中如何定义紧致性？');
+ assert.equal(calls, 3);
+ const history = await p.loadHistory(view.ctx.dir);
+ assert.equal(history.length, 2);
+ assert.equal(history.at(-1).text, 'Verified answer');
+ assert.ok(!JSON.stringify(history).includes('abstractin-source-needed'));
+});
+
+test('source retrieval stops after a bounded number of insufficient results', async () => {
+ const { p, send, window, view } = await setup();
+ p.setPref('readingEvidenceMode', 'source');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array(15).fill('Unrelated text.').join('\f') }) };
+ let calls = 0;
+ p.runBackend = async () => { calls++; return { text: '<abstractin-source-needed>{"queries":["absent concept"]}</abstractin-source-needed>' }; };
+ await send('Find the missing concept in the book');
+ assert.equal(calls, 4);
+ assert.match((await p.loadHistory(view.ctx.dir)).at(-1).text, /could not locate sufficient evidence/);
+});
+
+test('unmapped book text supports translated concept searches without invented page links', async () => {
+ const { p, send, requests, window, setLocation } = await setup();
+ p.setPref('readingEvidenceMode', 'source'); setLocation(null);
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15,
+  text: 'A front matter paragraph.\nCompactness means every open cover has a finite subcover.\nAn ending paragraph.' }) };
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  calls++; requests.push(request);
+  if (calls === 1) {
+   assert.match(request.question, /No matching passage was located/);
+   return { text: '<abstractin-source-needed>{"queries":["compactness"]}</abstractin-source-needed>' };
+  }
+  assert.match(request.question, /every open cover has a finite subcover/);
+  assert.match(request.question, /physical page location unverified/);
+  assert.equal(request.ctx.reading.pdfSource.pageMapping, false);
+  assert.deepEqual(Array.from(request.ctx.reading.pdfSource.allowedPages), []);
+  return { text: 'Verified concept answer' };
+ };
+ await send('书中如何定义紧致性？');
+ assert.equal(calls, 2);
+});
+
+test('context mode does not execute model-requested book searches', async () => {
+ const { p, send, view } = await setup();
+ p.setPref('readingEvidenceMode', 'context');
+ p.exportReadingSource = async () => { throw new Error('Document access prohibited'); };
+ let calls = 0;
+ p.runBackend = async () => { calls++; return { text: '<abstractin-source-needed>{"queries":["compactness"]}</abstractin-source-needed>' }; };
+ await send('How does the book define compactness?');
+ assert.equal(calls, 1);
+ assert.doesNotMatch((await p.loadHistory(view.ctx.dir)).at(-1).text, /book search could not locate/);
+});
+
+test('literal book queries match short mathematical symbols before passage reading', () => {
+ const { plugin: p } = loadPlugin();
+ for (const term of ['Lp', 'L^p', 'π']) {
+  assert.ok(p.discussionConceptMatches('Definition: ' + term + ' denotes the specified object.', '', [term]).length > 0);
+  assert.equal(p.discussionConceptMatches('An unrelated paragraph.', '', [term]).length, 0);
+ }
+});
+
+test('book follow-up searches send only bounded matching passages, without unrelated pages', async () => {
+ const { p, send, window } = await setup();
+ p.setPref('readingEvidenceMode', 'source');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15,
+  text: Array.from({ length: 15 }, (_, i) => i === 13 ? 'PREFIX '.repeat(1500) + 'Compactness means every open cover has a finite subcover.' + ' SUFFIX'.repeat(1500) : 'UNRELATED_PAGE_' + i).join('\f') }) };
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  if (++calls === 1) return { text: '<abstractin-source-needed>{"queries":["compactness"]}</abstractin-source-needed>' };
+  const excerpt = request.question.match(/<authorized-source-excerpt>([\s\S]*?)<\/authorized-source-excerpt>/)[1];
+  assert.match(excerpt, /every open cover has a finite subcover/);
+  assert.match(excerpt, /pageIndex 13/);
+  assert.doesNotMatch(request.question, /UNRELATED_PAGE_/);
+  assert.ok(excerpt.length <= 12500);
+  return { text: 'Verified compactness answer' };
+ };
+ await send('书中如何定义紧致性？');
+ assert.equal(calls, 2);
+});
+
 test('vocabulary questions and sentence feedback stay in the visible chat across PDF chapter changes',async()=>{
  const {p,view,send,setLocation,requests}=await setup();await send('Chapter 1: first topic');
  p.loadVocabularyTutorSkill=async()=>await readFile(new URL('../skills/english-vocabulary-tutor/SKILL.md',import.meta.url),'utf8');
