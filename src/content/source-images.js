@@ -74,11 +74,19 @@ Object.assign(AbstractIn, {
    if (!pdf?.getPage) return { status: "unavailable: open this source in the PDF reader to inspect page images" };
    if (Number.isInteger(pdf.numPages) && pageIndex >= pdf.numPages) return { status: "unavailable: page is outside this PDF" };
    const page = this.unwrapReadingValue(await this.unwrapReadingValue(pdf.getPage(pageIndex + 1)));
-   const size = this.unwrapReadingValue(page.getViewport({ scale: 1 }));
-   const viewport = this.unwrapReadingValue(page.getViewport({ scale: Math.min(1.5, 2000 / Math.max(size.width, size.height)) }));
-   const canvas = Zotero.getMainWindow().document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
+   const utils = typeof Components !== "undefined" ? Components.utils : null;
+   const realm = this.unwrapReadingValue(utils?.getGlobalForObject ? utils.getGlobalForObject(page) : Zotero.getMainWindow());
+   // Waiving Xrays exposes PDF.js methods, but does not make privileged option
+   // objects visible to them. Create options and DOM objects in the PDF realm.
+   const options = values => Object.assign(this.unwrapReadingValue(utils?.createObjectIn ? utils.createObjectIn(realm) : {}), values);
+   const size = this.unwrapReadingValue(page.getViewport(options({ scale: 1 })));
+   if (!(Number.isFinite(size.width) && size.width > 0 && Number.isFinite(size.height) && size.height > 0)) throw new Error("The PDF page viewport has invalid dimensions.");
+   const viewport = this.unwrapReadingValue(page.getViewport(options({ scale: Math.min(1.5, 2000 / Math.max(size.width, size.height)) })));
+   const canvas = this.unwrapReadingValue(realm.document.createElementNS("http://www.w3.org/1999/xhtml", "canvas"));
    canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
-   const task = this.unwrapReadingValue(page.render({ canvasContext: canvas.getContext("2d"), viewport }));
+   const canvasContext = this.unwrapReadingValue(canvas.getContext("2d"));
+   if (!canvasContext) throw new Error("The PDF page canvas has no 2D rendering context.");
+   const task = this.unwrapReadingValue(page.render(options({ canvas, canvasContext, viewport })));
    await this.unwrapReadingValue(task.promise);
    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
    if (!blob) throw new Error("The source page could not be rendered.");
