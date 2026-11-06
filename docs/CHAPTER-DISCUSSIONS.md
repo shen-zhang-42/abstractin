@@ -8,19 +8,23 @@ the custom prompt list is empty. Summary uses the bundled scientific-paper-readi
 initial-read workflow, its four-part structure and experiment/analysis table,
 and saves the result as the existing editable Summary artifact.
 
-The guide first builds a source-checked inventory of figures and their subfigures
-from the available captions, then explains one panel at a time: data and task,
-plot construction, analysis, results and inferential limits. Unlettered figures
-are treated as single panels. Missing supplements or uncertain panel coverage
-must be identified rather than invented. When available, the plugin renders the
+The guide locates the first caption using local text matching and immediately
+starts explaining its first subfigure. It does not ask the agent to read the
+whole paper or build a complete figure inventory first. Subsequent figures are
+located and supplied only when the user advances to them. Each explanation covers
+data and task, plot construction, analysis, results and inferential limits.
+Unlettered figures are treated as single panels. Missing supplements or uncertain
+panel coverage must be identified rather than invented. When available, the plugin renders the
 figure's verified physical page without changing the visible reader position;
 otherwise the answer identifies which visual details remain unverified.
 
 Questions remain attached to the current panel. **Next subfigure**, `next`, or
 `没有问题` advances one panel; the assistant never advances automatically.
-**Exit guide** or `退出导读` stops the mode, including an in-flight inventory or
+**Exit guide** or `退出导读` stops the mode, including an in-flight explanation or
 answer. A failed or interrupted next-panel response does not advance progress.
-The final panel completes the guide while still allowing follow-up questions.
+The final available panel completes the guide while still allowing follow-up questions.
+The first streamed text is displayed immediately, followed by incremental updates;
+the UI does not wait for the complete explanation or saved reading record.
 Progress is stored in discussion history under the document's Note saving policy,
 and a new discussion does not inherit another discussion's guide.
 

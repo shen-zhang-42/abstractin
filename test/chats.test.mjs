@@ -86,7 +86,7 @@ test('paper guide explains one verified subfigure, retains follow-ups and advanc
   return { text: 'Explanation of the current subfigure.\n<abstractin-record>{"title":"Figure explanation","summary":"Verified panel discussion","openQuestions":[],"sources":[]}</abstractin-record>', sessionId: 'guide-thread' };
  };
  await send('Guide through the paper.', { paperGuide: { operation: 'start' } });
- assert.equal(requests.length, 2); assert.match(requests.at(-1).question, /Current subfigure: Figure 1a/);
+ assert.equal(requests.length, 1); assert.match(requests.at(-1).question, /Current subfigure: Figure 1a/);
  assert.equal(p.paperGuideState(view.ctx).index, 0);
  await send('Why did they use this analysis?');
  assert.match(requests.at(-1).question, /Current subfigure: Figure 1a/);
@@ -106,6 +106,20 @@ test('paper guide explains one verified subfigure, retains follow-ups and advanc
 test('paper guide rejects inventories whose panel evidence is absent from the paper', async () => {
  const { p, ctx } = await setup('paper');
  assert.throws(() => p.validatePaperGuidePlan(ctx, { complete: true, coverage: 'figures', panels: [{ id: 'Figure 99a', evidence: 'Invented caption' }] }, { pageMapping: false, totalPages: 1 }, 'Actual paper text'), /source|evidence/i);
+});
+
+test('paper guide resolves caption IDs without depending on model-rewritten quotations', async () => {
+ const { p, ctx } = await setup('paper');
+ const full = 'Figure 3. a,b, New colours were introduced and shown as a factorisation of stimulus dimensions.';
+ const sources = [{ id: 'caption-1', start: 0, end: full.length, text: full }];
+ const data = { complete: true, coverage: 'Figure 3', panels: [{ id: 'Figure 3a', sourceId: 'caption-1', evidence: 'a,b, New colors ... stimulus dimensions.' }] };
+ const state = p.validatePaperGuidePlan(ctx, data, { pageMapping: false }, full, sources);
+ assert.equal(state.panels[0].evidence, full);
+ assert.equal(state.panels[0].sourceEnd, full.length);
+ data.panels[0].sourceId = 'caption-99';
+ assert.throws(() => p.validatePaperGuidePlan(ctx, data, {}, full, sources), /Figure 3a.*unknown caption source ID/);
+ data.panels[0].sourceId = 'caption-1'; data.panels[0].id = 'Figure 99a';
+ assert.throws(() => p.validatePaperGuidePlan(ctx, data, {}, full, sources), /another figure/);
 });
 
 test('paper summary shortcut requests the skill structure and saves the summary artifact', async () => {
@@ -152,6 +166,41 @@ test('an interrupted next-panel answer preserves the last successfully explained
  await new Promise(resolve => setTimeout(resolve, 30));
  assert.equal(p.paperGuideState(view.ctx).index, 0);
  assert.equal((await p.loadHistory(view.ctx.dir)).length, 2);
+});
+
+test('paper guide reads later figures only when the user advances to them', async () => {
+ const { p, send, window, view } = await setup('paper');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 2, extractedPages: 2, text: 'Figure 1. (a) FIRST_FIGURE_DATA.\fFigure 2. (a) FUTURE_FIGURE_SECRET.' }) };
+ p.paperGuidePageImage = async () => ({ status: 'unavailable' });
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  calls++;
+  assert.doesNotMatch(request.question, /Build the verified subfigure inventory/);
+  if (calls === 1) { assert.match(request.question, /FIRST_FIGURE_DATA/); assert.doesNotMatch(request.question, /FUTURE_FIGURE_SECRET/); }
+  else assert.match(request.question, /FUTURE_FIGURE_SECRET/);
+  return { text: 'Current panel explanation.' };
+ };
+ await send('Guide through the paper.', { paperGuide: { operation: 'start' } });
+ assert.equal(calls, 1); assert.equal(p.paperGuideState(view.ctx).status, 'active');
+ await send('下一张');
+ assert.equal(calls, 2); assert.equal(p.paperGuideState(view.ctx).status, 'complete');
+});
+
+test('paper guide displays the first streamed sentence before the answer finishes', async () => {
+ const { p, window, view } = await setup('paper');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 1, extractedPages: 1, text: 'Figure 1. (a) A measured outcome.' }) };
+ p.paperGuidePageImage = async () => ({ status: 'unavailable' });
+ let finish, notify;
+ const started = new Promise(resolve => { notify = resolve; });
+ p.runBackend = async (_, request) => new Promise(resolve => {
+  finish = resolve; request.onProgress({ text: 'The first sentence is already visible.', status: 'writing' }); notify();
+ });
+ await p.startRequest(view, 'Guide through the paper.', [], [], { paperGuide: { operation: 'start' } });
+ await started;
+ assert.match(view.root.querySelector('.abstractin-live-content').textContent, /first sentence is already visible/);
+ assert.ok(p._pending.has(view.ctx.dir));
+ finish({ text: 'The first sentence is already visible. Complete explanation.' });
+ const pending = p._pending.get(view.ctx.dir); if (pending) await pending.promise;
 });
 
 test('source mode finds unnumbered concepts beyond the current pages', async () => {

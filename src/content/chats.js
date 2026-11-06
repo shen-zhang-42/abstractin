@@ -373,7 +373,8 @@
    } finally { if (!locked) this._discussionLocks.delete(documentDir); }
   },
   async startRequest(view, text, images = [], modes = [], options = {}) {
-   options = await this.routePaperGuideRequest(view, text || "", options);
+   try { options = await this.routePaperGuideRequest(view, text || "", options); }
+   catch (error) { this.appendError(view, error.message); return; }
    if (options.handled) return;
    if (!view.ctx.discussion && view.ctx.reading && options.readingAction) view.ctx = await this.ensureDiscussion(view.ctx);
    if (!view.ctx.discussion) return original.startRequest.call(this, view, text, images, modes, options);

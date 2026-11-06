@@ -3712,8 +3712,9 @@ AbstractIn = {
 		let listener = () => {
 			tick();
 			renderSteps();
+			if (pending.paperGuide && pending.partial && !renderedText) { renderPartial(); return; }
 			if (!renderTimer) {
-				renderTimer = win.setTimeout(renderPartial, 150);
+				renderTimer = win.setTimeout(renderPartial, pending.paperGuide ? 60 : 150);
 			}
 		};
 		pending.listeners.add(listener);
