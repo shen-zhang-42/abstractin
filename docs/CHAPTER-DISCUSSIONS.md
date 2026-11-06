@@ -105,8 +105,11 @@ context. A discussion's chapter ownership does not restrict supporting evidence.
 When a result is insufficient, the assistant can return only
 `<abstractin-source-needed>{"queries":["term in the source language"],"pageIndices":[]}</abstractin-source-needed>`.
 The plugin accepts up to six queries and eight zero-based physical page indices
-per request, retains earlier retrieval targets during that turn, and permits up
-to three additional retrieval rounds. This supports translated queries and proof
+per request and retains recent retrieval targets during that turn. Papers have
+no fixed retrieval-count limit. Books permit one additional retrieval round per
+100 verified physical PDF pages, rounded up with a minimum of one (700 pages
+allow seven rounds). An unverified page count does not impose an arbitrary limit.
+This supports translated queries and proof
 continuations without exposing other chats or enabling general command tools.
 Intermediate retrieval requests are not saved as discussion answers. Unmapped
 text can be searched, but matches never establish physical page links. Missing

@@ -3935,7 +3935,8 @@ AbstractIn = {
 
 			if (pending.readingAction === "contents" && result.error) return { error: result.error };
 
-			if (ctx.reading && !pending.readingAction && ctx.reading.answerMode !== "context" && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && (pending.sourceLookupAttempts || 0) < 3 &&
+			const retrievalLimit = ctx.reading ? this.readingRetrievalLimit(ctx) : null;
+			if (ctx.reading && !pending.readingAction && ctx.reading.answerMode !== "context" && this.agentCanReadSources(backend) && !ctx.reading.forbidSource && (retrievalLimit === null || (pending.sourceLookupAttempts || 0) < retrievalLimit) &&
 				!ctx.reading.vocabularyTutor && !pending.cancelled && !result.stopped && !result.error && this.missingReadingEvidence(result.text)) {
 				// Continue source verification in the same Codex thread, without replaying
 				// messages it has already seen or repeating the initial request.

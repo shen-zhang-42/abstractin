@@ -64,6 +64,18 @@ Object.assign(AbstractIn, {
 		return this.getReadingAnswerMode() === "source" ? "source" : "knowledge";
 	},
 
+	readingRetrievalLimit(ctx) {
+		if (ctx.reading?.type !== "book") return null;
+		const pages = ctx.reading.pdfSource?.totalPages;
+		return Number.isInteger(pages) && pages > 0 ? Math.max(1, Math.ceil(pages / 100)) : null;
+	},
+
+	readingRetrievalInstruction(ctx) {
+		const used = ctx.reading.sourceLookupAttempts || 0, limit = this.readingRetrievalLimit(ctx);
+		if (limit !== null) return "Additional retrieval rounds used: " + used + "/" + limit + ". This book's limit is one round per 100 physical PDF pages, rounded up (" + ctx.reading.pdfSource.totalPages + " pages). When the limit is reached, explain precisely what evidence remains missing; do not claim the book omits it.";
+		return "Additional retrieval rounds used: " + used + ". " + (ctx.reading.type === "paper" ? "Papers have no fixed retrieval-count limit. " : "The book's page count is unverified, so a proportional retrieval limit cannot yet be applied. ") + "Continue targeted local text searches when evidence is needed, read only relevant passages, and stop once the question is adequately answered or the evidence cannot be located. The user may stop at any time.";
+	},
+
 	needsReadingSource(question, selection) {
 		let text = selection?.text || "";
 		let specific = this.readingSourceReferences(text).length > 0 ||

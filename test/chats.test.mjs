@@ -235,15 +235,39 @@ test('source mode lets the model reformulate a query and request further pages',
  assert.ok(!JSON.stringify(history).includes('abstractin-source-needed'));
 });
 
-test('source retrieval stops after a bounded number of insufficient results', async () => {
+test('book retrieval allows one additional round per hundred physical pages', async () => {
  const { p, send, window, view } = await setup();
  p.setPref('readingEvidenceMode', 'source');
- window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array(15).fill('Unrelated text.').join('\f') }) };
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 700, extractedPages: 700, text: Array(700).fill('Unrelated text.').join('\f') }) };
  let calls = 0;
  p.runBackend = async () => { calls++; return { text: '<abstractin-source-needed>{"queries":["absent concept"]}</abstractin-source-needed>' }; };
  await send('Find the missing concept in the book');
- assert.equal(calls, 4);
+ assert.equal(calls, 8);
  assert.match((await p.loadHistory(view.ctx.dir)).at(-1).text, /could not locate sufficient evidence/);
+});
+
+test('paper retrieval continues past the former three-round limit', async () => {
+ const { p, send, window, view } = await setup('paper');
+ p.setPref('readingEvidenceMode', 'source');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array(15).fill('Paper text.').join('\f') }) };
+ let calls = 0;
+ p.runBackend = async (_, request) => {
+  calls++;
+  assert.match(request.question, /Papers have no fixed retrieval-count limit/);
+  assert.doesNotMatch(request.question, /After three attempts|\/3\./);
+  return { text: calls <= 5 ? '<abstractin-source-needed>{"queries":["specific missing evidence"]}</abstractin-source-needed>' : 'Answer after five retrieval rounds.' };
+ };
+ await send('Check the paper for the requested evidence');
+ assert.equal(calls, 6);
+ assert.equal((await p.loadHistory(view.ctx.dir)).at(-1).text, 'Answer after five retrieval rounds.');
+});
+
+test('book retrieval limits round up partial hundreds and require a verified page count', () => {
+ const { plugin: p } = loadPlugin();
+ for (const [pages, limit] of [[1, 1], [100, 1], [101, 2], [700, 7], [701, 8], [0, null]]) {
+  assert.equal(p.readingRetrievalLimit({ reading: { type: 'book', pdfSource: { totalPages: pages } } }), limit);
+ }
+ assert.equal(p.readingRetrievalLimit({ reading: { type: 'paper', pdfSource: { totalPages: 700 } } }), null);
 });
 
 test('unmapped book text supports translated concept searches without invented page links', async () => {
