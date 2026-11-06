@@ -95,6 +95,15 @@
 	box-sizing: border-box;
 }
 /* The reader panel sits beside the PDF, outside item metadata sections. */
+.abstractin-paper-guide {
+ display: flex;
+ align-items: center;
+ flex-wrap: wrap;
+ gap: 8px;
+ padding: 6px 0;
+}
+.abstractin-paper-guide > span { flex: 1 1 auto; font-size: 12px; }
+
 .abstractin-reader-panel {
 	display: flex;
 	flex: 0 0 auto;

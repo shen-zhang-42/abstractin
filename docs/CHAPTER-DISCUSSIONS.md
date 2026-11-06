@@ -1,5 +1,31 @@
 # Chapter discussions
 
+## Paper quick questions and guided figures
+
+Paper reading provides two fixed Quick questions alongside editable prompts:
+**Summarize paper** and **Guide through the paper**. They remain available when
+the custom prompt list is empty. Summary uses the bundled scientific-paper-reading
+initial-read workflow, its four-part structure and experiment/analysis table,
+and saves the result as the existing editable Summary artifact.
+
+The guide first builds a source-checked inventory of figures and their subfigures
+from the available captions, then explains one panel at a time: data and task,
+plot construction, analysis, results and inferential limits. Unlettered figures
+are treated as single panels. Missing supplements or uncertain panel coverage
+must be identified rather than invented. When available, the plugin renders the
+figure's verified physical page without changing the visible reader position;
+otherwise the answer identifies which visual details remain unverified.
+
+Questions remain attached to the current panel. **Next subfigure**, `next`, or
+`没有问题` advances one panel; the assistant never advances automatically.
+**Exit guide** or `退出导读` stops the mode, including an in-flight inventory or
+answer. A failed or interrupted next-panel response does not advance progress.
+The final panel completes the guide while still allowing follow-up questions.
+Progress is stored in discussion history under the document's Note saving policy,
+and a new discussion does not inherit another discussion's guide.
+
+## Discussion storage
+
 AbstractIn stores a plugin-owned `discussions.json` index beside each PDF's
 `reading.json`. Discussion IDs never change when display names or chapter
 assignments change. Each discussion has its own `discussions/<id>/chat.json`,

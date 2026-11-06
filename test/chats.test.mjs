@@ -57,6 +57,103 @@ async function setup(type = "book") {
  return { ...env, p, ctx, view, dir, notes, parent, attachment, toc, requests, send, setLocation: value => { location = value; } };
 }
 
+test('paper quick questions include summary and guide workflows with custom prompts', async () => {
+ const { p, view } = await setup('paper');
+ p.savePrompts([], 'paper'); p.renderQuickPrompts(view.root, view.root.querySelector('.abstractin-quick'));
+ view.root.querySelector('.abstractin-prompt-menu').click();
+ const labels = [...view.root.querySelectorAll('.abstractin-menu-item')].map(button => button.textContent);
+ assert.ok(labels.includes('Summarize paper')); assert.ok(labels.includes('Guide through the paper'));
+ const calls = []; p.startRequest = async (...args) => calls.push(args);
+ [...view.root.querySelectorAll('.abstractin-menu-item')].find(button => button.textContent === 'Summarize paper').click();
+ await new Promise(resolve => setTimeout(resolve, 10));
+ assert.equal(calls[0][4].readingAction, 'summary');
+});
+
+test('paper guide explains one verified subfigure, retains follow-ups and advances only on request', async () => {
+ const { p, send, requests, window, view } = await setup('paper');
+ const caption = 'Figure 1. (a) Mean accuracy by condition. (b) Reaction time by condition.';
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15,
+  text: Array.from({ length: 15 }, (_, i) => i === 6 ? caption : i === 7 ? 'Methods: accuracy and reaction time were analyzed using mixed effects models.' : 'PAGE-' + i).join('\f') }) };
+ p.paperGuidePageImage = async () => ({ path: '/figure-page.png', status: 'available' });
+ window.Zotero.File.pathToFileURI = path => 'file://' + path;
+ p.runBackend = async (_, request) => {
+  requests.push(request);
+  if (request.question.includes('Build the verified subfigure inventory')) return { text: '<abstractin-guide>' + JSON.stringify({ complete: true, coverage: 'Figure 1 caption', panels: [
+   { id: 'Figure 1a', pageIndex: 6, evidence: caption }, { id: 'Figure 1b', pageIndex: 6, evidence: caption }
+  ] }) + '</abstractin-guide>' };
+  assert.match(request.question, /how.*plot|plot.*construct/i);
+  assert.ok(request.images.includes('/figure-page.png'));
+  return { text: 'Explanation of the current subfigure.\n<abstractin-record>{"title":"Figure explanation","summary":"Verified panel discussion","openQuestions":[],"sources":[]}</abstractin-record>', sessionId: 'guide-thread' };
+ };
+ await send('Guide through the paper.', { paperGuide: { operation: 'start' } });
+ assert.equal(requests.length, 2); assert.match(requests.at(-1).question, /Current subfigure: Figure 1a/);
+ assert.equal(p.paperGuideState(view.ctx).index, 0);
+ await send('Why did they use this analysis?');
+ assert.match(requests.at(-1).question, /Current subfigure: Figure 1a/);
+ assert.equal(p.paperGuideState(view.ctx).index, 0);
+ await send('没有问题，下一张');
+ assert.match(requests.at(-1).question, /Current subfigure: Figure 1b/);
+ assert.equal(p.paperGuideState(view.ctx).status, 'complete');
+ const history = await p.loadHistory(view.ctx.dir);
+ p._paperGuides.clear(); p.renderMessages(view, history);
+ assert.equal(p.paperGuideState(view.ctx).index, 1);
+ assert.equal(view.root.querySelector('.abstractin-guide-next').disabled, true);
+ const count = requests.length; await send('退出导读');
+ assert.equal(requests.length, count); assert.equal(p.paperGuideState(view.ctx).status, 'stopped');
+ assert.equal(view.root.querySelector('.abstractin-paper-guide'), null);
+});
+
+test('paper guide rejects inventories whose panel evidence is absent from the paper', async () => {
+ const { p, ctx } = await setup('paper');
+ assert.throws(() => p.validatePaperGuidePlan(ctx, { complete: true, coverage: 'figures', panels: [{ id: 'Figure 99a', evidence: 'Invented caption' }] }, { pageMapping: false, totalPages: 1 }, 'Actual paper text'), /source|evidence/i);
+});
+
+test('paper summary shortcut requests the skill structure and saves the summary artifact', async () => {
+ const { p, send, window, view } = await setup('paper');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 1, extractedPages: 1, text: 'Abstract. Methods. Results. Discussion. Limitations.' }) };
+ p.runBackend = async (_, request) => {
+  assert.equal(request.ctx.reading.action, 'summary');
+  assert.match(request.question, /scientific-paper-reading/);
+  assert.match(request.question, /Procedure \/ Task flow, Method \/ Analysis, Result, and Interpretation/);
+  assert.match(request.question, /four-part structure/);
+  return { text: 'A complete paper summary.\n<abstractin-workspace>{"kind":"summary","coverage":"Full paper"}</abstractin-workspace>' };
+ };
+ await send('Generate or update the paper summary using scientific-paper-reading.', { readingAction: 'summary' });
+ assert.equal(p.readingArtifactNotes(view.ctx, 'Summary').length, 1);
+});
+
+test('paper guide can be forcibly exited while its inventory is still running', async () => {
+ const { p, window, view } = await setup('paper');
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 1, extractedPages: 1, text: 'Figure 1. (a) A measured outcome.' }) };
+ let started;
+ const ready = new Promise(resolve => { started = resolve; });
+ p.runBackend = async (_, request) => new Promise(resolve => {
+  request.onSpawn({ kill: () => resolve({ text: '', stopped: true }) }); started();
+ });
+ await p.startRequest(view, 'Guide through the paper.', [], [], { paperGuide: { operation: 'start' } });
+ await ready;
+ assert.equal(view.root.querySelector('.abstractin-guide-exit').disabled, false);
+ await p.stopPaperGuide(view);
+ assert.equal(p.paperGuideState(view.ctx).status, 'stopped');
+ assert.equal(view.root.querySelector('.abstractin-paper-guide'), null);
+});
+
+test('an interrupted next-panel answer preserves the last successfully explained subfigure', async () => {
+ const { p, window, view } = await setup('paper');
+ const caption = 'Figure 1. (a) First condition. (b) Second condition.';
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 1, extractedPages: 1, text: caption }) };
+ const state = { status: 'active', index: 0, attachmentKey: 'PDF12345', coverage: 'Figure 1', panels: [{ id: 'Figure 1a', evidence: caption, pageIndex: 0 }, { id: 'Figure 1b', evidence: caption, pageIndex: 0 }] };
+ const history = [{ role: 'user', text: 'Guide through the paper.' }, { role: 'assistant', text: 'First panel explanation.', paperGuide: state }];
+ await p.saveHistory(view.ctx.dir, history); p.renderMessages(view, history);
+ p.paperGuidePageImage = async () => ({ status: 'unavailable' });
+ p.runBackend = async () => ({ error: 'Backend failed' });
+ await p.startRequest(view, '没有问题');
+ const pending = p._pending.get(view.ctx.dir); if (pending) await pending.promise;
+ await new Promise(resolve => setTimeout(resolve, 30));
+ assert.equal(p.paperGuideState(view.ctx).index, 0);
+ assert.equal((await p.loadHistory(view.ctx.dir)).length, 2);
+});
+
 test('source mode finds unnumbered concepts beyond the current pages', async () => {
  const { p, send, requests, window } = await setup();
  p.setPref('readingEvidenceMode', 'source');

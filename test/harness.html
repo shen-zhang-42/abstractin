@@ -48,6 +48,7 @@
 <script src="../src/content/icon-assets.js"></script>
 <script src="../src/content/reading.js"></script>
 <script src="../src/content/reading-workflow.js"></script>
+<script src="../src/content/paper-guide.js"></script>
 <script src="../src/content/reader-panel.js"></script>
 <script src="../src/content/agents.js"></script>
 <script src="../src/content/agent-setup.js"></script>
@@ -124,7 +125,20 @@
 	}
 	else {
 		const view = sidebar(pane("Claude"));
-		if (scenario === "discussions") {
+		if (scenario === "paper-guide" || scenario === "paper-quick") {
+			view.ctx.reading = { type: "paper", title: "Example paper" };
+			view.ctx.paperItem = { id: 1, libraryID: 1, key: "PAPER", getNotes: () => [] };
+			view.ctx.attachmentItem = { id: 2, key: "PDF" };
+			view.root.dataset.readingTheme = "neutral";
+			const guide = { status: "active", index: 0, attachmentKey: "PDF", coverage: "Example figure captions", panels: [{ id: "Figure 1a", evidence: "Accuracy by condition", pageIndex: 3 }, { id: "Figure 1b", evidence: "Reaction time by condition", pageIndex: 3 }] };
+			const history = scenario === "paper-guide" ? [{ role: "user", text: "Guide through the paper." }, { role: "assistant", text: "## Figure 1a — Accuracy by condition\n\nEach point represents one participant. Bars show the condition means; error bars show the reported uncertainty.\n\nThe authors used a mixed effects model to compare conditions. The contrast supports a difference in accuracy, subject to the model assumptions.\n\nAsk a question about this panel, or choose **Next subfigure** to continue.", paperGuide: guide }] : [];
+			CS.loadHistory = async () => history;
+			CS.appendHistory = async (dir, messages) => history.push(...messages);
+			CS.startRequest = async () => { guide.index = 1; guide.status = "complete"; history.push({ role: "assistant", text: "## Figure 1b — Reaction time by condition\n\nThis panel shows the corresponding reaction-time result. All subfigures have now been covered.", paperGuide: { ...guide } }); CS.renderMessages(view, history); };
+			CS.renderMessages(view, history); CS.setBusy(view, false);
+			if (scenario === "paper-quick") view.root.querySelector(".abstractin-prompt-menu").click();
+		}
+		else if (scenario === "discussions") {
 			const index = { version: 2, active: "app-6", migrated: {}, chapters: [
 				{ id: "ch-1", prefix: "chap-01", title: "Chapter 1: Probability Models", order: 0 },
 				{ id: "app-a", prefix: "chap-app-A", title: "Appendix A: Measure and Integration Theory", order: 10000 },

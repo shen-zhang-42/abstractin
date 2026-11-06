@@ -1575,7 +1575,9 @@ AbstractIn = {
 		quick.dataset.materialType = type;
 		quick.textContent = "";
 		let prompts = this.getPrompts(type).filter(p => p.prompt.trim());
-		if (prompts.length) {
+		const workflows = type === "paper" && view?.ctx.reading ? this.paperReadingQuickQuestions() : [];
+		quick.dataset.paperWorkflows = String(workflows.length > 0);
+		if (prompts.length || workflows.length) {
 			let button = this.ghostButton(doc, "abstractin-prompt-menu", null, "Quick questions", () => {
 				this.openMenu(root, button, menu => {
 					let currentView = this._views.get(root);
@@ -1589,6 +1591,11 @@ AbstractIn = {
 						});
 						item.title = prompt;
 					}
+					for (const workflow of workflows) this.menuItem(doc, menu, {
+						label: workflow.label,
+						disabled: !currentView || this._pending.has(currentView.ctx.dir) || !this.agentCanReadSources(),
+						onSelect: () => { this.closeMenu(root); const current = this._views.get(root); if (current) Promise.resolve(workflow.run(current)).catch(error => this.appendError(current, error.message)); },
+					});
 				});
 			}, { chevron: true });
 			button.title = type === "book" ? "Choose a book question" : "Choose a paper question";
@@ -1596,7 +1603,7 @@ AbstractIn = {
 			const divider = this.el(doc, "span", "abstractin-quick-divider"); divider.setAttribute("aria-hidden", "true");
 			quick.append(divider, button);
 		}
-		quick.hidden = !prompts.length;
+		quick.hidden = !prompts.length && !workflows.length;
 		if (view) this.setBusy(view, this._pending.has(view.ctx.dir));
 	},
 
@@ -2177,6 +2184,7 @@ AbstractIn = {
 	},
 
 	renderMessages(view, history) {
+		this.restorePaperGuide(view, history);
 		view.logEl.textContent = "";
 		view.backStack = [];
 		this.updateBack(view);
@@ -2298,6 +2306,7 @@ AbstractIn = {
 			button.disabled = busy;
 		});
 		this.updateReadingGate(view);
+		this.renderPaperGuideControls(view);
 	},
 
 	autoGrow(input) {
@@ -2487,7 +2496,7 @@ AbstractIn = {
 		}
 	},
 
-	startRequest(view, text, images = [], modes = [], { selection = null, readingAction = null, currentPage = undefined, vocabularyTutor = false, sessionNotice = "" } = {}) {
+	startRequest(view, text, images = [], modes = [], { selection = null, readingAction = null, currentPage = undefined, vocabularyTutor = false, sessionNotice = "", paperGuide = null } = {}) {
 		// Retired mode flags from old chats cannot change a new answer.
 		modes = [];
 		let question = (text || "").trim();
@@ -2516,6 +2525,7 @@ AbstractIn = {
 			modes,
 			selection,
 			readingAction,
+			paperGuide,
 			vocabularyTutor,
 			sessionNotice,
 			evidenceMode: this.getReadingEvidenceMode(),
@@ -3779,9 +3789,9 @@ AbstractIn = {
 			}
 			let sessions = await this.loadSessions(ctx.dir);
 			if (ctx.reading) {
-				const vocabularyTutor = !pending.readingAction && (pending.vocabularyTutor || this.isVocabularyQuestion(question, pending.selection) ||
+				const vocabularyTutor = !pending.readingAction && !pending.paperGuide && (pending.vocabularyTutor || this.isVocabularyQuestion(question, pending.selection) ||
 					this.isVocabularyFollowUp(question, sessions[backend]?.vocabularyTutor));
-				pending.answerMode ||= this.getReadingAnswerMode();
+				pending.answerMode ||= pending.paperGuide ? "source" : this.getReadingAnswerMode();
 				let answerMode = pending.answerMode;
 				let forbidSource = !pending.readingAction && (vocabularyTutor || answerMode === "context" || this.requestsKnowledgeDiscussion(question));
 				let preferred = vocabularyTutor ? "knowledge" : pending.evidenceMode || (answerMode === "source" ? "source" : "knowledge");
@@ -3806,6 +3816,7 @@ AbstractIn = {
 				ctx.reading.sourceSearchHistory = pending.sourceSearchHistory || [];
 				ctx.reading.selectedPageIndex = pending.selection?.position?.pageIndex ?? pending.selection?.pageIndex;
 				ctx.reading.action = pending.readingAction || "discuss";
+				ctx.reading.paperGuide = pending.paperGuide || null;
 				ctx.reading.currentPage = vocabularyTutor ? null : pending.currentPage !== undefined ? pending.currentPage : this.currentReadingLocation(ctx);
 				this.log("Reading lookup request: " + JSON.stringify({ diagnostics: "native-xray-v1", attachmentKey: ctx.attachmentItem.key, evidenceMode, sourceLookup, selectedPageIndex: ctx.reading.selectedPageIndex, currentPage: ctx.reading.currentPage, references: this.readingSourceReferences(question + "\n" + ctx.reading.sourceSelection) }));
 				try { if (!vocabularyTutor) await this.rememberReadingPosition(ctx); }
@@ -3821,6 +3832,11 @@ AbstractIn = {
 				if (!pending.cancelled && ctx.reading.evidenceMode !== "knowledge") pdfSource = await this.recoverReadingPageMapping(ctx, pdfSource);
 				if (pending.cancelled) return { cancelled: true };
 				ctx = { ...ctx, reading: { ...ctx.reading, pdfSource } };
+				if (pending.paperGuide && !ctx.reading.forbidSource) {
+					pdfSource = await this.preparePaperGuideTurn(ctx, pending, pdfSource);
+					ctx.reading.pdfSource = pdfSource;
+					if (pending.cancelled) return { cancelled: true };
+				}
 				if (ctx.reading.vocabularyTutor) ctx.reading.knowledgeContext = "";
 				else if (ctx.reading.evidenceMode === "knowledge") {
 					if (!ctx.reading.forbidSource && this.requestsCurrentReadingPage(question)) await this.prepareCurrentReadingPage(ctx);
@@ -3880,6 +3896,7 @@ AbstractIn = {
 					},
 				};
 				if (ctx.reading && !ctx.reading.vocabularyTutor) request.question += await this.agentReadingContext(backend, ctx);
+				if (ctx.reading?.paperGuide && !ctx.reading.forbidSource) request.question += this.paperGuidePrompt(ctx);
 				return request;
 			};
 			let request = await makeRequest(session), sessionNotice = pending.sessionNotice || "";
@@ -3989,6 +4006,7 @@ AbstractIn = {
 				if (recordWarning) meta.recordWarning = recordWarning;
 			}
 			if (recordNotice) meta.recordNotice = recordNotice;
+			if (pending.paperGuide && !result.stopped) this.finishPaperGuideTurn(ctx, pending, meta);
 			let historySyncWarning = await this.appendHistory(ctx.dir, [
 				Object.assign({ role: "user", text: question, ts: Date.now() },
 					pending.selection ? { selection: pending.selection } : {},

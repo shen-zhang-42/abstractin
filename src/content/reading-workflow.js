@@ -669,6 +669,7 @@ Object.assign(AbstractIn, {
 			"If no contents can be verified, explain the missing source and do not emit a workspace block. The plugin creates the structural workspace and saves its authoritative Zotero note.";
 		if (action === "summary") return "The user has approved creating or updating this paper's summary. Follow the original scientific-paper-reading skill's initial read workflow and report format. " +
 			"Use source-text.md for progressive structural scan, targeted extraction, whole-paper synthesis and consistency checks. " +
+			"Use its four-part structure: (1) Problem and theoretical framing; (2) Solution, experiments, and evidence, including a table with Experiment / Analysis, Question, Procedure / Task flow, Method / Analysis, Result, and Interpretation; (3) Position in the field, distinguishing author-stated claims from verified facts; (4) Limitations and future directions. The experiment/analysis table is the core and must cover all substantive evidence, not just a few selected findings. " +
 			"When updating, inspect the existing Summary in workspace.md and the corrected Zotero records first. " +
 			"Cover every substantive experiment/analysis, relevant controls, limitations and conflicting results. Do not perform external literature search. " +
 			"The visible answer is the complete human-facing summary; the plugin saves it as the authoritative editable Zotero summary note. " +

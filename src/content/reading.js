@@ -590,7 +590,8 @@ Object.assign(AbstractIn, {
 		if (statusBar) statusBar.hidden = !sourceStatus?.textContent;
 		let quick = view.root.querySelector(".abstractin-quick");
 		let type = reading?.type === "book" ? "book" : "paper";
-		if (quick && quick.dataset.materialType !== type) { this.closeMenu(view.root); this.renderQuickPrompts(view.root, quick); }
+		if (quick && (quick.dataset.materialType !== type || quick.dataset.paperWorkflows !== String(reading?.type === "paper"))) { this.closeMenu(view.root); this.renderQuickPrompts(view.root, quick); }
+		this.renderPaperGuideControls(view);
 	},
 
 	readingPrompt(ctx, selection) {
@@ -699,7 +700,7 @@ Object.assign(AbstractIn, {
 
 	readingVisibleText(text) {
 		text = String(text);
-		for (let marker of ["<abstractin-record>", "<abstractin-workspace>", "<abstractin-source-needed>"]) {
+		for (let marker of ["<abstractin-record>", "<abstractin-workspace>", "<abstractin-source-needed>", "<abstractin-guide>"]) {
 			let index = text.indexOf(marker);
 			if (index >= 0) text = text.slice(0, index);
 			for (let length = marker.length - 1; length > 0; length--) {

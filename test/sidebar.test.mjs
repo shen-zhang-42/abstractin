@@ -682,7 +682,11 @@ test("the dropdown switches lists and fills an editable draft without sending", 
 	plugin.closeMenu(root);
 	plugin.savePrompts([], "paper");
 	plugin.refreshRoot(root);
-	assert.equal(root.querySelector(".abstractin-quick").hidden, true);
+	assert.equal(root.querySelector(".abstractin-quick").hidden, false);
+	root.querySelector(".abstractin-prompt-menu").click();
+	assert.ok(menuLabels(root).includes("Summarize paper"));
+	assert.ok(menuLabels(root).includes("Guide through the paper"));
+	plugin.closeMenu(root);
 	view.ctx.reading.type = "book";
 	plugin.updateReadingControls(view);
 	assert.equal(root.querySelector(".abstractin-quick").hidden, false);

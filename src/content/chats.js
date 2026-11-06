@@ -373,6 +373,8 @@
    } finally { if (!locked) this._discussionLocks.delete(documentDir); }
   },
   async startRequest(view, text, images = [], modes = [], options = {}) {
+   options = await this.routePaperGuideRequest(view, text || "", options);
+   if (options.handled) return;
    if (!view.ctx.discussion && view.ctx.reading && options.readingAction) view.ctx = await this.ensureDiscussion(view.ctx);
    if (!view.ctx.discussion) return original.startRequest.call(this, view, text, images, modes, options);
    const documentDir = this.discussionRoot(view.ctx), question = (text || "").trim();
@@ -384,7 +386,7 @@
     const location = sendTimeLocation;
     const selection = options.selection || (view.pageImageSource && images.includes(view.pageImageSource.path) ? view.pageImageSource.selection : null);
     if (selection && selection.attachmentID !== view.ctx.attachmentItem.id) throw new Error("The selection belongs to a different PDF.");
-    const vocabularyTutor = !options.readingAction && (options.vocabularyTutor || this.isVocabularyQuestion(question, selection) ||
+    const vocabularyTutor = !options.readingAction && !options.paperGuide && (options.vocabularyTutor || this.isVocabularyQuestion(question, selection) ||
      this.isVocabularyFollowUp(question, (await this.loadSessions(view.ctx.dir))[this.readingAgent()]?.vocabularyTutor));
     let route = options.readingAction ? { chapterID: this.INITIALIZATION_CHAPTER } : vocabularyTutor ? { chapterID: view.ctx.discussion.chapterID } : this.resolveDiscussionChapter(view.ctx, index, question, selection, location);
     if (route.ambiguous) {
@@ -1002,11 +1004,12 @@
    if (source.status !== "ready") return source;
    source = await original.recoverReadingPageMapping.call(this, documentCtx, source);
    const full = await Zotero.File.getContentsAsync(OS.Path.join(ctx.documentDir, "source-text.md"));
+   if (ctx.reading.paperGuide?.state) return this.exportPaperGuideSource(ctx, source, full);
    if (ctx.reading.type === "book" && ctx.reading.sourceLookupAttempts > 0) return this.exportMatchedBookSource(ctx, source, full);
    let excerpt = "", allowed = [];
    const nativePages = new Map();
    if (ctx.reading.action === "contents") excerpt = this.contentsExcerpt(full);
-   else if (ctx.reading.type === "paper" && (ctx.reading.action === "summary" ||
+   else if (ctx.reading.type === "paper" && (ctx.reading.action === "summary" || ctx.reading.paperGuide?.operation === "start" ||
        !Number.isInteger(ctx.reading.selectedPageIndex ?? ctx.reading.currentPage?.pageIndex))) {
     // A paper is one reading unit. Library-pane questions have no active PDF
     // page and must still receive the paper's original text. Book discussions
