@@ -126,3 +126,35 @@ test('API setup tests the saved model, enables only on request, and blocks edite
  button('Test connection & reading').click(); await new Promise(resolve => setImmediate(resolve));
  assert.equal(tested, 'another-model'); button('Enable API').click(); assert.match(p.readingAgent(), /^api-/); assert.equal(p.agentCanReadSources(), true);
 });
+
+test('saving SAIA discovers its real models, shows a picker and retains it when reopening setup', async () => {
+ const e = env(), p = e.plugin; p.setPref('readingAgent', 'codex');
+ const root = e.document.createElement('div'); e.document.body.append(root); p.openAPIProviderSetup(root, null, { reading: true });
+ const preset = [...root.querySelectorAll('select')].find(select => [...select.options].some(option => option.value === 'saia'));
+ preset.value = 'saia'; preset.dispatchEvent(new e.window.Event('change'));
+ const field = label => root.querySelector('[aria-label="' + label + '"]');
+ field('API key').value = 'school-key';
+ const calls = mockHTTP(e, { response: { data: [{ id: 'school-reader-new', name: 'School Reader' }, { id: 'school-fast-new' }] } });
+ const button = text => [...root.querySelectorAll('button')].find(node => node.textContent === text);
+ button('Save API').click(); await new Promise(resolve => setImmediate(resolve));
+ assert.equal(calls.length, 1); assert.equal(calls[0].method, 'POST'); assert.match(calls[0].url, /academiccloud.de\/v1\/models$/);
+ assert.ok(field('Available models'), root.textContent); assert.equal(field('Available models').options.length, 3);
+ assert.equal(field('Model ID').value, ''); assert.match(root.textContent, /Found 2 models/);
+ field('Available models').value = 'school-reader-new'; field('Available models').dispatchEvent(new e.window.Event('change'));
+ assert.equal(field('Model ID').value, 'school-reader-new');
+ p.testAndAdaptAgent = async id => { assert.equal(p.getModel(id), 'school-reader-new'); const result = { configKey: p.agentConfigKey(id), discussion: true }; p.setPref('agentValidation', JSON.stringify({ [id]: result })); return result; };
+ button('Test connection & reading').click(); await new Promise(resolve => setImmediate(resolve));
+ assert.equal(p.readingAgent(), 'codex'); assert.equal(button('Enable API').disabled, false);
+ const config = p.getJSONPref('apiProviders', [])[0]; p.openAPIProviderSetup(root, config.id, { reading: true });
+ assert.equal(field('Available models').value, 'school-reader-new'); assert.equal(calls.length, 1);
+});
+
+test('model discovery failure keeps a usable manual-ID configuration and does not enable it', async () => {
+ const e = env(), p = e.plugin; await p.saveAPIProvider(input, { key: 'school-key' }); p.setPref('readingAgent', 'codex');
+ const root = e.document.createElement('div'); e.document.body.append(root); p.openAPIProviderSetup(root, input.id, { reading: true });
+ mockHTTP(e, { status: 401, response: { error: 'school-key' } });
+ const button = [...root.querySelectorAll('button')].find(node => node.textContent === 'Save API'); button.click(); await new Promise(resolve => setImmediate(resolve));
+ assert.match(root.textContent, /model list could not be loaded/); assert.doesNotMatch(root.textContent, /school-key/);
+ assert.equal(root.querySelector('[aria-label="Model ID"]').value, 'vision-model'); assert.equal(p.readingAgent(), 'codex');
+ assert.equal(p.apiProviderConfig(input.id).model, 'vision-model');
+});
