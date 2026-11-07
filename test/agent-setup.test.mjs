@@ -60,6 +60,19 @@ test("missing local CLI stays at first step and can be retried", async () => {
  await click("Find CLI"); await click("Continue"); assert.match(root.textContent, /Sign in with your provider/);
 });
 
+test('CLI setup searches a directory, defaults to C drive and saves only the resolved executable', async () => {
+ const e = setup('gemini'); e.window.Zotero.isWin = true;
+ e.open();
+ const input = e.root.querySelector('input'); assert.equal(input.placeholder, 'C:\\');
+ let directory;
+ e.plugin.findBinary = async (_, options) => { directory = options.directory; return 'C:\\npm\\gemini.cmd'; };
+ await e.click('Find CLI'); assert.equal(directory, 'C:\\'); assert.equal(e.plugin.getPref('geminiPath'), 'C:\\npm\\gemini.cmd');
+ input.value = 'D:\\my tools'; input.dispatchEvent(new e.window.Event('input'));
+ e.plugin.findBinary = async (_, options) => { directory = options.directory; return 'D:\\my tools\\bin\\gemini.exe'; };
+ await e.click('Find CLI'); assert.equal(directory, 'D:\\my tools'); assert.equal(e.plugin.getPref('cliSearchDirectory.gemini'), 'D:\\my tools');
+ assert.equal(e.plugin.getPref('geminiPath'), 'D:\\my tools\\bin\\gemini.exe'); assert.equal(e.plugin.readingAgent(), 'codex');
+});
+
 test("Claude not logged in cannot advance and never exposes auth output", async () => {
  const { plugin, click, root } = setup();
  plugin.runAgentProcess = async () => ({ exitCode: 1, stdout: '{"loggedIn":false,"token":"secret"}' });

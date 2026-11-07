@@ -92,21 +92,26 @@
      else if (id === "codex") link("Open Codex installation guide", "https://developers.openai.com/codex/cli/");
      else if (id === "gemini") link("Open Gemini CLI installation guide", "https://geminicli.com/docs/get-started/installation/");
      else note("Install " + agent.fullName + " using its provider’s instructions. For a custom agent, configure its local ACP or AbstractIn JSONL adapter in Settings first.");
-     const label = this.el(doc, "label", "abstractin-reading-field", "Executable path (optional)");
+     const label = this.el(doc, "label", "abstractin-reading-field", "CLI search directory (optional)");
      const path = this.el(doc, "input", "abstractin-field"); path.type = "text";
-     path.value = this.getPref(agent.pathPref) || ""; path.placeholder = "Detect “" + agent.command + "” automatically";
+     path.value = this.getPref("cliSearchDirectory." + id) || ""; path.placeholder = this.defaultCLISearchDirectory();
      path.addEventListener("input", () => { command = ""; detectedKey = ""; checkedKey = ""; next.disabled = true; });
      label.append(path); body.append(label);
+     note("Searches this directory and its subdirectories. Leave blank to start at " + this.defaultCLISearchDirectory() + ". The resolved executable is saved for subsequent requests.");
+     body.append(button("Choose directory…", async () => {
+      try { const { FilePicker } = ChromeUtils.importESModule("chrome://zotero/content/modules/filePicker.mjs"); const picker = new FilePicker(); picker.init(doc.defaultView, "Choose CLI search directory", picker.modeGetFolder); if (await picker.show() === picker.returnOK && !disposed) { path.value = picker.file; command = ""; detectedKey = ""; checkedKey = ""; next.disabled = true; } }
+      catch (error) { if (!disposed) status.textContent = error.message; }
+     }));
      body.append(button("Find CLI", () => task(async () => {
       this.assertAgentIdle(id);
       const value = path.value.trim();
-      if (/[\r\n\0]/.test(value)) throw new Error("Enter a single executable path.");
-      if (value !== (this.getPref(agent.pathPref) || "")) {
-       this.setPref(agent.pathPref, value); this.clearAgentValidation(id);
-      }
+      if (/[\r\n\0]/.test(value)) throw new Error("Enter a single search directory.");
+      this.setPref("cliSearchDirectory." + id, value);
       command = ""; checkedKey = "";
+      const found = await this.findBinary(id, { directory: value || this.defaultCLISearchDirectory(), onProgress: message => { if (!disposed) status.textContent = message; }, isCancelled: () => disposed });
+      if (disposed) throw new Error("CLI search cancelled.");
+      if (found !== (this.getPref(agent.pathPref) || "")) { this.setPref(agent.pathPref, found); this.clearAgentValidation(id); }
       const key = this.agentConfigKey(id);
-      const found = await this.findBinary(id);
       await Zotero.File.createDirectoryIfMissingAsync(this.getDataDir());
       if (!agent.custom) await this.queryAgentCapabilities(id, { dir: this.getDataDir() });
       if (key !== this.agentConfigKey(id)) throw new Error("Configuration changed. Find the CLI again.");

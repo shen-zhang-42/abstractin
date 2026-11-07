@@ -253,4 +253,6 @@ AbstractIn 基于 **[Zusia](https://github.com/firekern/zusia)** 开发，原作
 
 设置 → Assistants 提供 **Add agent (CLI)** 和 **Add API** 两个入口。CLI 可以自动查找或手动选择本地可执行文件，支持 ACP、AbstractIn JSONL 和纯文字非交互调用。Gemini CLI 已提供内置配置，使用本地安装和登录；Codex、Claude、Antigravity 的原有配置保留。
 
+CLI 引导中可填写或选择搜索目录，插件会在该目录及子目录中查找对应 CLI；Windows 下留空则从 `C:\` 开始，优先检查其中的常见安装位置。找到后保存实际执行文件路径，日常调用直接复用。关闭引导可取消搜索；超时会提示缩小目录，查找失败不会覆盖已有执行文件配置。
+
 API 可以配置服务地址、认证、模型和请求参数，提供 GWDG SAIA、DeepSeek 等预设，支持 OpenAI 兼容、Anthropic、Gemini 和自定义 JSON 格式。密钥与额外请求头保存在 Zotero 登录管理器中。支持图片的模型需要明确配置；API 和纯文字 CLI 都能通过插件获得相关原文证据。保存和检查配置不会自动更换当前助手，点击 Enable 后才切换。详细配置与能力限制见 [助手适配说明](docs/agent-adapters.md)。

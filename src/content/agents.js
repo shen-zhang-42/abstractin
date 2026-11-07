@@ -523,7 +523,12 @@ Object.assign(AbstractIn, {
      extra.addEventListener("change", () => { this.setPref("codex.models", extra.value.trim()); redraw(); });
      body.append(this.row(doc, "Extra models", extra));
     }
-    if (!agent.api) body.append(this.row(doc, "Command path", path));
+    if (!agent.api) {
+     body.append(this.row(doc, "Command path", path));
+     const directory = this.el(doc, "input", "abstractin-field"); directory.type = "text"; directory.placeholder = this.defaultCLISearchDirectory(); directory.value = this.getPref("cliSearchDirectory." + id) || "";
+     directory.addEventListener("change", () => this.setPref("cliSearchDirectory." + id, directory.value.trim()));
+     body.append(this.row(doc, "CLI search directory", directory));
+    }
     else body.append(this.el(doc, "p", "abstractin-row-hint", "API service. The plugin supplies relevant source passages and supported page images; no local CLI is required."));
     if (id === "claude") body.append(this.row(doc, "Use my Claude Code settings", this.switchControl(doc, !!this.getPref("useClaudeUserSettings"), value => { this.setPref("useClaudeUserSettings", value); this.clearAgentValidation(id); redraw(); }), "Uses your local Claude settings."));
     if (checked) body.append(this.el(doc, "p", "abstractin-row-hint", "Checked agent version: " + checked.agentVersion + ". Images: " + (checked.images ? "supported" : "not supported") + ". Checks are sample-based, not a guarantee for every answer."));
@@ -568,6 +573,7 @@ Object.assign(AbstractIn, {
    const name = input("Agent name", agent.name);
    const command = input("Executable", agent.command);
    const args = input("Arguments (JSON array)", JSON.stringify(agent.args || []));
+   const directory = input("CLI search directory (optional)", agent.id ? this.getPref("cliSearchDirectory." + agent.id) : ""); directory.placeholder = this.defaultCLISearchDirectory();
    const protocol = this.select(doc, [["acp", "ACP v1"], ["abstractin-jsonl", "AbstractIn JSONL adapter"], ["text", "Text CLI (stdin / stdout)"]], agent.protocol || "acp", () => {});
    editor.append(this.row(doc, "Protocol", protocol));
    editor.append(this.el(doc, "p", "abstractin-row-hint", "Text CLI sends the prompt on stdin and reads stdout. Arguments may contain {model} or {prompt}; prefer stdin for long prompts. It supports plugin-supplied text evidence. Use ACP/JSONL for structured streaming, image input and sessions."));
@@ -578,7 +584,7 @@ Object.assign(AbstractIn, {
    }); editor.append(browse);
    const save = this.el(doc, "button", "abstractin-button", "Save agent"); save.type = "button";
    save.addEventListener("click", () => {
-    try { this.saveAgent({ ...(agent.id ? { id: agent.id } : {}), name: name.value, command: command.value, args: JSON.parse(args.value), protocol: protocol.value }); editor.hidden = true; redraw(); status.textContent = "Agent saved. Test and adapt its skills before enabling it."; }
+    try { const saved = this.saveAgent({ ...(agent.id ? { id: agent.id } : {}), name: name.value, command: command.value, args: JSON.parse(args.value), protocol: protocol.value }); this.setPref("cliSearchDirectory." + saved.id, directory.value.trim()); editor.hidden = true; redraw(); status.textContent = "Agent saved. Use Guided setup to search its directory and test before enabling it."; }
     catch (e) { status.textContent = e.message || String(e); }
    });
    const cancel = this.el(doc, "button", "abstractin-button", "Cancel"); cancel.type = "button"; cancel.addEventListener("click", () => { editor.hidden = true; });
