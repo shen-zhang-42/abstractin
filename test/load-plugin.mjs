@@ -34,7 +34,10 @@ export function loadPlugin({ prefs = {} } = {}) {
 	window.eval(read("src/content/reader-panel.js"));
 	window.eval(read("src/content/library-launcher.js"));
 	window.eval(read("src/content/agents.js"));
+	window.eval(read("src/content/cli-adapters.js"));
 	window.eval(read("src/content/api-agents.js"));
+	window.eval(read("src/content/api-providers.js"));
+	window.eval(read("src/content/api-provider-setup.js"));
 	window.eval(read("src/content/agent-setup.js"));
 	window.eval(read("src/content/chats.js"));
 	window.eval(read("src/content/chat-tools.js"));

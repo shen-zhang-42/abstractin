@@ -9,6 +9,7 @@ import { loadPlugin } from './load-plugin.mjs';
 async function environment() {
  const env = loadPlugin();
  const { plugin: p, window } = env;
+ window.Zotero.isWin = process.platform === 'win32';
  const dir = await mkdtemp(join(tmpdir(), 'abstractin-agents-'));
  p.getDataDir = () => dir;
  p.buildChildEnvironment = () => ({});
@@ -83,7 +84,7 @@ test('ACP source bridge rejects traversal, symlinks and file access in knowledge
  const workspace = join(dir, 'workspace'); await mkdir(workspace); await writeFile(join(workspace, 'source.md'), 'first\nsecond\nthird');
  assert.equal(await p.agentReadFile({ dir: workspace }, join(workspace, 'source.md'), 2, 1), 'second');
  await assert.rejects(p.agentReadFile({ dir: workspace }, '../original-book/SKILL.md'), /outside/);
- await symlink(join(dir, 'original-book'), join(workspace, 'escape'));
+ await symlink(join(dir, 'original-book'), join(workspace, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
  await assert.rejects(p.agentReadFile({ dir: workspace }, 'escape/SKILL.md'), /Symbolic/);
  await assert.rejects(p.agentReadFile({ dir: workspace, reading: { evidenceMode: 'knowledge' } }, 'source.md'), /Knowledge/);
 });
@@ -160,7 +161,7 @@ test('settings add/edit/remove custom agents without running commands or changin
  let launched = false; p.runBackend = async () => { launched = true; throw new Error('Unexpected execution'); };
  const container = document.createElement('div'); document.body.append(container); p.renderPrefsPane(document, container);
  const card = [...container.querySelectorAll('.abstractin-card')].find(el => el.querySelector('.abstractin-card-title').textContent === 'Assistants');
- [...card.querySelectorAll('button')].find(button => button.textContent === 'Add agent').click();
+ [...card.querySelectorAll('button')].find(button => button.textContent === 'Add agent (CLI)').click();
  const editor = card.querySelector('.abstractin-agent-editor');
  const fields = editor.querySelectorAll('input'); fields[0].value = 'My agent'; fields[1].value = '/bin/my-agent'; fields[2].value = '["--stdio"]';
  [...editor.querySelectorAll('button')].find(button => button.textContent === 'Save agent').click();

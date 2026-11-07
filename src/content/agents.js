@@ -4,6 +4,7 @@
 "use strict";
 (() => {
  const builtin = Object.fromEntries(Object.entries(AbstractIn.BACKENDS).map(([id, agent]) => [id, { ...agent }]));
+ builtin.gemini = { label: "Gemini", fullName: "Gemini CLI", command: "gemini", pathPref: "geminiPath", protocol: "acp", args: ["--acp"], custom: true, builtin: true, images: false, models: [{ id: "", label: "Default" }], efforts: [""] };
  const nativeRun = AbstractIn.runBackend;
  const nativeGetBackend = AbstractIn.getBackend;
  const nativeInit = AbstractIn.init;
@@ -20,6 +21,7 @@
       pathPref: "agent." + agent.id + ".path", images: false, models: [{ id: "", label: "Default" }], efforts: [""], custom: true };
     } catch (e) { this.logError("agent configuration", e); }
    }
+   Object.assign(registry, this.apiProviderRegistry?.() || {});
    for (const id of Object.keys(this.BACKENDS)) if (!registry[id]) delete this.BACKENDS[id];
    for (const [id, agent] of Object.entries(registry)) {
     const checked = (this.getJSONPref("agentValidation", {}) || {})[id];
@@ -72,7 +74,7 @@
    this.setPref("readingAgent", id);
    if (!this.agentCanReadSources(id)) this.setPref("readingEvidenceMode", "context");
   },
-  agentCanReadSources(id = this.readingAgent()) { return id === "codex" || this.getAgentValidation(id)?.source === true || this.inheritedNativeAgent(id); },
+  agentCanReadSources(id = this.readingAgent()) { const result = this.getAgentValidation(id); return id === "codex" || result?.source === true || (result?.discussion && (this.BACKENDS[id]?.api || result.inlineSource)) || this.inheritedNativeAgent(id); },
   validateAgentConfig(input) {
    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Import an agent configuration object.");
    const id = input.id || "custom-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
@@ -81,7 +83,7 @@
    const command = String(input.command || "").trim();
    if (!name || name.length > 100 || !command || command.length > 4096 || /[\r\n\0]/.test(command)) throw new Error("Enter a name and one executable path or command.");
    const protocol = input.protocol || "acp";
-   if (!["acp", "abstractin-jsonl"].includes(protocol)) throw new Error("Supported adapters: ACP v1 and AbstractIn JSONL v1.");
+   if (!["acp", "abstractin-jsonl", "text"].includes(protocol)) throw new Error("Supported adapters: ACP v1, AbstractIn JSONL v1 and text CLI.");
    const args = input.args || [];
    if (!Array.isArray(args) || args.length > 100 || args.some(arg => typeof arg !== "string" || arg.length > 4096 || arg.includes("\0"))) throw new Error("Arguments must be a JSON array of strings.");
    // Imports are data, never JavaScript or a shell command template.
@@ -181,7 +183,7 @@
    if (snapshot.fingerprint !== result.skillFingerprint) {
     throw new Error("Reading skills changed. Test and adapt this agent again.");
    }
-   if (mode !== "knowledge" && !result.source) throw new Error("This agent passed discussion tests but cannot read original sources. Choose Context only or a source-capable agent.");
+   if (mode !== "knowledge" && !this.agentCanReadSources(id)) throw new Error("This agent passed discussion tests but cannot read original sources. Choose Context only or a source-capable agent.");
   },
   agentMappingText(result) {
    return "AbstractIn agent adaptation v1. Original skills are authoritative and unchanged. " +
@@ -256,7 +258,7 @@
    }
    if (this.agentConfigKey(id) !== configKey || (await this.agentSkillSnapshot()).fingerprint !== snapshot.fingerprint) throw new Error("Agent configuration or skills changed during testing. Run the check again.");
    const result = { configKey, skillFingerprint: snapshot.fingerprint, agentVersion: capabilities.version || "unknown",
-    checkedAt: new Date().toISOString(), discussion: true, source: sourcePassed, images: !!capabilities.images,
+    checkedAt: new Date().toISOString(), discussion: true, source: sourcePassed, inlineSource: capabilities.inlineSource === true, images: !!capabilities.images,
     models: discussion.capabilities?.models || capabilities.models || [], efforts: capabilities.efforts || [], mappings: sourcePassed ? plan.mappings : [],
     tests: { suppliedPassage: true, missingEvidence: true, readingRecord: true, originalSource: sourcePassed } };
    // Store the overlay outside all original skill directories.
@@ -279,12 +281,12 @@
   async runBackend(id, request) {
    const agent = this.agentRegistry()[id];
    if (!agent) throw new Error("Unknown agent: " + id);
-   if (agent.api) return this.runDeepSeek(request);
+   if (agent.api) return id === "deepseek" ? this.runDeepSeek(request) : this.runAPIProvider(id, request);
    if (!agent.custom) return nativeRun.call(this, id, request);
-   return agent.protocol === "acp" ? this.runACPAgent(id, request) : this.runJSONLAgent(id, request);
+   return agent.protocol === "acp" ? this.runACPAgent(id, request) : agent.protocol === "text" ? this.runTextCLIAgent(id, request) : this.runJSONLAgent(id, request);
   },
   async queryAgentCapabilities(id, ctx) {
-   if (this.BACKENDS[id].api) return { files: false, images: false, version: "DeepSeek API", models: this.getModels(id).filter(model => model.id), efforts: [] };
+   if (this.BACKENDS[id].api) return this.apiProviderCapabilities(id);
    if (!this.BACKENDS[id].custom) {
     const command = await this.findBinary(id);
     const result = await this.runAgentProcess(command, ["--version"], ctx.dir, null, null, null, 30000);
@@ -294,6 +296,12 @@
    if (this.BACKENDS[id].protocol === "acp") {
     const client = await this.openACPAgent(id, ctx, () => {}, () => {});
     try { return client.capabilities; } finally { await client.close(); }
+   }
+   if (this.BACKENDS[id].protocol === "text") {
+    const invocation = await this.cliInvocation(id, ["--version"]);
+    const result = await this.runAgentProcess(invocation.command, invocation.args, ctx.dir, null, null, null, 30000, this.buildChildEnvironment({ preserveAPIKeys: true }));
+    if (result.exitCode !== 0 || !result.stdout.trim()) throw new Error("Could not determine the CLI version. Use an ACP/JSONL adapter if this CLI has no --version option.");
+    return { files: false, inlineSource: true, images: false, version: result.stdout.trim().slice(0, 100), models: [], efforts: [] };
    }
    const result = await this.runJSONLAgent(id, { ctx, capabilityProbe: true, onProgress() {}, onSpawn() {} });
    if (result.error) throw new Error(result.error);
@@ -308,7 +316,7 @@
   },
   async runJSONLAgent(id, request) {
    const agent = this.BACKENDS[id];
-   const command = await this.findBinary(id);
+   const invocation = await this.cliInvocation(id, agent.args);
    const payload = { protocol: "abstractin-jsonl/1", method: request.capabilityProbe ? "capabilities" : "prompt",
     prompt: request.question || "", instructions: this.systemPrompt(request.ctx), context: request.files || {},
     history: request.history || [], sessionId: request.session?.id || null, model: request.model || "", effort: request.effort || "",
@@ -318,7 +326,7 @@
     if (event.type === "delta" && typeof event.text === "string") { text += event.text; request.onProgress?.({ text, status: "writing" }); }
     if (event.type === "result" && typeof event.text === "string") { complete = true; text = event.text; sessionId = typeof event.sessionId === "string" ? event.sessionId : null; }
    };
-   const run = await this.runAgentProcess(command, agent.args, request.ctx.dir, stream, request.onSpawn, JSON.stringify(payload) + "\n", request.capabilityProbe ? 30000 : 180000, this.buildChildEnvironment({ preserveAPIKeys: true }));
+   const run = await this.runAgentProcess(invocation.command, invocation.args, request.ctx.dir, stream, request.onSpawn, JSON.stringify(payload) + "\n", request.capabilityProbe ? 30000 : 180000, this.buildChildEnvironment({ preserveAPIKeys: true }));
    if (request.capabilityProbe && run.exitCode === 0) return { text: run.stdout.trim() };
    for (const event of this.parseJsonLines(run.stdout)) if (event.type === "result") stream(event);
    return { text: run.exitCode === 0 && complete ? text : "", sessionId, resumeFailed: !!request.session && run.exitCode !== 0, error: run.exitCode === 0 && complete && text ? "" : (run.stderr.trim() || "Adapter did not return a result.") };
@@ -333,7 +341,8 @@ Object.assign(AbstractIn, {
   const root = OS.Path.normalize(ctx.dir);
   const absolute = OS.Path.normalize(/^(?:[A-Za-z]:[\\/]|[\\/])/.test(path) ? path : OS.Path.join(root, path));
   const relative = absolute.slice(root.length).replace(/^[\\/]/, "");
-  if (!absolute.startsWith(root + (Zotero.isWin ? "\\" : "/")) || !relative) throw new Error("Source path is outside this reading workspace.");
+  const comparable = value => Zotero.isWin ? value.replace(/\\/g, "/").toLowerCase() : value;
+  if (!comparable(absolute).startsWith(comparable(root) + "/") || !relative) throw new Error("Source path is outside this reading workspace.");
   let current = root;
   for (const part of relative.split(/[\\/]/)) {
    current = OS.Path.join(current, part);
@@ -346,8 +355,8 @@ Object.assign(AbstractIn, {
  },
  async openACPAgent(id, ctx, onProgress, onSpawn) {
   const agent = this.BACKENDS[id];
-  const command = await this.findBinary(id);
-  const proc = await Subprocess.call({ command, arguments: agent.args, environment: this.buildChildEnvironment({ preserveAPIKeys: true }), workdir: ctx.dir, stderr: "pipe" });
+  const invocation = await this.cliInvocation(id, agent.args);
+  const proc = await Subprocess.call({ command: invocation.command, arguments: invocation.args, environment: this.buildChildEnvironment({ preserveAPIKeys: true }), workdir: ctx.dir, stderr: "pipe" });
   const win = Zotero.getMainWindow();
   const pending = new Map();
   let sequence = 0, closed = false, stderr = "", failure = null, activeSession = null;
@@ -496,7 +505,7 @@ Object.assign(AbstractIn, {
     const summary = this.el(doc, "summary");
     const name = this.el(doc, "strong", null, agent.fullName);
     const checked = this.getAgentValidation(id);
-    const label = id === "codex" ? "Built-in reading support" : checked?.source ? "Discussion & source checks passed" : checked?.discussion ? "Discussion checks passed; source access unavailable" : "Not tested";
+   const label = id === "codex" ? "Built-in reading support" : checked?.discussion && (agent.api || checked.inlineSource) ? "Reading checks passed; plugin supplies sources" : checked?.source ? "Discussion & source checks passed" : checked?.discussion ? "Discussion checks passed; source access unavailable" : "Not tested";
     summary.append(name, this.el(doc, "span", "abstractin-agent-status", label));
     const badge = this.el(doc, "span", "abstractin-badge", "In use"); badge.hidden = id !== this.readingAgent(); summary.append(badge);
     const body = this.el(doc, "div", "abstractin-agent-body");
@@ -515,7 +524,7 @@ Object.assign(AbstractIn, {
      body.append(this.row(doc, "Extra models", extra));
     }
     if (!agent.api) body.append(this.row(doc, "Command path", path));
-    else body.append(this.el(doc, "p", "abstractin-row-hint", "Uses the official DeepSeek API. Configure the API key in Guided setup. Supplied text only; no local file tools."));
+    else body.append(this.el(doc, "p", "abstractin-row-hint", "API service. The plugin supplies relevant source passages and supported page images; no local CLI is required."));
     if (id === "claude") body.append(this.row(doc, "Use my Claude Code settings", this.switchControl(doc, !!this.getPref("useClaudeUserSettings"), value => { this.setPref("useClaudeUserSettings", value); this.clearAgentValidation(id); redraw(); }), "Uses your local Claude settings."));
     if (checked) body.append(this.el(doc, "p", "abstractin-row-hint", "Checked agent version: " + checked.agentVersion + ". Images: " + (checked.images ? "supported" : "not supported") + ". Checks are sample-based, not a guarantee for every answer."));
     const buttons = this.el(doc, "div", "abstractin-button-row");
@@ -523,7 +532,7 @@ Object.assign(AbstractIn, {
     test.addEventListener("click", async () => {
      test.disabled = true; select.disabled = true;
      try { const result = await this.testAndAdaptAgent(id, message => { status.textContent = message; });
-      status.textContent = result.source ? "Passed discussion and source checks. Ready to enable." : "Passed discussion checks. Source access is unavailable; use Context only.";
+      status.textContent = result.source || result.inlineSource || agent.api ? "Reading checks passed. Ready to enable." : "Passed discussion checks. Source access is unavailable; use Context only.";
      } catch (e) { status.textContent = "Check failed: " + (e.message || e); }
      finally { redraw(); }
     });
@@ -541,10 +550,14 @@ Object.assign(AbstractIn, {
      });
      buttons.append(refresh);
     }
-    if (agent.custom) {
+    if (agent.custom && !agent.builtin) {
      const edit = this.el(doc, "button", "abstractin-button", "Edit"); edit.type = "button"; edit.addEventListener("click", () => editAgent(agent));
      const remove = this.el(doc, "button", "abstractin-button", "Remove"); remove.type = "button"; remove.addEventListener("click", () => { try { this.removeAgent(id); redraw(); } catch (e) { status.textContent = e.message; } });
      buttons.append(edit, remove);
+    }
+    if (agent.api && id !== "deepseek") {
+     const edit = this.el(doc, "button", "abstractin-button", "Edit API"); edit.type = "button";
+     edit.addEventListener("click", () => this.openAPIProviderSetup(card, id, { reading: true, onComplete: redraw })); buttons.append(edit);
     }
     body.append(buttons); details.append(summary, body); list.append(details);
    }
@@ -555,8 +568,14 @@ Object.assign(AbstractIn, {
    const name = input("Agent name", agent.name);
    const command = input("Executable", agent.command);
    const args = input("Arguments (JSON array)", JSON.stringify(agent.args || []));
-   const protocol = this.select(doc, [["acp", "ACP v1"], ["abstractin-jsonl", "AbstractIn JSONL adapter"]], agent.protocol || "acp", () => {});
+   const protocol = this.select(doc, [["acp", "ACP v1"], ["abstractin-jsonl", "AbstractIn JSONL adapter"], ["text", "Text CLI (stdin / stdout)"]], agent.protocol || "acp", () => {});
    editor.append(this.row(doc, "Protocol", protocol));
+   editor.append(this.el(doc, "p", "abstractin-row-hint", "Text CLI sends the prompt on stdin and reads stdout. Arguments may contain {model} or {prompt}; prefer stdin for long prompts. It supports plugin-supplied text evidence. Use ACP/JSONL for structured streaming, image input and sessions."));
+   const browse = this.el(doc, "button", "abstractin-button", "Browse executable…"); browse.type = "button";
+   browse.addEventListener("click", async () => {
+    try { const { FilePicker } = ChromeUtils.importESModule("chrome://zotero/content/modules/filePicker.mjs"); const picker = new FilePicker(); picker.init(doc.defaultView, "Choose local CLI", picker.modeOpen); if (await picker.show() === picker.returnOK) command.value = picker.file; }
+    catch (error) { status.textContent = error.message; }
+   }); editor.append(browse);
    const save = this.el(doc, "button", "abstractin-button", "Save agent"); save.type = "button";
    save.addEventListener("click", () => {
     try { this.saveAgent({ ...(agent.id ? { id: agent.id } : {}), name: name.value, command: command.value, args: JSON.parse(args.value), protocol: protocol.value }); editor.hidden = true; redraw(); status.textContent = "Agent saved. Test and adapt its skills before enabling it."; }
@@ -566,7 +585,9 @@ Object.assign(AbstractIn, {
    const buttons = this.el(doc, "div", "abstractin-button-row"); buttons.append(save, cancel); editor.append(buttons);
   };
   const buttons = this.el(doc, "div", "abstractin-button-row abstractin-agent-add-actions");
-  const add = this.el(doc, "button", "abstractin-button", "Add agent"); add.type = "button"; add.addEventListener("click", () => editAgent());
+  const add = this.el(doc, "button", "abstractin-button", "Add agent (CLI)"); add.type = "button"; add.addEventListener("click", () => editAgent());
+  const addAPI = this.el(doc, "button", "abstractin-button", "Add API"); addAPI.type = "button";
+  addAPI.addEventListener("click", () => this.openAPIProviderSetup(card, null, { reading: true, onComplete: redraw }));
   const importButton = this.el(doc, "button", "abstractin-button", "Import adapter…"); importButton.type = "button";
   importButton.addEventListener("click", async () => {
    try {
@@ -579,7 +600,7 @@ Object.assign(AbstractIn, {
     status.textContent = "Review the imported executable and arguments, then save and test.";
    } catch (e) { status.textContent = e.message || String(e); }
   });
-  buttons.append(add, importButton); card.body.append(list, buttons, editor, status); redraw();
+  buttons.append(add, addAPI, importButton); card.body.append(list, buttons, editor, status); redraw();
   return card;
  },
 });

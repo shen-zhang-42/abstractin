@@ -26,7 +26,7 @@
   openAgentSetup(root, id, options = {}) {
    const agent = this.agentRegistry()[id];
    if (!agent) return;
-   if (agent.api) return this.openDeepSeekSetup(root, options);
+   if (agent.api) return id === "deepseek" ? this.openDeepSeekSetup(root, options) : this.openAPIProviderSetup(root, id, options);
    root._agentSetup?.close();
    this.closeMenu(root);
    const doc = root.ownerDocument;
@@ -90,6 +90,7 @@
      note("AbstractIn runs your local CLI. Install it on the same computer and operating system as Zotero. A CLI installed only inside WSL or on another computer is not detected here.");
      if (id === "claude") link("Open Claude Code installation guide", "https://code.claude.com/docs/en/setup");
      else if (id === "codex") link("Open Codex installation guide", "https://developers.openai.com/codex/cli/");
+     else if (id === "gemini") link("Open Gemini CLI installation guide", "https://geminicli.com/docs/get-started/installation/");
      else note("Install " + agent.fullName + " using its provider’s instructions. For a custom agent, configure its local ACP or AbstractIn JSONL adapter in Settings first.");
      const label = this.el(doc, "label", "abstractin-reading-field", "Executable path (optional)");
      const path = this.el(doc, "input", "abstractin-field"); path.type = "text";
@@ -144,12 +145,12 @@
       return await this.testAndAdaptAgent(id, message => { if (!disposed) status.textContent = message; });
      }, result => {
       testedKey = this.agentConfigKey(id);
-      status.textContent = result.source ? "Passed. Discussion and local source access are available." : "Discussion passed. Local source access is unavailable; reading will use Context only.";
+      status.textContent = result.source ? "Passed. Discussion and local source access are available." : result.inlineSource ? "Passed. The plugin supplies relevant original-source passages." : "Discussion passed. Local source access is unavailable; reading will use Context only.";
      })));
      next.disabled = testedKey !== this.agentConfigKey(id) || !this.getAgentValidation(id)?.discussion;
     } else {
      const validation = this.getAgentValidation(id);
-     note(validation?.source ? "Ready for discussion and reading local sources." : "Ready for discussion. Reading will use Context only because local source access was not verified.");
+     note(validation?.source ? "Ready for discussion and reading local sources." : validation?.inlineSource ? "Ready for reading with original-source passages supplied by the plugin." : "Ready for discussion. Reading will use Context only because local source access was not verified.");
      if (!this.getModels(id).some(item => item.id === model)) model = "";
      body.append(this.row(doc, "Model", this.select(doc, this.getModels(id).map(item => [item.id, item.label]), model, value => { model = value; })));
      if (id === "claude") body.append(button("Refresh Claude models", () => task(async () => {

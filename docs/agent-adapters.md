@@ -1,18 +1,20 @@
 # Reading agents
 
-Settings → Assistants keeps the three built-in adapters and adds **Add agent** and **Import adapter…**. Agent configuration is declarative JSON, not executable JavaScript. Imports open an editable preview and do not launch a command. Executables and argument arrays are passed directly to the subprocess API; no shell interpolation is performed. Authentication remains with the agent's own local installation. Custom adapters inherit the local process environment, including locally configured credentials; those values are not stored in imported adapter JSON.
+Settings → Assistants has two creation entries: **Add agent (CLI)** and **Add API**. Existing Codex, Claude Code, Antigravity, DeepSeek credentials, selections and conversation identities are retained. Gemini CLI is a built-in ACP preset (`gemini --acp`). **Import adapter…** remains available for CLI configurations. Configuration is declarative data, not executable JavaScript. Imports open an editable preview and do not launch a command. Executables and argument arrays go directly to the subprocess API, without shell interpolation. CLI authentication remains with the local installation; custom CLIs inherit its environment.
 
 Use **Set up …** in the model menu or **Guided setup** in Settings for a four-step guide. Unconfigured agents remain visible in the reading menu; choosing a model opens setup before changing the selected agent. The guide detects the executable, provides a copyable official sign-in command for Claude or Codex, checks local auth status, then runs the compatibility samples before enabling. Other adapters use their provider’s terminal sign-in flow and verify the connection through the compatibility request; the guide does not invent login commands. CLI installation and interactive login remain outside Zotero. On Windows the copied command targets PowerShell; a WSL-only installation cannot be used by native Windows Zotero. No passwords are entered in the plugin.
 
 Compatibility samples send original reading skills and synthetic passages to the provider, may consume plan allowance, and never send the current paper. Discussion-only agents enable **Context only**. Failed or cancelled setup leaves the new agent disabled. Native Codex keeps its existing direct-selection behavior; its guide is available for troubleshooting.
 
-A newly added agent cannot be selected for reading until **Test & adapt skills** passes the discussion checks. These are finite compatibility samples, not proof of universal correctness. Source access is tested separately. An agent that passes discussion but cannot read files is restricted to Context only; contents initialization, summaries and source verification require source access.
+A newly added assistant cannot be selected for reading until compatibility checks pass. These are finite samples, not proof of universal correctness. Local file access is tested separately for ACP/JSONL agents. API and text-CLI assistants can verify original sources using passages supplied by the plugin, without local file tools. Context only and explicit no-source requests still prohibit document retrieval. File-reading verification and plugin-supplied evidence are recorded separately.
 
-Original skill files and supporting resources are not translated or rewritten. AbstractIn asks the agent for a restricted tool mapping, rejects invented operations/tools, supplies canonical skill content, and generates its own adaptation instructions. Overlays and results live in the plugin data folder under `agent-adaptations/`, outside original skill directories. SHA-256 fingerprints cover all original skill resources. Configuration, plugin version, reported agent version and skill-resource changes invalidate compatibility. Agents should report a version; unreported version changes cannot be detected automatically.
+Original skill files and supporting resources are not translated or rewritten. AbstractIn asks the agent for a restricted tool mapping, rejects invented operations/tools, supplies canonical skill content, and generates adaptation instructions. Overlays and results live under `agent-adaptations/`, outside skill directories. SHA-256 fingerprints cover all original skill resources. Configuration, reported agent version and skill-resource changes invalidate compatibility. Existing compatible configurations survive plugin updates. Agents should report a version; unreported version changes cannot be detected automatically.
 
 The selected reading agent is shared between Settings and the chat's agent/model menu. A request captures that selection when it starts. Models, reasoning options and images are displayed according to supported capabilities. Native Codex remains available without re-running the new compatibility samples because its existing reading integration is retained.
 
 ## ACP v1
+
+Gemini CLI uses the bundled `gemini --acp` preset. Install and sign in to the CLI outside Zotero, then use its Guided setup. Model lists, image input and session loading depend on the capabilities actually advertised by the installed CLI. No Gemini account is used by setup until the user runs connection/reading checks.
 
 Example configuration:
 
@@ -82,3 +84,23 @@ Streaming and final output:
 A final `result` is required, and a nonzero exit status is a failure. Wrappers may reuse their own sessions or use the provided history. Stop terminates the wrapper process. AbstractIn does not install wrappers, execute imported JavaScript, or guess undocumented CLI protocols.
 
 The compatibility prompts require normal AbstractIn reading-record output (`<abstractin-record>JSON</abstractin-record>`) and verify supplied passages, distinct physical/printed page coordinates, missing evidence, and optional source reading. Agents do not save notes directly: the existing plugin validation and Zotero note persistence remain authoritative.
+
+## Text CLI
+
+Choose **Text CLI (stdin / stdout)** for a noninteractive CLI that accepts plain text and returns a final answer. Configure the executable and its argument array. The plugin sends the prompt, instructions and relevant history on stdin. Arguments may contain `{model}` or `{prompt}` placeholders; when `{prompt}` is present, stdin is omitted. Prefer stdin for long prompts, especially on Windows. The CLI must support `--version` for compatibility checks. Use literal model arguments when it does not advertise a model list.
+
+Text CLI has no portable image, streaming or session protocol. It uses plugin-supplied text evidence and returns stdout only after successful exit. Choose ACP/JSONL for structured streaming, images and sessions. On Windows, recognized npm `.cmd`/`.ps1` shims are resolved to their JS entry point and launched with Node directly. Other shell wrappers require a native executable or an explicitly configured Node executable/entry argument; no shell commands are synthesized.
+
+## API providers
+
+**Add API** supports OpenAI-compatible Chat Completions, Anthropic Messages, Gemini GenerateContent, and Custom JSON. Presets include GWDG SAIA and DeepSeek. The original DeepSeek setup and credential vault identity remain available without migration.
+
+Configure a name, base URL, model ID and authentication (Bearer, named key header, or none). Advanced settings include relative chat/model-list paths, GET/POST model discovery, streaming, maximum output tokens, timeout, extra request parameters and image-capable model IDs. Models can be refreshed or entered manually. The SAIA preset uses `https://chat-ai.academiccloud.de/v1` and POST model discovery. Check the provider's current catalogue and mark only models that support image input. Model/key/configuration changes require another compatibility check before activation.
+
+Keys and extra headers are stored in Zotero's login manager, separately for each API profile. They are not included in preference JSON, transcripts or validation keys. Extra headers cannot replace the separately configured authentication or content-type header. No credentials are collected by importing CLI configuration. The plugin sends questions and bounded evidence to the configured service; model requests never require a CLI. Internal reasoning fields are not displayed. Failed, interrupted or output-truncated responses are reported explicitly.
+
+OpenAI-compatible, Anthropic and Gemini protocols support streaming and inline Base64 page images for explicitly configured image-capable models. They receive existing reading skills and can request more plugin evidence using the same source-needed protocol. APIs do not receive local file or shell tools. The legacy DeepSeek connection remains text-only but can now use plugin-supplied source evidence.
+
+Custom JSON supports non-streaming POST requests and textual answers. Supply a JSON body template with `{{model}}`, `{{prompt}}`, `{{system}}` and `{{messages}}` placeholders. An exact placeholder preserves its value type, so `"messages":"{{messages}}"` becomes an array. Use a dot-separated response path such as `output.0.text`. Custom JSON does not run scripts or support image input. APIs requiring other authentication/protocol behaviour need an adapter; a URL and model name alone cannot describe an arbitrary protocol.
+
+References: [Gemini CLI ACP](https://geminicli.com/docs/cli/acp-mode/), [GWDG SAIA API](https://docs.hpc.gwdg.de/services/ai-services/saia/index.html).

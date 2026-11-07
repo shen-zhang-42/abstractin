@@ -79,7 +79,7 @@ test('DeepSeek exposes API capability without probing CLI and model changes inva
  const { plugin: p } = env(); p.findBinary = () => { throw new Error('Must not search for CLI'); };
  assert.equal((await p.queryAgentCapabilities('deepseek')).files, false);
  p.setPref('agentValidation', JSON.stringify({ deepseek: { configKey: p.agentConfigKey('deepseek'), discussion: true, source: false } }));
- p.selectReadingAgent('deepseek'); assert.equal(p.readingAgent(), 'deepseek'); assert.equal(p.getPref('readingEvidenceMode'), 'context');
+ p.selectReadingAgent('deepseek'); assert.equal(p.readingAgent(), 'deepseek'); assert.equal(p.agentCanReadSources('deepseek'), true);
  p.setPref('deepseek.model', 'different'); assert.equal(p.getAgentValidation('deepseek'), null);
  assert.throws(() => p.selectReadingAgent('deepseek'), /Test this agent/);
 });
@@ -105,7 +105,7 @@ test('DeepSeek guide saves a masked key, fetches models, tests and enables only 
  const select = root.querySelector('select'); select.value = 'deepseek-flash'; select.dispatchEvent(new window.Event('change'));
  await click('Continue'); assert.match(root.textContent, /may incur API charges/); assert.equal(p.readingAgent(), 'codex');
  await click('Run connection & reading test'); await click('Continue'); assert.equal(p.readingAgent(), 'codex');
- await click('Enable DeepSeek'); assert.equal(p.readingAgent(), 'deepseek'); assert.equal(p.getPref('readingEvidenceMode'), 'context');
+ await click('Enable DeepSeek'); assert.equal(p.readingAgent(), 'deepseek'); assert.equal(p.agentCanReadSources('deepseek'), true);
  assert.equal(p.getModel('deepseek'), 'deepseek-flash'); assert.equal(root.querySelector('[role="dialog"]'), null);
 });
 
@@ -148,5 +148,5 @@ test('the real compatibility pipeline routes through DeepSeek API and verifies s
  assert.ok(calls.every(body => body.model === 'deepseek-flash')); assert.doesNotMatch(JSON.stringify(prefs), /sk-private-test/);
  await p.assertAgentReadingReady('deepseek', 'knowledge');
  assert.match(await p.agentReadingContext('deepseek', { reading: { type: 'paper' } }), /Original skill: check evidence/);
- await assert.rejects(p.assertAgentReadingReady('deepseek', 'source'), /Context only/);
+ await p.assertAgentReadingReady('deepseek', 'source');
 });

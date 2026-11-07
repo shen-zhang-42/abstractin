@@ -57,6 +57,24 @@ async function setup(type = "book") {
  return { ...env, p, ctx, view, dir, notes, parent, attachment, toc, requests, send, setLocation: value => { location = value; } };
 }
 
+test('API models can request further original-source evidence without local file tools', async () => {
+ const { p, send, window } = await setup('paper');
+ const config = p.validateAPIProvider({ id: 'api-school', name: 'School', baseURL: 'https://example.edu/v1', model: 'test-model' });
+ p.setPref('apiProviders', JSON.stringify([config])); p.agentRegistry();
+ p.setPref('agentValidation', JSON.stringify({ 'api-school': { configKey: p.agentConfigKey('api-school'), discussion: true, source: false, inlineSource: true } }));
+ p.setPref('readingAgent', 'api-school'); p.setPref('readingEvidenceMode', 'source');
+ p.assertAgentReadingReady = async () => {}; p.agentReadingContext = async () => '';
+ window.Zotero.File.pathToFileURI = path => 'file://' + path;
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15, text: Array.from({ length: 15 }, (_, page) => 'Methods page ' + page + ': measured accuracy with a mixed model.').join('\f') }) };
+ let calls = 0;
+ p.runBackend = async (id, request) => {
+  assert.equal(id, 'api-school'); calls++;
+  if (calls === 1) return { text: '<abstractin-source-needed>{"queries":["measured accuracy"],"pageIndices":[12]}</abstractin-source-needed>' };
+  assert.match(request.question, /measured accuracy/); return { text: 'Verified from the supplied methods.' };
+ };
+ await send('请核实论文的分析方法'); assert.equal(calls, 2);
+});
+
 for (const type of ['book', 'paper']) test(type + ' source lookup supplies the referenced figure page image', async () => {
  const { p, send, window } = await setup(type);
  p.setPref('readingEvidenceMode', 'source');

@@ -195,7 +195,7 @@
       if (!disposed) status.textContent = "Passed. Ready for discussion using supplied text. Local file access is unavailable.";
      })));
     } else {
-     note("Model: " + this.modelLabel("deepseek", model)); note("Reading uses Context only. Select or paste the text you want to discuss; local source-file tools are unavailable.");
+     note("Model: " + this.modelLabel("deepseek", model)); note("The plugin supplies relevant original-source passages for reading and verification. This DeepSeek connection supports text only.");
      body.append(button("Enable DeepSeek", () => {
       try {
        this.assertAgentIdle("deepseek");

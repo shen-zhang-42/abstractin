@@ -247,4 +247,10 @@ This project uses the **MIT license** and retains the original author's copyrigh
 
 Choose **Set up DeepSeek API…** in the model menu, or **Guided setup** under Settings → Assistants → DeepSeek API. The guide opens the official API key page, saves your key and refreshes available models, runs small connection and reading checks, then enables the assistant. API requests may incur charges. Keys stay in Zotero’s login manager, outside plugin preferences and chat history, and can be replaced or removed in the guide.
 
-No local CLI is required. This integration supports text chat and Context only reading of selected or pasted text, without image input or local file tools. Changing the key or model requires another compatibility check.
+No local CLI is required. This connection supports text chat and source verification using passages retrieved and supplied by the plugin, without image input or local file tools. Changing the key or model requires another compatibility check.
+
+### Add a CLI assistant or API
+
+Settings → Assistants provides **Add agent (CLI)** and **Add API**. CLI assistants use an automatically located or manually selected executable and ACP, AbstractIn JSONL, or noninteractive text input/output. Gemini CLI has a built-in preset using its local installation and sign-in. Existing Codex, Claude and Antigravity configurations are retained.
+
+API profiles configure the service address, authentication, model and request parameters. Presets include GWDG SAIA and DeepSeek; protocols include OpenAI-compatible chat, Anthropic, Gemini and Custom JSON. Keys and extra headers stay in Zotero's login manager. Explicitly configure image-capable models. API and text-CLI assistants can receive source evidence from the plugin. Saving/testing does not change the current assistant; switching requires Enable. See [assistant adapters](docs/agent-adapters.md) for configuration and capability limits.

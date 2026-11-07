@@ -1412,7 +1412,7 @@ AbstractIn = {
 						desc: model.id ? "" : model.desc,
 						checked: key === current && model.id === this.getModel(key),
 						onSelect: () => {
-							if ((key === "deepseek" && model.id !== this.getModel(key)) || !this.agentReadyForDiscussion(key)) {
+							if ((backend.api && model.id !== this.getModel(key)) || !this.agentReadyForDiscussion(key)) {
 								this.openAgentSetup(root, key, { model: model.id, reading: !!reading }); return;
 							}
 							this.setPref(key + ".model", model.id);

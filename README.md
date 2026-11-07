@@ -247,4 +247,10 @@ AbstractIn 基于 **[Zusia](https://github.com/firekern/zusia)** 开发，原作
 
 在模型菜单选择 **Set up DeepSeek API…**，或在设置的 Assistants → DeepSeek API 点击 **Guided setup**。引导会打开官方 API Key 页面，保存密钥并刷新模型，再发送少量样例提示进行连接与阅读检查，最后启用。API 调用可能产生费用。密钥保存在 Zotero 登录管理器中，不写入插件偏好设置或聊天记录。可在引导中更换或删除密钥。
 
-无需安装本地 CLI。当前支持文本聊天和 Context only 阅读：选择或粘贴要讨论的文本；不支持图片输入或自行读取本地源文件。更换密钥或模型后需要重新测试。
+无需安装本地 CLI。支持文本聊天，以及由插件检索并提供原文片段的阅读查证；此 DeepSeek 连接不支持图片输入或自行读取本地文件。更换密钥或模型后需要重新测试。
+
+### 添加 CLI 助手或 API
+
+设置 → Assistants 提供 **Add agent (CLI)** 和 **Add API** 两个入口。CLI 可以自动查找或手动选择本地可执行文件，支持 ACP、AbstractIn JSONL 和纯文字非交互调用。Gemini CLI 已提供内置配置，使用本地安装和登录；Codex、Claude、Antigravity 的原有配置保留。
+
+API 可以配置服务地址、认证、模型和请求参数，提供 GWDG SAIA、DeepSeek 等预设，支持 OpenAI 兼容、Anthropic、Gemini 和自定义 JSON 格式。密钥与额外请求头保存在 Zotero 登录管理器中。支持图片的模型需要明确配置；API 和纯文字 CLI 都能通过插件获得相关原文证据。保存和检查配置不会自动更换当前助手，点击 Enable 后才切换。详细配置与能力限制见 [助手适配说明](docs/agent-adapters.md)。

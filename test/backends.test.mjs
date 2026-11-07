@@ -287,7 +287,7 @@ test("the paper's full text is never offered: prompts mention only metadata and 
 	assert.equal(plugin.buildAntigravityPrompt({ ...base, session: { id: "c1", seen: 0 } }), "Why?" + plugin.formattingReminder());
 });
 
-test("images: Claude is told to Read each path, Codex gets --image=, both are stored relative to the paper folder", async () => {
+test("images: Claude receives attachments, Codex gets --image=, both are stored relative to the paper folder", async () => {
 	const p = loadPlugin().plugin;
 	for (const backend of ["claude", "codex"]) {
 		const store = fakeStore(p);
@@ -301,7 +301,8 @@ test("images: Claude is told to Read each path, Codex gets --image=, both are st
 		assert.deepEqual([...store.history[0].images], ["attachments/image-1.png", "attachments/image-2.jpg"]);
 		assert.match(seen.question, /^Look at the attached image\./);
 		if (backend === "claude") {
-			assert.match(seen.question, /with the Read tool before answering: \/tmp\/p\/attachments\/image-1\.png, \/tmp\/p\/attachments\/image-2\.jpg\]/);
+			assert.doesNotMatch(seen.question, /with the Read tool/);
+			assert.deepEqual([...seen.images], [...pending.images]);
 		}
 		else {
 			const args = p.codexArgs({ ...seen, session: { id: "t1", seen: 0 } });
