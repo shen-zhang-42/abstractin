@@ -31,22 +31,36 @@ async function setup(type = 'book') {
 
 const point = (refs, extra = {}) => ({ title: 'What is a set?', body: 'A collection, with membership explained.', chapterID: 'ch-01', originalNumber: '1.2', quote: 'Definition 1.2: A set is a collection of distinct objects.', refs, ...extra });
 
-test('full export merges equivalent questions across chats, verifies source and preserves chats/index', async () => {
- const { p, ctx, dir, job, original } = await setup();
- const before = await readFile(join(dir, 'discussions.json'), 'utf8'); let call = 0;
+const progressive = (data, extra = {}) => ({ documentKind: data.documentKind || 'other', updates: [{
+ ...point(data.records.map(r => r.id), { originalNumber: '', quote: '' }), id: data.existingTopics[0]?.id || null,
+ category: 'content', openQuestions: [], relations: [{ type: data.existingTopics.length ? 'supplement' : 'new',
+ targetID: data.existingTopics[0]?.id || null, explanation: 'Connect the new discussion to this topic.' }], ...extra
+}], skippedRecords: [] });
+
+test('sequential export integrates earlier topics, verifies lazily and preserves original chats', async () => {
+ const { p, ctx, dir, job } = await setup();
+ const before = await readFile(join(dir, 'discussions.json'), 'utf8'); let calls = 0;
  p.runBackend = async (id, request) => {
-  assert.equal(id, 'codex'); assert.equal(request.history.length, 0); assert.equal(request.session, null); assert.equal(request.ctx.reading.exportSummary, true);
-  assert.notEqual(request.ctx.dir, ctx.dir);
-  call++;
-  if (call === 1) { assert.match(request.question, /What is a set/); assert.match(request.question, /Explain the meaning/); return { text: JSON.stringify({ lookups: ['Definition 1.2'] }) }; }
-  if (call === 2) { assert.match(request.question, /collection of distinct objects/); return { text: JSON.stringify({ points: [point(['a:0:0', 'a:1:0', 'b:0:0', 'b:1:0'])] }) }; }
-  return { text: JSON.stringify({ points: [point(['a:0:0', 'a:1:0', 'b:0:0', 'b:1:0'])] }) };
+  assert.equal(id, 'codex'); assert.equal(request.history.length, 0); assert.equal(request.session, null);
+  assert.equal(request.ctx.reading.exportSummary, true); assert.notEqual(request.ctx.dir, ctx.dir);
+  const data = inputData(request); calls++;
+  if (calls === 1) {
+   assert.ok(data.records.every(r => r.id.startsWith('a:'))); assert.equal(data.existingTopics.length, 0);
+   return { text: JSON.stringify({ lookups: ['Definition 1.2'] }) };
+  }
+  if (calls === 2) assert.match(request.question, /collection of distinct objects/);
+  if (calls === 3) { assert.ok(data.records.every(r => r.id.startsWith('b:'))); assert.equal(data.existingTopics[0].id, 't1'); }
+  return { text: JSON.stringify(progressive(data, { originalNumber: '1.2', quote: 'Definition 1.2: A set is a collection of distinct objects.' })) };
  };
  const result = await p.generateReadingExport(ctx, job);
- assert.equal(call, 2); assert.equal((result.markdown.match(/^### /gm) || []).length, 1);
- assert.match(result.markdown, /## 1 Sets/); assert.match(result.markdown, /### 1\.2 What is a set/);
- assert.match(result.markdown, /Chat 2 — Same question/); assert.match(result.markdown, /Original source: Definition 1\.2/);
+ assert.equal(calls, 3); assert.equal((result.markdown.match(/^#### /gm) || []).length, 1);
+ assert.match(result.markdown, /### 1 Sets/); assert.match(result.markdown, /#### 1\.2 What is a set/);
+ assert.match(result.markdown, /Chat 2.*Same question/); assert.match(result.markdown, /Original source: Definition 1\.2/);
  assert.equal(await readFile(join(dir, 'discussions.json'), 'utf8'), before);
+ const state = JSON.parse(await readFile(result.statePath, 'utf8'));
+ assert.equal(state.complete, true); assert.equal(state.events.length, 2); assert.equal(state.topics.length, 1);
+ assert.deepEqual(state.topics[0].refs, ['a:0:0', 'a:1:0', 'b:0:0', 'b:1:0']);
+ assert.equal(await readFile(result.markdownPath, 'utf8'), result.markdown);
  assert.deepEqual((await readdir(ctx.documentDir)).sort(), ['discussions.json', 'exports']);
 });
 
@@ -117,48 +131,94 @@ test('UI opens export preview, closes cleanly and does not start a billable requ
 
 const inputData = request => JSON.parse(request.question.split('\nDATA:\n')[1].split('\nLOOKUP RESULTS:\n')[0]);
 
-test('fast whole-book export includes every chapter and live conversation in one call without opening the PDF', async () => {
+test('whole-book export reads each exchange and includes live chats without opening the PDF', async () => {
  const { p, ctx, job, histories, dir } = await setup(); job.verifySource = false;
- histories.live = [{ role: 'user', text: 'Question in a newly opened chapter chat' }, { role: 'assistant', text: 'A new conclusion' }];
+ histories.live = [{ role: 'user', text: 'New chapter question' }, { role: 'assistant', text: 'New conclusion' }];
  p.registerChatContext({ ...ctx, dir: join(dir, 'discussions', 'live'), discussion: { id: 'live', chapterID: 'ch-02', number: 3, topic: 'Live topic' } });
  p.registerChatContext({ ...ctx, documentDir: join(dir, 'another-pdf'), dir: join(dir, 'another-pdf', 'discussions', 'foreign'), attachmentItem: { key: 'OTHERPDF' }, discussion: { id: 'foreign' } });
- p.exportReadingSource = async () => { throw new Error('Fast summaries must not open the PDF'); };
- let calls = 0;
+ p.exportReadingSource = async () => { throw new Error('Must not open PDF'); };
+ let calls = 0; const seen = [];
  p.runBackend = async (_, request) => {
   calls++; assert.equal(request.effort, 'low'); assert.equal(request.summaryOnly, true);
-  const data = inputData(request); assert.ok(data.records.some(record => record.id.startsWith('a:'))); assert.ok(data.records.some(record => record.id.startsWith('b:'))); assert.ok(data.records.some(record => record.id.startsWith('live:')));
-  assert.ok(!data.records.some(record => record.id.startsWith('foreign:')));
-  return { text: JSON.stringify({ points: [point(data.records.map(record => record.id), { originalNumber: '', body: 'All chapters and their open questions.' })] }) };
+  const data = inputData(request); seen.push(...data.records.map(r => r.id));
+  return { text: JSON.stringify(progressive(data)) };
  };
  const result = await p.generateReadingExport(ctx, job);
- assert.equal(calls, 1); assert.match(result.markdown, /Chat 3.*Live topic/); assert.match(result.markdown, /all available conversations/);
- const cached = await p.generateReadingExport(ctx, { ...job }); assert.equal(cached.cached, true); assert.equal(calls, 1);
+ assert.equal(calls, 3); assert.ok(seen.some(id => id.startsWith('a:'))); assert.ok(seen.some(id => id.startsWith('b:')));
+ assert.ok(seen.some(id => id.startsWith('live:'))); assert.ok(!seen.some(id => id.startsWith('foreign:')));
+ assert.match(result.markdown, /Chat 3.*Live topic/); assert.match(result.markdown, /all available conversations/);
+ const cached = await p.generateReadingExport(ctx, { ...job }); assert.equal(cached.cached, true); assert.equal(calls, 3);
 });
 
-test('long exports reuse unchanged batches and consolidate all chapters in one final pass', async () => {
+test('long exchanges split without omission and new exchanges only process the new suffix', async () => {
  const { p, ctx, histories, job } = await setup(); job.verifySource = false;
- histories.a[1].text = 'Long discussion. '.repeat(8000);
- const count = p.readingExportBatches((await p.collectReadingExport(ctx)).units, 48000).length; assert.ok(count > 1);
- p.exportReadingSource = async () => { throw new Error('No PDF needed'); };
+ histories.a[1].text = 'Long discussion. '.repeat(8000) + 'FINAL SENTENCE';
+ const segments = p.readingExportSegments((await p.collectReadingExport(ctx)).units); assert.ok(segments.length > 2);
  let calls = 0, previews = 0; job.onPreview = () => previews++;
- p.runBackend = async (_, request) => {
-  calls++; const data = inputData(request), refs = data.records ? data.records.map(record => record.id) : [...new Set(data.points.flatMap(value => value.refs))];
-  return { text: JSON.stringify({ points: [point(refs, { originalNumber: '', body: 'Combined discussion facts and caveats.' })] }) };
- };
- await p.generateReadingExport(ctx, job); assert.equal(calls, count + 1); assert.equal(previews, count);
- histories.b.push({ role: 'assistant', text: 'New correction appended to the last chapter.' });
- const before = calls; await p.generateReadingExport(ctx, { ...job }); assert.equal(calls - before, 2);
+ p.runBackend = async (_, request) => { calls++; return { text: JSON.stringify(progressive(inputData(request))) }; };
+ await p.generateReadingExport(ctx, job); assert.equal(calls, segments.length); assert.equal(previews, segments.length + 1);
+ histories.b.push({ role: 'user', text: 'A new question' }, { role: 'assistant', text: 'A new conclusion' });
+ const before = calls; await p.generateReadingExport(ctx, { ...job }); assert.equal(calls - before, 1);
 });
 
-test('incomplete whole-book coverage is rejected rather than silently dropping another chat', async () => {
- const { p, ctx, job } = await setup(); job.verifySource = false;
- p.runBackend = async () => ({ text: JSON.stringify({ points: [point(['a:0:0'])] }) });
+test('incomplete coverage fails without accepting an incomplete segment', async () => {
+ const { p, ctx, job, dir } = await setup(); job.verifySource = false;
+ p.runBackend = async (_, request) => { const data = inputData(request), out = progressive(data); out.updates[0].refs = [data.records[0].id]; return { text: JSON.stringify(out) }; };
  await assert.rejects(p.generateReadingExport(ctx, job), /omitted part of the discussion/);
+ const state = JSON.parse(await readFile(join(dir, 'exports', 'summary-state.json'), 'utf8'));
+ assert.equal(state.complete, false); assert.equal(state.events.length, 0);
 });
 
-test('original PDF loading remains lazy even when optional verification is enabled', async () => {
+test('optional source verification does not load the PDF unless requested', async () => {
  const { p, ctx, job } = await setup(); let opened = false;
  p.exportReadingSource = async () => { opened = true; throw new Error('Not needed'); };
- p.runBackend = async (_, request) => ({ text: JSON.stringify({ points: [point(inputData(request).records.map(record => record.id), { originalNumber: '' })] }) });
+ p.runBackend = async (_, request) => ({ text: JSON.stringify(progressive(inputData(request))) });
  await p.generateReadingExport(ctx, job); assert.equal(opened, false);
+});
+
+test('interruptions resume saved segments; editing earlier messages rebuilds the dependent suffix', async () => {
+ const { p, ctx, job, histories, dir } = await setup(); job.verifySource = false; let calls = 0;
+ p.runBackend = async (_, request) => { calls++; if (calls === 2) throw new Error('Disconnected'); return { text: JSON.stringify(progressive(inputData(request))) }; };
+ await assert.rejects(p.generateReadingExport(ctx, job), /Disconnected/);
+ let state = JSON.parse(await readFile(join(dir, 'exports', 'summary-state.json'), 'utf8')); assert.equal(state.events.length, 1);
+ p.runBackend = async (_, request) => { calls++; const data = inputData(request); assert.ok(data.records.every(r => r.id.startsWith('b:'))); return { text: JSON.stringify(progressive(data)) }; };
+ await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 3);
+ histories.a[0].text = 'An edited question';
+ p.runBackend = async (_, request) => { calls++; return { text: JSON.stringify(progressive(inputData(request))) }; };
+ await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 5);
+ histories.b.length = 0;
+ const shortened = await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 5);
+ state = JSON.parse(await readFile(shortened.statePath, 'utf8'));
+ assert.equal(state.topics[0].refs.length, 2); assert.doesNotMatch(shortened.markdown, /Chat 2/);
+});
+
+test('content and language are independent while language books produce one section', async () => {
+ const { p, ctx, job } = await setup(); job.verifySource = false;
+ p.runBackend = async (_, request) => {
+  const data = inputData(request), out = progressive(data); out.updates[0].category = 'content';
+  if (data.records[0].id.startsWith('a:')) out.updates.push({ ...out.updates[0], category: 'language', title: 'Collection: vocabulary', body: 'Word meaning and use.' });
+  return { text: JSON.stringify(out) };
+ };
+ let result = await p.generateReadingExport(ctx, job);
+ assert.match(result.markdown, /^## Book content/m); assert.match(result.markdown, /^## Language/m);
+ p.runBackend = async (_, request) => ({ text: JSON.stringify(progressive(inputData(request), { category: 'language' })) });
+ result = await p.generateReadingExport(ctx, { ...job, organization: 'language' });
+ assert.match(result.markdown, /^## Book content/m); assert.doesNotMatch(result.markdown, /^## Language/m);
+ const state = JSON.parse(await readFile(result.statePath, 'utf8')); assert.ok(state.topics.every(t => t.category === 'content'));
+});
+
+test('related topics outside the selected context are read on demand before revision', async () => {
+ const { p, job, ctx, index } = await setup(); job.ctx = ctx; job.verifySource = false; job.evidence = []; job.source = { text: '' };
+ const topic = { ...point(['old']), id: 't1', category: 'content', relations: [], openQuestions: [] };
+ const state = { title: 'Book', documentKind: 'other', topics: [topic], events: [] };
+ p.readingSummaryContext = () => []; let calls = 0;
+ p.runBackend = async (_, request) => {
+  const data = inputData(request); calls++;
+  if (calls === 1) { assert.equal(data.existingTopics.length, 0); assert.equal(data.topicIndex[0].id, 't1'); return { text: '{"readTopics":["t1"]}' }; }
+  assert.equal(data.existingTopics[0].body, topic.body);
+  return { text: JSON.stringify(progressive(data, { body: 'Corrected explanation', relations: [{ type: 'correction', targetID: 't1', explanation: 'The new discussion corrects the old claim.' }] })) };
+ };
+ const result = await p.readingSummaryStep(job, state, [{ id: 'new', text: 'Unrelated wording' }], index.chapters);
+ assert.equal(calls, 2); assert.equal(result.topics.length, 1); assert.deepEqual(Array.from(result.topics[0].refs), ['old', 'new']);
+ assert.equal(result.topics[0].relations[0].type, 'correction');
 });

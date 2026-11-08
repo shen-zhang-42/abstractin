@@ -25,9 +25,9 @@ Object.assign(AbstractIn, {
  async collectReadingExport(ctx) {
   const documentCtx = { ...ctx, dir: this.discussionRoot(ctx) }; delete documentCtx.discussion;
   const index = await this.discussionIndex(documentCtx), units = [];
-  const append = (id, chapterID, text, label = id) => {
+  const append = (id, chapterID, text, label = id, role = "note", conversationID = id) => {
    // Split long records rather than dropping their ending. IDs link all pieces.
-   for (let at = 0; at < text.length; at += 5000) units.push({ id: id + ":" + at, chapterID, label, text: text.slice(at, at + 5000) });
+   for (let at = 0; at < text.length; at += 5000) units.push({ id: id + ":" + at, chapterID, label, role, conversationID, messageID: id, continuation: at > 0, text: text.slice(at, at + 5000) });
   };
   const chats = [...this.visibleDiscussions(index)], known = new Set(index.chats.map(chat => chat.id));
   // Include live chats that have not yet reached the on-disk index. Keep
@@ -35,6 +35,7 @@ Object.assign(AbstractIn, {
   for (const live of this._chatContexts.values()) if (live.discussion?.id && !known.has(live.discussion.id) && this.discussionRoot(live) === documentCtx.dir && live.attachmentItem?.key === ctx.attachmentItem.key) {
    chats.push(live.discussion); known.add(live.discussion.id);
   }
+  chats.sort((a, b) => (a.createdAt || a.number || 0) - (b.createdAt || b.number || 0) || a.id.localeCompare(b.id));
   for (const chat of chats) {
    const chatDir = this.discussionContext(documentCtx, chat).dir;
    const local = await this.readDiscussionJSON(OS.Path.join(chatDir, "chat.json"), null);
@@ -43,13 +44,13 @@ Object.assign(AbstractIn, {
    for (let at = 0; at < history.length; at++) {
     const m = history[at];
     if (["user", "assistant"].includes(m.role) && (m.text || m.selection?.text)) append(chat.id + ":" + at, chat.chapterID,
-     JSON.stringify({ role: m.role, text: this.readingVisibleText(m.text || ""), selection: m.selection?.text || "", topic: chat.topic }), "Chat " + chat.number + " — " + chat.topic);
+     JSON.stringify({ role: m.role, text: this.readingVisibleText(m.text || ""), selection: m.selection?.text || "", topic: chat.topic }), "Chat " + chat.number + " — " + chat.topic, m.role, chat.id);
    }
   }
   // Legacy reading chats are included only from this PDF's workspace, never a sibling PDF.
   for (const file of await this.listDiscussionChildren(documentCtx.dir)) if (!file.isDir && /^chat(?:-.+)?\.json$/.test(file.name) && !index.migrated?.[file.path]) {
    const history = await this.readDiscussionJSON(file.path, []);
-   if (Array.isArray(history)) for (let at = 0; at < history.length; at++) if (["user", "assistant"].includes(history[at].role)) append("legacy:" + file.name + ":" + at, null, JSON.stringify(history[at]));
+   if (Array.isArray(history)) for (let at = 0; at < history.length; at++) if (["user", "assistant"].includes(history[at].role)) append("legacy:" + file.name + ":" + at, null, JSON.stringify(history[at]), file.name, history[at].role, "legacy:" + file.name);
   }
   const doc = Zotero.getMainWindow().document;
   for (const id of ctx.paperItem.getNotes?.() || []) {
@@ -117,99 +118,196 @@ Object.assign(AbstractIn, {
     originalNumber: typeof p.originalNumber === "string" ? p.originalNumber.trim().slice(0, 80) : "", quote: typeof p.quote === "string" ? p.quote : "", refs };
   });
  },
+ readingExportSegments(units) {
+  // Keep each question and its answers together; split oversized exchanges only.
+  const segments = []; let current = [], size = 0;
+  for (const unit of units) {
+   const length = JSON.stringify(unit).length;
+   const boundary = current.length && (unit.conversationID !== current[0].conversationID ||
+    (unit.role === "user" && !unit.continuation) || (unit.role === "note" && !unit.continuation));
+   if (current.length && (boundary || size + length > 16000)) { segments.push(current); current = []; size = 0; }
+   current.push(unit); size += length;
+  }
+  if (current.length) segments.push(current);
+  return segments;
+ },
+ readingSummaryContext(topics, records, recentIDs = []) {
+  const words = text => new Set(String(text).normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || []);
+  const query = words(records.map(r => r.text).join(" "));
+  const ranked = topics.map(topic => ({ topic, score: [...words(topic.title)].filter(w => query.has(w)).length + (recentIDs.includes(topic.id) ? 2 : 0) }))
+   .sort((a, b) => b.score - a.score);
+  const selected = []; let size = 0;
+  for (const { topic, score } of ranked) {
+   if (!score || selected.length >= 6) continue;
+   const length = JSON.stringify(topic).length;
+   if (size + length <= 18000) { selected.push(topic); size += length; }
+  }
+  return selected;
+ },
+ readingSummaryApply(state, data, records, catalogue) {
+  if (!["language", "other"].includes(data.documentKind) || !Array.isArray(data.updates)) throw new Error("The agent returned an invalid progressive summary.");
+  const kind = state.documentKind || data.documentKind;
+  if (data.documentKind !== kind) throw new Error("The document classification changed. Retry with an explicit organization setting.");
+  const topics = state.topics.map(topic => ({ ...topic })), required = new Set(records.map(r => r.id));
+  const ids = new Set(topics.map(topic => topic.id)), changed = new Set(), updates = [];
+  for (const update of data.updates) {
+   const previous = update.id == null ? null : topics.find(topic => topic.id === update.id);
+   if (update.id != null && !previous) throw new Error("The summary updated an unknown topic.");
+   if (previous && changed.has(previous.id)) throw new Error("The summary updated a topic twice in one segment.");
+   if (!["content", "language"].includes(update.category) || !Array.isArray(update.relations) || !update.relations.length ||
+    !Array.isArray(update.openQuestions) || update.openQuestions.some(q => typeof q !== "string")) throw new Error("A summary update is missing its category, relationships or open questions.");
+   if (kind !== "language" && previous && previous.category !== update.category) throw new Error("Content and language topics must be maintained separately.");
+   const point = this.readingExportPoints({ points: [update] }, catalogue, required)[0];
+   const relations = update.relations.map(relation => {
+    if (!["new", "repeat", "supplement", "correction", "conflict", "resolution"].includes(relation.type) ||
+     typeof relation.explanation !== "string" || !relation.explanation.trim() ||
+     (relation.targetID != null && !ids.has(relation.targetID))) throw new Error("The summary returned an invalid topic relationship.");
+    if (relation.type !== "new" && relation.targetID == null) throw new Error("A relationship must identify its existing topic.");
+    return { type: relation.type, targetID: relation.targetID || null, explanation: relation.explanation.trim() };
+   });
+   if (previous && !relations.some(r => r.targetID === previous.id && r.type !== "new")) throw new Error("A topic update must explain its relationship to the previous entry.");
+   const id = previous?.id || "t" + (topics.length + 1);
+   const entry = { ...point, id, category: kind === "language" ? "content" : update.category,
+    refs: [...new Set([...(previous?.refs || []), ...point.refs])], openQuestions: update.openQuestions,
+    relations: [...(previous?.relations || []), ...relations.map(r => ({ ...r, refs: point.refs }))] };
+   if (previous) topics[topics.findIndex(t => t.id === id)] = entry; else topics.push(entry);
+   changed.add(id); updates.push(entry);
+  }
+  this.readingExportCoverage(data, updates, required);
+  return { documentKind: kind, topics, updates, skippedRecords: data.skippedRecords || [] };
+ },
+ async readingSummaryStep(job, state, records, catalogue) {
+  const selected = this.readingSummaryContext(state.topics, records, state.events.at(-1)?.updates.map(t => t.id) || []);
+  const loaded = new Set(selected.map(topic => topic.id));
+  const schema = 'Return ONLY JSON {"documentKind":"language|other","updates":[{"id":null,"category":"content|language","title":"topic","body":"complete updated Markdown entry","chapterID":null,"originalNumber":"","quote":"","refs":["NEW record ID"],"openQuestions":[],"relations":[{"type":"new|repeat|supplement|correction|conflict|resolution","targetID":null,"explanation":"why this relationship holds"}]}],"skippedRecords":[]}. ';
+  const instruction = schema +
+   'Read ONLY this next discussion segment, then integrate it with existing topics. This is sequential accumulation, not an independent batch summary. ' +
+   'Use the compact topicIndex to recognize related earlier topics across ALL chapters. Request {"readTopics":["existing topic ID"]} before changing or comparing any entry whose full content is not supplied. Never overwrite an entry based only on its index. ' +
+   'Update existing IDs for repetition, additions, corrections, conflicts or resolved questions; use id:null only for a distinct new topic. Preserve the full existing reasoning, equations and caveats in each updated body. ' +
+   'Record disagreements and uncertainty rather than silently replacing a claim. Explicit later corrections may supersede old conclusions, retaining the reasoning for the change. Keep openQuestions current. ' +
+   'Separate book/paper subject matter (content) from incidental vocabulary, grammar, translation and expression learning (language). A segment may update both categories. ' +
+   'If the BOOK ITSELF teaches or studies language, including vocabulary/grammar/language learning/linguistics, documentKind is language and ALL entries belong to content in ONE section. Judge from the document title and catalogue, not merely a vocabulary question in this segment. Otherwise documentKind is other and use content/language sections. Honor a supplied documentKind; never merge topics across categories in other documents. ' +
+   'Each update must cite at least one NEW record ID. Every new record ID must be covered; only pure boilerplate or contents-only records may be skipped as {"id":"record ID","reason":"boilerplate|contents-only"}. ' +
+   'Do not return unchanged topics. A continuation belongs to the preceding message/exchange. Current edited notes override older claims.';
+  for (let round = 0; round <= state.topics.length; round++) {
+   const data = await this.readingExportAgent(job, instruction, {
+    title: state.title, documentKind: state.documentKind, catalogue,
+    topicIndex: state.topics.map(t => ({ id: t.id, category: t.category, title: t.title, chapterID: t.chapterID, hint: t.body.slice(0, 140) })),
+    existingTopics: selected.map(t => ({ id: t.id, category: t.category, title: t.title, body: t.body, chapterID: t.chapterID,
+     originalNumber: t.originalNumber, quote: t.quote, openQuestions: t.openQuestions, recentRelations: t.relations.slice(-3) })), records
+   });
+   if (!data.readTopics) {
+    const missing = new Set();
+    for (const update of data.updates || []) {
+     const related = [update.id, ...(update.relations || []).map(r => r.targetID)].filter(Boolean);
+     for (const id of related) if (!loaded.has(id)) missing.add(id);
+    }
+    if (!missing.size) return this.readingSummaryApply(state, data, records, catalogue);
+    // Supply omitted context and ask again rather than accepting a blind rewrite.
+    data.readTopics = [...missing];
+   }
+   if (!Array.isArray(data.readTopics) || !data.readTopics.length) throw new Error("Invalid summary topic lookup.");
+   let added = false;
+   for (const id of data.readTopics) {
+    const topic = state.topics.find(t => t.id === id);
+    if (!topic) throw new Error("The summary requested an unknown topic.");
+    if (!loaded.has(id)) { selected.push(topic); loaded.add(id); added = true; }
+   }
+   if (!added) throw new Error("The summary repeated a topic lookup without making progress.");
+   job.progress("Reading related earlier topics…");
+  }
+  throw new Error("The summary could not finish this segment. Progress is saved for retry.");
+ },
+ renderProgressiveReadingSummary(snapshot, state, job, complete) {
+  const sections = state.documentKind === "language" ? [{ category: "content", title: snapshot.ctx.reading.type === "book" ? "Book content / 书籍内容" : "Paper content / 论文内容" }] : [
+   { category: "content", title: snapshot.ctx.reading.type === "book" ? "Book content / 书籍内容" : "Paper content / 论文内容" },
+   { category: "language", title: "Language / 语言相关" }
+  ];
+  const lines = ["# " + snapshot.title, "", complete ? "Discussion summary" : "> Work in progress — remaining discussions have not yet been processed.", "",
+   "Scope: all available conversations and reading notes for this document, across chapters. This summarizes discussions, not the entire original text.", "",
+   "Progress: " + state.events.length + "/" + state.segmentCount + " discussion segments.", ""];
+  if (!job.verifySource) lines.push("Original-source checks were not requested. Original references are reported, not freshly verified.", "");
+  const labels = new Map(snapshot.units.map(u => [u.id, u.label]));
+  for (const section of sections) {
+   const topics = state.topics.filter(t => t.category === section.category);
+   if (!topics.length) continue;
+   lines.push("## " + section.title, "");
+   // Retain verified quotations and chapter numbering within each category.
+   const rendered = this.renderReadingExport(snapshot, topics, job), start = rendered.indexOf("\n## ");
+   if (start >= 0) lines.push(rendered.slice(start + 1).replace(/^#{2,3} /gm, heading => "#" + heading), "");
+   for (const topic of topics) {
+    if (topic.openQuestions.length) lines.push("Open questions — " + topic.title + ":", ...topic.openQuestions.map(q => "- " + q), "");
+    const relations = topic.relations.filter(r => r.type !== "new");
+    if (relations.length) lines.push("Discussion development — " + topic.title + ":", ...relations.map(r =>
+     "- " + r.type + ": " + r.explanation + " [" + [...new Set(r.refs.map(id => labels.get(id) || id))].join("; ") + "]"), "");
+   }
+  }
+  return lines.join("\n");
+ },
  async generateReadingExport(ctx, job) {
   const snapshot = await this.collectReadingExport(ctx);
-  if (job.cancelled) throw new Error("Export cancelled.");
-  job.verifySource = job.verifySource === true;
-  job.effort = this.readingSummaryEffort(job.backend);
-  job.progress("Collecting discussions from all chapters…");
+  const check = () => { if (job.cancelled) throw new Error("Export cancelled."); };
+  check(); job.verifySource = job.verifySource === true; job.effort = this.readingSummaryEffort(job.backend);
   await this.assertAgentReadingReady(job.backend, "knowledge");
   const parent = OS.Path.join(this.discussionRoot(ctx), "exports");
   await Zotero.File.createDirectoryIfMissingAsync(parent);
   const catalogue = snapshot.index.chapters.slice().sort((a, b) => a.order - b.order);
-  const summaryConfig = ["discussion-summary-v2", job.backend, job.model, this.agentConfigKey(job.backend), this.getLanguage()];
-  const fingerprint = job.verifySource ? null : await this.hashAgentText(JSON.stringify([summaryConfig, snapshot.title, ctx.reading.type, catalogue, snapshot.units]));
-  const cachePath = OS.Path.join(parent, "summary-cache.json");
-  const cached = fingerprint && await this.readDiscussionJSON(cachePath, null);
-  if (cached?.fingerprint === fingerprint && typeof cached.markdown === "string") { if (job.cancelled) throw new Error("Export cancelled."); job.progress("Reusing the unchanged whole-document summary."); return { markdown: cached.markdown, title: snapshot.title, cached: true }; }
+  const config = await this.hashAgentText(JSON.stringify(["progressive-discussion-v1", job.backend, job.model,
+   this.agentConfigKey(job.backend), this.getLanguage(), snapshot.title, ctx.reading.type, catalogue, job.verifySource, job.organization || "auto"]));
+  const segments = this.readingExportSegments(snapshot.units), keys = [];
+  for (const segment of segments) keys.push(await this.hashAgentText(JSON.stringify(segment)));
+  const statePath = OS.Path.join(parent, "summary-state.json"), markdownPath = OS.Path.join(parent, "reading-summary.md");
+  const saved = await this.readDiscussionJSON(statePath, null);
+  const state = { version: 1, config, title: snapshot.title, documentKind: job.organization === "language" ? "language" : job.organization === "split" ? "other" : null,
+   topics: [], events: [], segmentCount: segments.length, complete: false };
+  job.evidence = []; job.source = { text: "" }; job.sourceLoaded = false;
+  // Replay the unchanged prefix; edits/deletions invalidate their dependent suffix.
+  if (!job.verifySource && saved?.version === 1 && saved.config === config && Array.isArray(saved.events)) {
+   for (let at = 0; at < keys.length && saved.events[at]?.key === keys[at]; at++) {
+    const event = saved.events[at]; state.documentKind = event.documentKind;
+    for (const topic of event.updates) {
+     const index = state.topics.findIndex(t => t.id === topic.id);
+     if (index < 0) state.topics.push(topic); else state.topics[index] = topic;
+    }
+    state.events.push(event); job.evidence.push(...(event.evidence || []));
+   }
+  }
+  const save = async complete => {
+   check(); state.complete = complete; state.updatedAt = new Date().toISOString();
+   const markdown = this.renderProgressiveReadingSummary(snapshot, state, job, complete);
+   // JSON is authoritative; regenerate Markdown from it after interruption.
+   if (OS.File.writeAtomic) await OS.File.writeAtomic(statePath, new TextEncoder().encode(JSON.stringify(state)), { tmpPath: statePath + "." + this.chatSyncID() + ".tmp" });
+   else await Zotero.File.putContentsAsync(statePath, JSON.stringify(state));
+   await Zotero.File.putContentsAsync(markdownPath, markdown); job.onPreview?.(markdown);
+   return { markdown, title: snapshot.title, statePath, markdownPath };
+  };
+  if (state.events.length === keys.length) {
+   if (!state.topics.length) throw new Error("No substantive reading points were produced.");
+   job.progress("Reusing the unchanged whole-document summary."); return { ...await save(true), cached: true };
+  }
+  if (!saved) await save(false);
+  else job.onPreview?.(this.renderProgressiveReadingSummary(snapshot, state, job, false));
   const dir = OS.Path.join(parent, this.chatSyncID()); await Zotero.File.createDirectoryIfMissingAsync(dir);
-  // All export work is isolated from active chat sessions and their scoped source caches.
-  job.ctx = { ...snapshot.ctx, dir, discussion: { id: "export" }, reading: { ...ctx.reading, evidenceMode: job.verifySource ? "source" : "knowledge", answerMode: "balanced", vocabularyTutor: false, exportSummary: true } };
-  const sourceCtx = { ...job.ctx }; delete sourceCtx.discussion;
-  job.source = { text: "" }; job.sourceLoaded = false; let sourcePromise;
+  job.ctx = { ...snapshot.ctx, dir, discussion: { id: "export" }, reading: { ...ctx.reading,
+   evidenceMode: job.verifySource ? "source" : "knowledge", answerMode: "balanced", vocabularyTutor: false, exportSummary: true } };
+  const sourceCtx = { ...job.ctx }; delete sourceCtx.discussion; let sourcePromise;
   job.loadSource = () => sourcePromise || (sourcePromise = (async () => {
-   job.sourceLoaded = true;
-   job.progress("Loading original text for the requested check…");
+   job.sourceLoaded = true; job.progress("Loading original text for the requested check…");
    let source;
-   try { source = await this.exportReadingSource(sourceCtx); }
-   catch (e) { source = { status: "unavailable", error: String(e.message || e) }; }
+   try { source = await this.exportReadingSource(sourceCtx); } catch (e) { source = { status: "unavailable", error: String(e.message || e) }; }
    job.source = { text: source.status === "ready" ? await Zotero.File.getContentsAsync(OS.Path.join(dir, "source-text.md")) : "", error: source.error };
   })());
-  job.evidence = [];
-  const schema = 'Return ONLY JSON {"points":[{"title":"self-contained question/topic","body":"Markdown synthesis including caveats","chapterID":null,"originalNumber":"","quote":"exact quotation if available","refs":["input record ID"]}],"skippedRecords":[]}. Every input record ID must be covered by point refs. Only pure boilerplate or contents-only records may instead appear in skippedRecords as {"id":"record ID","reason":"boilerplate or contents-only"}. Merge equivalent questions within this response. ';
-  const batches = this.readingExportBatches(snapshot.units, 48000), points = [];
-  for (let at = 0; at < batches.length; at++) {
-   if (job.cancelled) throw new Error("Export cancelled.");
-   job.progress("Summarizing discussions " + (at + 1) + "/" + batches.length + "…");
-   const required = new Set(batches[at].map(u => u.id));
-   const batchKey = fingerprint && await this.hashAgentText(JSON.stringify([summaryConfig, catalogue, batches[at]]));
-   const batchPath = batchKey && OS.Path.join(parent, "batch-" + batchKey + ".json");
-   const cachedBatch = batchPath && await this.readDiscussionJSON(batchPath, null);
-   const data = cachedBatch || await this.readingExportAgent(job, schema + "Include all substantive discussed questions in this batch, including unresolved questions.", { catalogue, records: batches[at] });
-   const batchPoints = this.readingExportPoints(data, catalogue, required); this.readingExportCoverage(data, batchPoints, required); points.push(...batchPoints);
-   if (batchPath && !cachedBatch) await Zotero.File.putContentsAsync(batchPath, JSON.stringify(data));
-   job.onPreview?.("# Draft — remaining discussions are still being summarized\n\n" + this.renderReadingExport(snapshot, points, job));
+  for (let at = state.events.length; at < segments.length; at++) {
+   check(); job.progress("Reading and integrating discussion " + (at + 1) + "/" + segments.length + "…");
+   const evidenceAt = job.evidence.length;
+   const result = await this.readingSummaryStep(job, state, segments[at], catalogue); check();
+   state.documentKind = result.documentKind; state.topics = result.topics;
+   state.events.push({ key: keys[at], recordIDs: segments[at].map(r => r.id), documentKind: result.documentKind,
+    updates: result.updates, skippedRecords: result.skippedRecords, evidence: job.evidence.slice(evidenceAt) });
+   await save(at === segments.length - 1 && state.topics.length > 0);
   }
-  if (!points.length) throw new Error("No substantive reading points were produced.");
-  let merged;
-  if (batches.length === 1 || points.length === 1) merged = points;
-  else if (JSON.stringify(points).length <= 96000) {
-   job.progress("Combining all chapter discussions in one pass…");
-   const required = new Set(points.flatMap(point => point.refs));
-   const data = await this.readingExportAgent(job, schema + "Merge ALL these discussion points in ONE pass. Preserve every input refs ID, correction, distinct result and caveat. Do not skip any input references. Keep chapter ownership based on the question, not supporting references.", { catalogue, points });
-   merged = this.readingExportPoints(data, catalogue, required); this.readingExportCoverage({ skippedRecords: [] }, merged, required);
-  } else {
-  points.forEach((point, i) => { point.id = "p" + i; });
-  // Compare every block pair, so large books do not silently lose cross-chat duplicates.
-  const descriptors = points.map(p => ({ id: p.id, title: p.title, chapterID: p.chapterID, originalNumber: p.originalNumber }));
-  const blocks = this.readingExportBatches(descriptors, 48000), owners = new Map(points.map(p => [p.id, p.id]));
-  const owner = id => { let root = id; while (owners.get(root) !== root) root = owners.get(root); return root; };
-  for (let a = 0; a < blocks.length; a++) for (let b = a; b < blocks.length; b++) {
-   const candidates = a === b ? blocks[a] : [...blocks[a], ...blocks[b]], ids = new Set(candidates.map(p => p.id));
-   job.progress("Merging repeated questions across chats…");
-   const data = await this.readingExportAgent(job, 'Return ONLY JSON {"groups":[["point ID","equivalent point ID"]]}. Group equivalent questions or closely related explanations of the same original concept/number, including across chapters. Distinct questions stay separate. Return an empty groups array if none overlap.', { catalogue, points: candidates });
-   if (!Array.isArray(data.groups)) throw new Error("The agent returned an invalid duplicate grouping.");
-   for (const group of data.groups) {
-    if (!Array.isArray(group) || group.some(id => !ids.has(id))) throw new Error("The agent grouped an unknown reading point.");
-    for (const id of group.slice(1)) owners.set(owner(id), owner(group[0]));
-   }
-  }
-  const groups = new Map(); for (const point of points) { const key = owner(point.id); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(point); }
-  merged = [];
-  for (const group of groups.values()) {
-   let point = group[0];
-   if (group.length > 1 && JSON.stringify(group).length <= 96000) {
-    const required = new Set(group.flatMap(value => value.refs));
-    const data = await this.readingExportAgent(job, schema + "Return exactly ONE point combining this entire equivalent-topic group. Preserve every input refs ID and all distinct useful information, corrections and caveats.", { catalogue, points: group });
-    const result = this.readingExportPoints(data, catalogue, required);
-    if (result.length !== 1) throw new Error("The summary did not combine an equivalent-topic group.");
-    this.readingExportCoverage({ skippedRecords: [] }, result, required); merged.push(result[0]); continue;
-   }
-   for (const next of group.slice(1)) {
-    job.progress("Combining related explanations…");
-    const data = await this.readingExportAgent(job, schema + "Return exactly ONE point combining these equivalent questions. Preserve all distinct useful information, corrections, caveats and every input refs ID. Choose the chapter owning the question, not a supporting reference's chapter.", { catalogue, points: [point, next] });
-    const result = this.readingExportPoints(data, catalogue, new Set([...point.refs, ...next.refs]));
-    if (result.length !== 1 || [...point.refs, ...next.refs].some(id => !result[0].refs.includes(id))) throw new Error("The agent omitted a discussion while merging. Retry the export.");
-    point = result[0];
-   }
-   merged.push(point);
-  }
-  }
-  if (job.cancelled) throw new Error("Export cancelled.");
-  const markdown = this.renderReadingExport(snapshot, merged, job);
-  await Zotero.File.putContentsAsync(OS.Path.join(dir, "reading-summary.md"), markdown);
-  if (fingerprint) await Zotero.File.putContentsAsync(cachePath, JSON.stringify({ fingerprint, markdown }));
-  return { markdown, title: snapshot.title };
+  if (!state.topics.length) throw new Error("No substantive reading points were produced.");
+  return { markdown: this.renderProgressiveReadingSummary(snapshot, state, job, true), title: snapshot.title, statePath, markdownPath };
  },
  renderReadingExport(snapshot, points, job) {
   const normalize = s => String(s).normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -247,7 +345,12 @@ Object.assign(AbstractIn, {
   panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", "Export reading summary");
   panel.style.cssText = "position:absolute;inset:12px;z-index:30;overflow:auto;padding:16px;background:var(--abstractin-bg,Canvas);color:var(--abstractin-text,CanvasText)";
   panel.append(this.el(doc, "h2", null, view.ctx.reading.type === "book" ? "Whole-book discussion summary" : "Whole-paper discussion summary"), this.el(doc, "p", null,
-   "Summarize ALL available conversations and reading notes for this document, across every chapter. Fast mode combines existing discussions without rereading the PDF. This uses your agent plan or API allowance; unchanged summaries are reused."));
+   "Read discussions one exchange at a time, relating each segment to earlier topics. Content and language learning are organized separately; language books use one section. JSON progress and Markdown are saved in this document's shared exports folder after each segment. Retry resumes the unchanged prefix. This uses your agent plan or API allowance."));
+  const organization = this.el(doc, "select"); organization.setAttribute("aria-label", "Summary organization");
+  for (const [value, label] of [["auto", "Automatic — identify the book subject"], ["split", "Separate content and language"], ["language", "Language book — one section"]]) {
+   const option = this.el(doc, "option", null, label); option.value = value; organization.append(option);
+  }
+  panel.append(this.row(doc, "Organization", organization));
   const verify = this.el(doc, "input"); verify.type = "checkbox"; verify.setAttribute("aria-label", "Verify uncertain points against the original PDF (slower)");
   panel.append(this.row(doc, "Verify uncertain points against the original PDF (slower)", verify));
   const status = this.el(doc, "p", "abstractin-notice"), preview = this.el(doc, "textarea");
@@ -259,10 +362,10 @@ Object.assign(AbstractIn, {
   this._readingExports.set(key, job);
   let result;
   generate.onclick = async () => {
-   generate.disabled = true; verify.disabled = true; job.verifySource = verify.checked; close.textContent = "Cancel"; save.hidden = true; preview.hidden = true;
-   try { result = await this.generateReadingExport(view.ctx, job); if (job.cancelled) return; preview.value = result.markdown; preview.hidden = false; save.hidden = false; status.textContent = "Summary ready. Review it before saving."; }
+   generate.disabled = true; verify.disabled = true; organization.disabled = true; job.organization = organization.value; job.verifySource = verify.checked; close.textContent = "Cancel"; save.hidden = true; preview.hidden = true;
+   try { result = await this.generateReadingExport(view.ctx, job); if (job.cancelled) return; preview.value = result.markdown; preview.hidden = false; save.hidden = false; status.textContent = "Summary ready. JSON progress and Markdown saved in the document's exports folder. You can also save a Markdown copy."; }
    catch (e) { if (!job.cancelled) status.textContent = String(e.message || e); }
-   finally { generate.disabled = false; verify.disabled = false; close.textContent = "Close"; job.proc = null; }
+   finally { generate.disabled = false; verify.disabled = false; organization.disabled = false; close.textContent = "Close"; job.proc = null; }
   };
   save.onclick = async () => {
    try {
