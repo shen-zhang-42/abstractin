@@ -181,3 +181,17 @@ test('custom adapters inherit locally configured credentials while native subscr
  assert.equal(p.buildChildEnvironment({ preserveAPIKeys: true }).OPENAI_API_KEY, 'test-key');
  assert.equal(p.buildChildEnvironment({ preserveAPIKeys: true }).ANTHROPIC_API_KEY, 'other-test-key');
 });
+
+test('summary-only ACP requests disable local file access even during optional source checks',async()=>{
+ const {plugin:p}=loadPlugin(); let checked=false;
+ p.openACPAgent=async(_,ctx,onProgress)=>{
+  assert.equal(ctx.reading.evidenceMode,'knowledge');checked=true;
+  return {capabilities:{images:false},setSession(){},close:async()=>{},call:async method=>{
+   if(method==='session/new')return {sessionId:'summary'};
+   if(method==='session/prompt')onProgress({delta:'Summary'});
+   return {};
+  }};
+ };
+ const result=await p.runACPAgent('gemini',{ctx:{dir:'/summary',reading:{evidenceMode:'source'}},summaryOnly:true,question:'Summarize supplied discussions',history:[],images:[]});
+ assert.equal(checked,true);assert.equal(result.text,'Summary');
+});

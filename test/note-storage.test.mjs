@@ -230,3 +230,20 @@ test('a closed summary session refreshes a stale cached summary from another dev
  assert.equal(restored.length,1);assert.equal(restored[0].savedSummary,true);assert.equal(restored[0].text,'New summary from another device.');
  assert.equal(JSON.parse(await readFile(join(f.dir,'chat.json'),'utf8'))[0].text,'New summary from another device.');
 });
+
+test('unchanged summaries reuse their result and appended turns send only new messages',async()=>{
+ const f=await fixture('summary'); await f.p.saveHistory(f.dir,f.history); assert.equal(f.requests.length,1);
+ await f.p.saveHistory(f.dir,f.history); assert.equal(f.requests.length,1);
+ const next=[...f.history,{role:'user',text:'NEW QUESTION'},{role:'assistant',text:'A corrected result: $x=2$.',backend:'claude'}];
+ await f.p.saveHistory(f.dir,next); assert.equal(f.requests.length,2);
+ const request=f.requests[1].request;
+ assert.match(request.question,/previousSummary/); assert.match(request.question,/NEW QUESTION/); assert.doesNotMatch(request.question,/RAW QUESTION SECRET|RAW ANSWER SECRET/); assert.equal(request.effort,'low');
+ await f.p.saveHistory(f.dir,next,{force:true}); assert.equal(f.requests.length,3);
+ f.p.endNoteSession(f.dir); assert.equal(f.p._noteSummaryState.size,0);
+});
+
+test('summary-only Claude calls bind empty tool arguments safely on Windows',()=>{
+ const {plugin:p,window}=loadPlugin();window.Zotero.isWin=true;
+ const args=p.claudeArgs({ctx:{dir:'C:/summary'},history:[],question:'Summarize',summaryOnly:true,stdin:true});
+ assert.ok(args.includes('--tools='));assert.ok(args.includes('--allowedTools='));assert.ok(!args.includes(''));
+});

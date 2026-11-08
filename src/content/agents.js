@@ -448,7 +448,8 @@ Object.assign(AbstractIn, {
  },
  async runACPAgent(id, request) {
   let text = "";
-  const client = await this.openACPAgent(id, request.ctx, event => {
+  const clientCtx = request.summaryOnly ? { ...request.ctx, reading: { ...request.ctx?.reading, evidenceMode: "knowledge" } } : request.ctx;
+  const client = await this.openACPAgent(id, clientCtx, event => {
    if (event.delta) text += event.delta;
    request.onProgress?.({ ...event, ...(event.delta ? { text } : {}) });
   }, request.onSpawn);
