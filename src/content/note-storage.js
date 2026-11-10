@@ -217,7 +217,7 @@
       finally { button.disabled=false; }
      },
     });
-    if (active.ctx.reading) this.menuItem(doc, menu, { label: active.ctx.reading.type === 'book' ? 'Summarize all book conversations' : 'Summarize all paper conversations', desc: 'Combine discussions across all chapters and chats.',
+    if (active.ctx.reading) this.menuItem(doc, menu, { label: active.ctx.reading.type === 'book' ? 'Summarize all book conversations' : 'Summarize all paper conversations', desc: 'Select knowledge points across all chats and keep the original answers.',
      onSelect: () => { this.closeMenu(root); this.openReadingExport(root); } });
    });
   },

@@ -29,196 +29,163 @@ async function setup(type = 'book') {
  return { ...env, p, ctx, dir, index, histories, job, original, notes };
 }
 
-const point = (refs, extra = {}) => ({ title: 'What is a set?', body: 'A collection, with membership explained.', chapterID: 'ch-01', originalNumber: '1.2', quote: 'Definition 1.2: A set is a collection of distinct objects.', refs, ...extra });
 
-const progressive = (data, extra = {}) => ({ documentKind: data.documentKind || 'other', updates: [{
- ...point(data.records.map(r => r.id), { originalNumber: '', quote: '' }), id: data.existingTopics[0]?.id || null,
- category: 'content', openQuestions: [], relations: [{ type: data.existingTopics.length ? 'supplement' : 'new',
- targetID: data.existingTopics[0]?.id || null, explanation: 'Connect the new discussion to this topic.' }], ...extra
-}], skippedRecords: [] });
+const inputData = request => JSON.parse(request.question.split('\nDATA:\n')[1]);
+const decisions = (data, edit = () => {}) => {
+ const result = { documentKind: data.documentKind || 'other', decisions: data.candidates.map(c => ({
+  id: c.id, include: true, topic: 'Knowledge ' + c.id, category: 'content', chapterID: c.chapterHint || null, reason: 'new', duplicateOf: null
+ })) };
+ edit(result); return { text: JSON.stringify(result) };
+};
 
-test('sequential export integrates earlier topics, verifies lazily and preserves original chats', async () => {
- const { p, ctx, dir, job } = await setup();
+test('batch selection copies complete original answers, omits user questions and skips duplicate knowledge', async () => {
+ const { p, ctx, histories, job, dir } = await setup();
+ histories.a[1].text = 'Original **English** answer.\n\n$$x^2 + y^2 = 1$$\n\n' + 'Detailed reasoning. '.repeat(6000) + '\nFINAL DETAIL';
+ p.exportReadingSource = async () => { throw new Error('Must not open PDF'); };
  const before = await readFile(join(dir, 'discussions.json'), 'utf8'); let calls = 0;
- p.runBackend = async (id, request) => {
-  assert.equal(id, 'codex'); assert.equal(request.history.length, 0); assert.equal(request.session, null);
-  assert.equal(request.ctx.reading.exportSummary, true); assert.notEqual(request.ctx.dir, ctx.dir);
-  const data = inputData(request); calls++;
-  if (calls === 1) {
-   assert.ok(data.records.every(r => r.id.startsWith('a:'))); assert.equal(data.existingTopics.length, 0);
-   return { text: JSON.stringify({ lookups: ['Definition 1.2'] }) };
-  }
-  if (calls === 2) assert.match(request.question, /collection of distinct objects/);
-  if (calls === 3) { assert.ok(data.records.every(r => r.id.startsWith('b:'))); assert.equal(data.existingTopics[0].id, 't1'); }
-  return { text: JSON.stringify(progressive(data, { originalNumber: '1.2', quote: 'Definition 1.2: A set is a collection of distinct objects.' })) };
+ p.runBackend = async (_, request) => {
+  calls++; assert.equal(request.summaryOnly, true); assert.equal(request.effort, 'low');
+  assert.equal(request.ctx.reading.evidenceMode, 'knowledge'); assert.equal(request.history.length, 0); assert.equal(request.session, null);
+  const data = inputData(request); assert.equal(data.candidates.length, 2);
+  assert.match(data.candidates[0].question, /What is a set/); assert.ok(request.question.length < 12000);
+  assert.ok(data.candidates[0].answerHint.length < 300);
+  return decisions(data, result => { Object.assign(result.decisions[1], { include: false, reason: 'duplicate', duplicateOf: 'a:1' }); });
  };
- const result = await p.generateReadingExport(ctx, job);
- assert.equal(calls, 3); assert.equal((result.markdown.match(/^#### /gm) || []).length, 1);
- assert.match(result.markdown, /### 1 Sets/); assert.match(result.markdown, /#### 1\.2 What is a set/);
- assert.match(result.markdown, /Chat 2.*Same question/); assert.match(result.markdown, /Original source: Definition 1\.2/);
+ const result = await p.generateReadingExport(ctx, job), state = JSON.parse(await readFile(result.statePath, 'utf8'));
+ assert.equal(calls, 1); assert.equal(state.entries.length, 1); assert.equal(state.entries[0].body, histories.a[1].text);
+ assert.ok(result.markdown.includes(histories.a[1].text)); assert.doesNotMatch(result.markdown, /What is a set\?|Explain the meaning of a set|Membership is the key/);
+ assert.equal(state.events[1].duplicateOf, 'a:1'); assert.equal(await readFile(result.markdownPath, 'utf8'), result.markdown);
  assert.equal(await readFile(join(dir, 'discussions.json'), 'utf8'), before);
- const state = JSON.parse(await readFile(result.statePath, 'utf8'));
- assert.equal(state.complete, true); assert.equal(state.events.length, 2); assert.equal(state.topics.length, 1);
- assert.deepEqual(state.topics[0].refs, ['a:0:0', 'a:1:0', 'b:0:0', 'b:1:0']);
- assert.equal(await readFile(result.markdownPath, 'utf8'), result.markdown);
- assert.deepEqual((await readdir(ctx.documentDir)).sort(), ['discussions.json', 'exports']);
 });
 
-test('snapshot includes edited PDF notes and every long chat piece, excludes deleted chats and other PDFs', async () => {
- const { p, ctx, histories, notes } = await setup();
- histories.a[1].text = 'x'.repeat(41000) + 'END OF LONG ANSWER';
- notes.push({ id: 1, key: 'N1', getTags: () => [{ tag: 'AbstractIn:Summary' }], getNote: () => '<p>attachment: PDF12345</p><p>Edited summary correction</p>' });
- notes.push({ id: 2, key: 'N2', getTags: () => [{ tag: 'AbstractIn:Summary' }], getNote: () => '<p>attachment: OTHERPDF</p><p>Not this paper</p>' });
- const snapshot = await p.collectReadingExport(ctx);
- assert.ok(snapshot.units.map(u => u.text).join('').includes('END OF LONG ANSWER'));
- assert.ok(snapshot.units.some(u => u.id.startsWith('note:N1')));
- assert.ok(!snapshot.units.some(u => /N2|deleted|superseded/.test(u.id)));
- assert.ok(p.readingExportBatches(snapshot.units).length >= 3);
-});
-
-test('unverified numbering receives separate export numbering and papers have no chapter grouping', async () => {
- const { p, ctx, index } = await setup('paper');
- const text = p.renderReadingExport({ ctx, index, title: 'Paper' }, [point(['a'], { originalNumber: '99.1', quote: 'Invented quotation 99.1' }), point(['b'], { originalNumber: '' })], { source: { text: 'Some original text' }, evidence: ['Different text'] });
- assert.match(text, /### paper\.S1/); assert.match(text, /### paper\.S2/); assert.match(text, /could not be verified/);
- assert.doesNotMatch(text, /## 1 Sets|### 99\.1/);
-});
-
-test('source-based additions without book numbering retain their verified quotation', async () => {
- const { p, ctx, index } = await setup();
- const quote = 'Membership is written as x in A.';
- const text = p.renderReadingExport({ ctx, index, title: 'Book' }, [point(['a'], { originalNumber: '', quote, body: 'Original-source addition: membership notation.' })], { source: { text: quote }, evidence: [quote] });
- assert.match(text, /### 1\.S1/); assert.match(text, /Original source: Membership/);
-});
-
-test('export source lookup works for text-only agents and labels missing evidence', async () => {
- const { p, job, ctx } = await setup(); job.ctx = ctx; job.backend = 'deepseek'; job.source = { text: '', error: 'PDF missing' }; job.evidence = [];
- let calls = 0;
- p.runBackend = async (id, request) => {
-  assert.equal(id, 'deepseek');
-  if (++calls === 1) return { text: '{"lookups":["Definition 1.2"]}' };
-  assert.match(request.question, /Original source unavailable: PDF missing/);
-  return { text: JSON.stringify({ points: [point(['a'], { body: 'Unverified: the original PDF is unavailable.' })] }) };
+test('initialized catalogue determines chapter ownership, including mixed-chapter chats', async () => {
+ const { p, ctx, histories, job } = await setup(); histories.b = [];
+ histories.a.push({ role: 'user', text: 'Explain a function' }, { role: 'assistant', text: 'Functions preserve an association.' });
+ p.runBackend = async (_, request) => {
+  const data = inputData(request); assert.deepEqual(data.catalogue.map(c => c.id), ['ch-01', 'ch-02']);
+  return decisions(data, result => { result.decisions[0].chapterID = 'ch-02'; result.decisions[1].chapterID = 'ch-01'; });
  };
- const result = await p.readingExportAgent(job, 'Return points JSON', {});
- assert.match(result.points[0].body, /Unverified/); assert.equal(calls, 2);
+ const result = await p.generateReadingExport(ctx, job), state = JSON.parse(await readFile(result.statePath, 'utf8'));
+ assert.equal(state.entries[0].chapterID, 'ch-02'); assert.equal(state.entries[1].chapterID, 'ch-01');
+ assert.ok(result.markdown.indexOf('### 1 Sets') < result.markdown.indexOf('Functions preserve'));
+ assert.ok(result.markdown.indexOf('### 2 Functions') < result.markdown.indexOf('A set is a collection'));
 });
 
-test('cancelled export starts no agent request; invalid output is rejected', async () => {
- const { p, job, ctx } = await setup(); job.ctx = ctx; job.evidence = []; job.source = { text: '' }; job.cancelled = true;
- p.runBackend = async () => { throw new Error('must not be called'); };
- await assert.rejects(p.readingExportAgent(job, '', {}), /Export cancelled/);
- job.cancelled = false; p.runBackend = async () => ({ text: 'not JSON' });
- await assert.rejects(p.readingExportAgent(job, '', {}), /invalid summary format/);
+test('unknown chapter assignment remains unassigned and papers do not acquire book chapters', async () => {
+ const { p, ctx, job } = await setup();
+ p.runBackend = async (_, request) => decisions(inputData(request), result => { for (const d of result.decisions) d.chapterID = null; });
+ let result = await p.generateReadingExport(ctx, job); assert.match(result.markdown, /### Unassigned/);
+ ctx.reading.type = 'paper'; result = await p.generateReadingExport(ctx, job);
+ assert.doesNotMatch(result.markdown, /### 1 Sets|### 2 Functions|### Unassigned/); assert.match(result.markdown, /### Knowledge points/);
 });
 
-test('source search returns relevant original passages without claiming absence', async () => {
- const { p, original } = await setup();
- assert.match(p.readingExportSearch({ text: original }, 'Definition 1.2'), /collection of distinct objects/);
- assert.match(p.readingExportSearch({ text: original }, 'nonexistentzzzz'), /not proof of absence/);
+test('unchanged exports reuse decisions; appended messages classify only the new answer', async () => {
+ const { p, ctx, histories, job } = await setup(); let calls = 0;
+ p.runBackend = async (_, request) => { calls++; return decisions(inputData(request)); };
+ await p.generateReadingExport(ctx, job); assert.equal(calls, 1);
+ p.assertAgentReadingReady = async () => { throw new Error('Cached export does not need an agent'); };
+ p.getLanguage = () => 'Different output language';
+ let result = await p.generateReadingExport(ctx, { ...job }); assert.equal(result.cached, true); assert.equal(calls, 1);
+ p.assertAgentReadingReady = async () => {};
+ histories.b.push({ role: 'user', text: 'New knowledge?' }, { role: 'assistant', text: 'An entirely new answer.' });
+ p.runBackend = async (_, request) => {
+  calls++; const data = inputData(request); assert.equal(data.candidates.length, 1); assert.equal(data.candidates[0].id, 'b:3'); assert.equal(data.included.length, 2);
+  return decisions(data);
+ };
+ result = await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 2); assert.match(result.markdown, /An entirely new answer/);
 });
 
-test('UI opens export preview, closes cleanly and does not start a billable request automatically', async () => {
+test('interrupted batches resume; failed or invalid selections do not replace a saved result', async () => {
+ const { p, ctx, histories, job, dir } = await setup(); histories.a = []; histories.b = [];
+ for (let i = 0; i < 13; i++) histories.a.push({ role: 'user', text: 'Question ' + i }, { role: 'assistant', text: 'Answer ' + i });
+ let calls = 0;
+ p.runBackend = async (_, request) => { if (++calls === 2) throw new Error('Disconnected'); return decisions(inputData(request)); };
+ await assert.rejects(p.generateReadingExport(ctx, job), /Disconnected/);
+ let state = JSON.parse(await readFile(join(dir, 'exports', 'summary-state.json'), 'utf8'));
+ assert.equal(state.events.length, 12); assert.equal(state.complete, false);
+ p.runBackend = async (_, request) => { calls++; const data = inputData(request); assert.equal(data.candidates.length, 1); return decisions(data); };
+ const complete = await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 3);
+ const saved = await readFile(complete.statePath, 'utf8'); histories.a.push({ role: 'assistant', text: 'More knowledge.' });
+ p.runBackend = async () => ({ text: '{"documentKind":"other","decisions":[]}' });
+ await assert.rejects(p.generateReadingExport(ctx, { ...job }), /incomplete/);
+ assert.equal(await readFile(complete.statePath, 'utf8'), saved);
+});
+
+test('edits rebuild the affected suffix; removed answers disappear without calling a model', async () => {
+ const { p, ctx, histories, job } = await setup(); let calls = 0;
+ p.runBackend = async (_, request) => { calls++; return decisions(inputData(request)); };
+ await p.generateReadingExport(ctx, job); histories.b[1].text = 'Corrected answer.\nPreserve it literally.';
+ p.runBackend = async (_, request) => { calls++; const data = inputData(request); assert.equal(data.candidates[0].id, 'b:1'); assert.equal(data.included.length, 1); return decisions(data); };
+ let result = await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 2); assert.ok(result.markdown.includes(histories.b[1].text));
+ histories.b = []; result = await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 2); assert.doesNotMatch(result.markdown, /Corrected answer/);
+});
+
+test('invented chapter IDs, duplicate references and incomplete candidate coverage are rejected', async () => {
+ const { p, ctx, job } = await setup();
+ for (const mutate of [
+  result => { result.decisions[0].chapterID = 'invented'; },
+  result => { Object.assign(result.decisions[0], { include: false, reason: 'duplicate', duplicateOf: 'b:1' }); },
+  result => { result.decisions[1].id = result.decisions[0].id; },
+  result => { result.decisions.pop(); }
+ ]) {
+  p.runBackend = async (_, request) => decisions(inputData(request), mutate);
+  await assert.rejects(p.generateReadingExport(ctx, { ...job }), /chapter|duplicate|repeated|incomplete/);
+ }
+});
+
+test('language books use one section; original multilingual answers are never translated', async () => {
+ const { p, ctx, histories, job } = await setup();
+ histories.a[1].text = '\u539f\u56de\u7b54\uff1a\u96c6\u5408\u3002\nEnglish example.\n$A \\subseteq B$';
+ p.runBackend = async (_, request) => {
+  assert.doesNotMatch(request.question, /Write in English|Respond in English/);
+  return decisions(inputData(request), result => { result.decisions[1].category = 'language'; });
+ };
+ let result = await p.generateReadingExport(ctx, { ...job, organization: 'split' });
+ assert.match(result.markdown, /^## Language/m); assert.ok(result.markdown.includes(histories.a[1].text));
+ result = await p.generateReadingExport(ctx, { ...job, organization: 'language' });
+ assert.doesNotMatch(result.markdown, /^## Language/m); assert.ok(result.markdown.includes(histories.a[1].text));
+});
+
+test('live chats, legacy chats and edited notes stay attachment-scoped; sync transcripts are not duplicated', async () => {
+ const { p, ctx, histories, notes, dir, job } = await setup();
+ histories.live = [{ role: 'assistant', text: 'Unsaved live knowledge.' }];
+ p.registerChatContext({ ...ctx, dir: join(dir, 'discussions', 'live'), discussion: { id: 'live', chapterID: 'ch-02', number: 3, topic: 'Live' } });
+ p.registerChatContext({ ...ctx, documentDir: join(dir, 'other'), dir: join(dir, 'other', 'discussions', 'foreign'), attachmentItem: { key: 'OTHER' }, discussion: { id: 'foreign' } });
+ notes.push({ id: 1, key: 'EDIT', getTags: () => [{ tag: 'AbstractIn:Summary' }], getNote: () => '<p>attachment: PDF12345</p><p>Edited reading note</p>' });
+ notes.push({ id: 2, key: 'OTHER', getTags: () => [{ tag: 'AbstractIn:Summary' }], getNote: () => '<p>attachment: ANOTHER</p><p>Foreign content</p>' });
+ notes.push({ id: 3, key: 'SYNC', getTags: () => [{ tag: 'AbstractIn' }, { tag: 'AbstractIn:Chat' }], getNote: () => '<p>attachment: PDF12345</p><p>Raw user transcript</p>' });
+ const legacy = join(dir, 'chat-legacy.json'); await writeFile(legacy, JSON.stringify([{ role: 'user', text: 'Legacy question' }, { role: 'assistant', text: 'Legacy answer.' }]));
+ p.listDiscussionChildren = async () => [{ path: legacy, name: 'chat-legacy.json', isDir: false }];
+ p.runBackend = async (_, request) => decisions(inputData(request));
+ const result = await p.generateReadingExport(ctx, job);
+ assert.match(result.markdown, /Unsaved live knowledge|Edited reading note|Legacy answer/);
+ assert.doesNotMatch(result.markdown, /Foreign content|Raw user transcript|Legacy question/);
+});
+
+test('saved-summary-only histories are labeled honestly; hidden record protocol is not exported', async () => {
+ const { p, ctx, histories, job } = await setup();
+ histories.a = [{ role: 'assistant', text: 'Only a saved summary remains.', savedSummary: true }];
+ histories.b[1].text = 'Visible original answer.\n<abstractin-record>{"summary":"HIDDEN"}</abstractin-record>';
+ p.runBackend = async (_, request) => decisions(inputData(request));
+ const result = await p.generateReadingExport(ctx, job);
+ assert.match(result.markdown, /previously saved conversation summary/); assert.doesNotMatch(result.markdown, /HIDDEN|abstractin-record/);
+});
+
+test('UI preserves the existing export entry and starts no request until Generate', async () => {
  const { p, ctx, document } = await setup(); const body = document.createElement('div'); document.body.append(body); p.renderSkeleton(document, body);
  const root = body.querySelector('.abstractin-root'); p._views.set(root, { root, ctx, doc: document });
  let calls = 0; p.generateReadingExport = async () => { calls++; return { title: 'Book', markdown: '# Ready' }; };
  root.querySelector('.abstractin-export-reading').click();
- assert.equal(calls, 0); assert.equal(p._readingExports.size, 1);
- const panel = root.querySelector('.abstractin-reading-export'); assert.ok(panel);
+ const panel = root.querySelector('.abstractin-reading-export'); assert.ok(panel); assert.equal(calls, 0);
+ assert.match(panel.textContent, /copied in full/); assert.equal(panel.querySelector('input[type=checkbox]'), null);
  await panel.querySelector('button').onclick(); assert.equal(calls, 1); assert.equal(panel.querySelector('textarea').value, '# Ready');
- [...panel.querySelectorAll('button')].find(b => b.textContent === 'Close').click();
- assert.equal(p._readingExports.size, 0); assert.equal(root.querySelector('.abstractin-reading-export'), null);
+ [...panel.querySelectorAll('button')].find(b => b.textContent === 'Close').click(); assert.equal(p._readingExports.size, 0);
 });
 
-const inputData = request => JSON.parse(request.question.split('\nDATA:\n')[1].split('\nLOOKUP RESULTS:\n')[0]);
-
-test('whole-book export reads each exchange and includes live chats without opening the PDF', async () => {
- const { p, ctx, job, histories, dir } = await setup(); job.verifySource = false;
- histories.live = [{ role: 'user', text: 'New chapter question' }, { role: 'assistant', text: 'New conclusion' }];
- p.registerChatContext({ ...ctx, dir: join(dir, 'discussions', 'live'), discussion: { id: 'live', chapterID: 'ch-02', number: 3, topic: 'Live topic' } });
- p.registerChatContext({ ...ctx, documentDir: join(dir, 'another-pdf'), dir: join(dir, 'another-pdf', 'discussions', 'foreign'), attachmentItem: { key: 'OTHERPDF' }, discussion: { id: 'foreign' } });
- p.exportReadingSource = async () => { throw new Error('Must not open PDF'); };
- let calls = 0; const seen = [];
- p.runBackend = async (_, request) => {
-  calls++; assert.equal(request.effort, 'low'); assert.equal(request.summaryOnly, true);
-  const data = inputData(request); seen.push(...data.records.map(r => r.id));
-  return { text: JSON.stringify(progressive(data)) };
- };
- const result = await p.generateReadingExport(ctx, job);
- assert.equal(calls, 3); assert.ok(seen.some(id => id.startsWith('a:'))); assert.ok(seen.some(id => id.startsWith('b:')));
- assert.ok(seen.some(id => id.startsWith('live:'))); assert.ok(!seen.some(id => id.startsWith('foreign:')));
- assert.match(result.markdown, /Chat 3.*Live topic/); assert.match(result.markdown, /all available conversations/);
- const cached = await p.generateReadingExport(ctx, { ...job }); assert.equal(cached.cached, true); assert.equal(calls, 3);
-});
-
-test('long exchanges split without omission and new exchanges only process the new suffix', async () => {
- const { p, ctx, histories, job } = await setup(); job.verifySource = false;
- histories.a[1].text = 'Long discussion. '.repeat(8000) + 'FINAL SENTENCE';
- const segments = p.readingExportSegments((await p.collectReadingExport(ctx)).units); assert.ok(segments.length > 2);
- let calls = 0, previews = 0; job.onPreview = () => previews++;
- p.runBackend = async (_, request) => { calls++; return { text: JSON.stringify(progressive(inputData(request))) }; };
- await p.generateReadingExport(ctx, job); assert.equal(calls, segments.length); assert.equal(previews, segments.length + 1);
- histories.b.push({ role: 'user', text: 'A new question' }, { role: 'assistant', text: 'A new conclusion' });
- const before = calls; await p.generateReadingExport(ctx, { ...job }); assert.equal(calls - before, 1);
-});
-
-test('incomplete coverage fails without accepting an incomplete segment', async () => {
- const { p, ctx, job, dir } = await setup(); job.verifySource = false;
- p.runBackend = async (_, request) => { const data = inputData(request), out = progressive(data); out.updates[0].refs = [data.records[0].id]; return { text: JSON.stringify(out) }; };
- await assert.rejects(p.generateReadingExport(ctx, job), /omitted part of the discussion/);
- const state = JSON.parse(await readFile(join(dir, 'exports', 'summary-state.json'), 'utf8'));
- assert.equal(state.complete, false); assert.equal(state.events.length, 0);
-});
-
-test('optional source verification does not load the PDF unless requested', async () => {
- const { p, ctx, job } = await setup(); let opened = false;
- p.exportReadingSource = async () => { opened = true; throw new Error('Not needed'); };
- p.runBackend = async (_, request) => ({ text: JSON.stringify(progressive(inputData(request))) });
- await p.generateReadingExport(ctx, job); assert.equal(opened, false);
-});
-
-test('interruptions resume saved segments; editing earlier messages rebuilds the dependent suffix', async () => {
- const { p, ctx, job, histories, dir } = await setup(); job.verifySource = false; let calls = 0;
- p.runBackend = async (_, request) => { calls++; if (calls === 2) throw new Error('Disconnected'); return { text: JSON.stringify(progressive(inputData(request))) }; };
- await assert.rejects(p.generateReadingExport(ctx, job), /Disconnected/);
- let state = JSON.parse(await readFile(join(dir, 'exports', 'summary-state.json'), 'utf8')); assert.equal(state.events.length, 1);
- p.runBackend = async (_, request) => { calls++; const data = inputData(request); assert.ok(data.records.every(r => r.id.startsWith('b:'))); return { text: JSON.stringify(progressive(data)) }; };
- await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 3);
- histories.a[0].text = 'An edited question';
- p.runBackend = async (_, request) => { calls++; return { text: JSON.stringify(progressive(inputData(request))) }; };
- await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 5);
- histories.b.length = 0;
- const shortened = await p.generateReadingExport(ctx, { ...job }); assert.equal(calls, 5);
- state = JSON.parse(await readFile(shortened.statePath, 'utf8'));
- assert.equal(state.topics[0].refs.length, 2); assert.doesNotMatch(shortened.markdown, /Chat 2/);
-});
-
-test('content and language are independent while language books produce one section', async () => {
- const { p, ctx, job } = await setup(); job.verifySource = false;
- p.runBackend = async (_, request) => {
-  const data = inputData(request), out = progressive(data); out.updates[0].category = 'content';
-  if (data.records[0].id.startsWith('a:')) out.updates.push({ ...out.updates[0], category: 'language', title: 'Collection: vocabulary', body: 'Word meaning and use.' });
-  return { text: JSON.stringify(out) };
- };
- let result = await p.generateReadingExport(ctx, job);
- assert.match(result.markdown, /^## Book content/m); assert.match(result.markdown, /^## Language/m);
- p.runBackend = async (_, request) => ({ text: JSON.stringify(progressive(inputData(request), { category: 'language' })) });
- result = await p.generateReadingExport(ctx, { ...job, organization: 'language' });
- assert.match(result.markdown, /^## Book content/m); assert.doesNotMatch(result.markdown, /^## Language/m);
- const state = JSON.parse(await readFile(result.statePath, 'utf8')); assert.ok(state.topics.every(t => t.category === 'content'));
-});
-
-test('related topics outside the selected context are read on demand before revision', async () => {
- const { p, job, ctx, index } = await setup(); job.ctx = ctx; job.verifySource = false; job.evidence = []; job.source = { text: '' };
- const topic = { ...point(['old']), id: 't1', category: 'content', relations: [], openQuestions: [] };
- const state = { title: 'Book', documentKind: 'other', topics: [topic], events: [] };
- p.readingSummaryContext = () => []; let calls = 0;
- p.runBackend = async (_, request) => {
-  const data = inputData(request); calls++;
-  if (calls === 1) { assert.equal(data.existingTopics.length, 0); assert.equal(data.topicIndex[0].id, 't1'); return { text: '{"readTopics":["t1"]}' }; }
-  assert.equal(data.existingTopics[0].body, topic.body);
-  return { text: JSON.stringify(progressive(data, { body: 'Corrected explanation', relations: [{ type: 'correction', targetID: 't1', explanation: 'The new discussion corrects the old claim.' }] })) };
- };
- const result = await p.readingSummaryStep(job, state, [{ id: 'new', text: 'Unrelated wording' }], index.chapters);
- assert.equal(calls, 2); assert.equal(result.topics.length, 1); assert.deepEqual(Array.from(result.topics[0].refs), ['old', 'new']);
- assert.equal(result.topics[0].relations[0].type, 'correction');
+test('cancelled jobs start no backend and malformed model output is rejected', async () => {
+ const { p, ctx, job } = await setup(); job.cancelled = true;
+ p.runBackend = async () => { throw new Error('Must not run'); };
+ await assert.rejects(p.generateReadingExport(ctx, job), /cancelled/);
+ job.cancelled = false; p.runBackend = async () => ({ text: 'bad JSON' });
+ await assert.rejects(p.generateReadingExport(ctx, job), /invalid selection JSON/);
 });
