@@ -79,7 +79,7 @@ window.AbstractInComposer = {
 			EditorView.lineWrapping,
 			enabled.of([EditorState.readOnly.of(config.disabled), EditorView.editable.of(!config.disabled)]),
 			hint.of(placeholder(config.placeholder || "")),
-			EditorView.contentAttributes.of({ "aria-label": "Message", "aria-multiline": "true", spellcheck: "false" }),
+			EditorView.contentAttributes.of({ "aria-label": config.label || "Message", "aria-multiline": "true", spellcheck: "false" }),
 			Prec.highest(EditorView.domEventHandlers({
 				keydown(event, editor) {
 					if (editor.state.facet(EditorState.readOnly)) return false;
@@ -99,7 +99,7 @@ window.AbstractInComposer = {
 			EditorView.exceptionSink.of(error => config.onError(error)),
 			EditorView.theme({
 				"&": { color: "var(--editor-text)", backgroundColor: "transparent", font: "inherit" },
-				".cm-scroller": { fontFamily: "inherit", lineHeight: "1.4", maxHeight: "180px", overflow: "auto" },
+				".cm-scroller": { fontFamily: "inherit", lineHeight: "1.4", maxHeight: (config.maxHeight || 180) + "px", minHeight: (config.minHeight || 40) + "px", overflow: "auto" },
 				".cm-content": { padding: "1px 0", minHeight: "2.8em", caretColor: "var(--editor-text)" },
 				".cm-line": { padding: "0 1px" },
 				"&.cm-focused": { outline: "none" },
@@ -120,7 +120,7 @@ window.AbstractInComposer = {
 		});
 		view.dom.addEventListener("focusin", () => view.dispatch({ effects: focusChanged.of(true) }));
 		view.dom.addEventListener("focusout", () => view.dispatch({ effects: focusChanged.of(false) }));
-		const size = new ResizeObserver(() => config.onHeight(Math.min(180, Math.max(40, view.dom.getBoundingClientRect().height))));
+		const size = new ResizeObserver(() => config.onHeight(Math.min(config.maxHeight || 180, Math.max(config.minHeight || 40, view.dom.getBoundingClientRect().height))));
 		size.observe(view.dom);
 		return {
 			sync(text, disabled, label) {

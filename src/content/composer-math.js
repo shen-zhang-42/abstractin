@@ -26,11 +26,11 @@ Object.assign(AbstractIn, {
 		return tokens;
 	},
 
-	installMathComposer(input) {
+	installMathComposer(input, options = {}) {
 		const doc = input.ownerDocument, win = doc.defaultView;
 		let disposeNative = this.installNativeMathComposer(input);
 		const frame = this.el(doc, "iframe", "abstractin-composer-frame");
-		frame.setAttribute("title", "Message editor");
+		frame.setAttribute("title", options.note ? "Markdown note editor" : "Message editor");
 		// XUL chrome documents may not create a docshell for display:none
 		// iframes. Keep it laid out offscreen until the HTML editor is ready.
 		frame.style.cssText = "position:absolute;left:-10000px;visibility:hidden;height:40px";
@@ -84,6 +84,7 @@ Object.assign(AbstractIn, {
 				const focused = doc.activeElement === input;
 				const start = input.selectionStart, end = input.selectionEnd, direction = input.selectionDirection;
 				editor = factory.create({
+					maxHeight: options.note ? 600 : 180, minHeight: options.note ? 300 : 40, label: options.note ? "Markdown note" : "Message",
 					text: input.value, disabled: input.disabled, placeholder: input.placeholder,
 					tokens: text => this.composerMathTokens(text),
 					renderMath: (target, tex, display) => this.texToMathML(target, tex, display),
@@ -95,7 +96,8 @@ Object.assign(AbstractIn, {
 							if (changed) input.dispatchEvent(new win.Event("input", { bubbles: true }));
 						} finally { updating = false; }
 					},
-					onKey: event => (this.isSendKey(event) || event.key === "Escape" || (event.key === "ArrowUp" && !input.value) || event.altKey) ? forward("keydown", event) : false,
+					onKey: event => options.note ? ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" ? forward("keydown", event) : false) :
+						(this.isSendKey(event) || event.key === "Escape" || (event.key === "ArrowUp" && !input.value) || event.altKey) ? forward("keydown", event) : false,
 					onPaste: event => event.clipboardData?.files.length ? forward("paste", event, "clipboardData") : false,
 					onDrop: event => event.dataTransfer?.files.length ? forward("drop", event, "dataTransfer") : false,
 					onHeight: height => { frame.style.height = height + "px"; },

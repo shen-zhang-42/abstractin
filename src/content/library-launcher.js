@@ -68,6 +68,11 @@
 			const status = this.el(doc, "p", "abstractin-library-status"); status.setAttribute("role", "status");
 			const start = this.el(doc, "button", "abstractin-library-start", "Start Reading"); start.type = "button"; start.disabled = true;
 			launcher.append(header, welcome, add, list, status, start);
+			const notes = this.el(doc, "div", "abstractin-library-note-actions");
+			const newNote = this.el(doc, "button", null, "New Markdown note"), openNote = this.el(doc, "button", null, "Open selected Markdown note");
+			newNote.onclick = () => this.openMarkdownNote({ win, parent: selected?.size === 1 ? [...selected.values()][0] : null }).catch(e => { status.textContent = e.message || String(e); });
+			openNote.onclick = () => this.openSelectedMarkdownNote(win).catch(e => { status.textContent = e.message || String(e); });
+			notes.append(newNote, openNote); launcher.append(notes);
 			const selected = state.readingDocuments ||= new Map();
 			let busy = false;
 			const draw = () => {

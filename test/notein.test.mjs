@@ -58,6 +58,41 @@ for (const modern of [false, true]) test(`NoteIn ${modern ? '10' : '9'} projecti
  assert.deepEqual([ordinary, collision, chat, reading].map(n => [n.id,n.parentID,n.getNote()]), before);
 });
 
+for (const modern of [false, true]) test(`NoteIn and NoteOut have independent directories in Zotero ${modern ? '10' : '9'}`, async () => {
+ const f = fixture(modern), { p, parent, view, provider, chat, reading } = f;
+ const written = f.note('AbstractIn:Markdown', ''); written.setNote(p.markdownNoteHTML(written, 'My own note', '# Ideas\n\n$x$', parent, 1));
+ const original = written.getNote(); await p.organizeNoteInParent(parent.id);
+ const incoming = p._noteInGroups.get(parent.id), outgoing = p._noteOutGroups.get(parent.id);
+ assert.ok(incoming); assert.ok(outgoing); assert.notEqual(incoming.anchor.id, outgoing.anchor.id);
+ assert.deepEqual(Array.from(incoming.notes, n => n.id), [chat.id, reading.id]);
+ assert.deepEqual(Array.from(outgoing.notes, n => n.id), [written.id]);
+ assert.match(outgoing.anchor.getNote(), /<h1>NoteOut<\/h1>/);
+ f.populate(); const adapter = p.installNoteInTree(view);
+ assert.ok(provider._rows.some(row => row.ref === incoming.anchor)); assert.ok(provider._rows.some(row => row.ref === outgoing.anchor));
+ assert.ok(!provider._rows.some(row => row.ref === written || row.ref === chat));
+ await view.selectItems([written.id]);
+ assert.ok(provider._rows.some(row => row.ref === written && row.level === 2));
+ assert.ok(!provider._rows.some(row => row.ref === chat));
+ adapter.toggle(provider._rows.findIndex(row => row.ref === incoming.anchor));
+ assert.ok(provider._rows.some(row => row.ref === chat && row.level === 2));
+ assert.ok(provider._rows.some(row => row.ref === written && row.level === 2));
+ adapter.dispose(); assert.ok(provider._rows.some(row => row.ref === written && row.level === 1));
+ assert.equal(written.parentID, parent.id); assert.equal(written.getNote(), original);
+});
+
+test('a NoteOut-only search result does not pull automatic discussions into the result', async () => {
+ const f = fixture(true), { p, parent, view, provider, row } = f;
+ const written = f.note('AbstractIn:Markdown', ''); written.setNote(p.markdownNoteHTML(written, 'Personal', 'My result', parent, 1));
+ await p.organizeNoteInParent(parent.id);
+ const incoming = p._noteInGroups.get(parent.id), outgoing = p._noteOutGroups.get(parent.id);
+ view.collectionTreeRow = { id: 'search', type: 'search', searchText: 'Personal' };
+ provider._rows = [row(parent, 0), row(written, 1)];
+ const adapter = p.installNoteInTree(view);
+ assert.ok(provider._rows.some(row => row.ref === outgoing.anchor)); assert.ok(!provider._rows.some(row => row.ref === incoming.anchor));
+ await view.selectItems([written.id]); assert.ok(provider._rows.some(row => row.ref === written));
+ assert.ok(!provider._rows.some(row => row.ref === f.chat)); adapter.dispose();
+});
+
 test('new owned notes join the group and deleted notes do not reappear from the hidden-row cache', async () => {
  const f = fixture(), { p, view, provider, parent, chat } = f;
  await p.organizeNoteInParent(1); f.populate(); const adapter = p.installNoteInTree(view);

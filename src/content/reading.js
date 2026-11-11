@@ -536,6 +536,11 @@ Object.assign(AbstractIn, {
 	},
 
 	updateReadingGate(view) {
+		if (view.ctx.noteWorkspace) {
+			view.root.dataset.readingReady = "true"; view.root.dataset.readingIntro = "false";
+			view.root.querySelector(".abstractin-composer").hidden = false;
+			return;
+		}
 		if (!view.ctx.paperItem && !view.ctx.attachmentItem) {
 			view.root.querySelector(".abstractin-composer").hidden = false;
 			return;

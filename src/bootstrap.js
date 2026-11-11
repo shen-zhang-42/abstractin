@@ -42,6 +42,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(resourceURI + "content/reading-export.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/notein.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/note-storage.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/note-editor.js");
 	AbstractIn.init({ id, version, rootURI, resourceURI });
 	// Load the bundled renderer immediately, before any answer needs it.
 	AbstractIn.getKatex();
@@ -67,7 +68,7 @@ function onMainWindowUnload({ window }) {
 	AbstractIn.removeFromWindow(window);
 }
 
-function shutdown() {
+async function shutdown() {
 	log("Shutting down");
 	if (!AbstractIn) {
 		chromeHandle?.destruct();
@@ -75,6 +76,7 @@ function shutdown() {
 		return;
 	}
 	AbstractIn.unregisterReaderHooks();
+	await AbstractIn.closeMarkdownNoteWindows();
 	AbstractIn.closeSettings();
 	AbstractIn.stopNoteIn();
 	AbstractIn.unwatchPrefs();

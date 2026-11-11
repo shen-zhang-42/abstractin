@@ -3,7 +3,7 @@
 (() => {
  const addWindow = AbstractIn.addToWindow, removeWindow = AbstractIn.removeFromWindow;
  Object.assign(AbstractIn, {
-  _noteInGroups: new Map(), _noteInAnchors: new Map(), _noteInNoteParents: new Map(), _noteInWindows: new Map(),
+  _noteInGroups: new Map(), _noteOutGroups: new Map(), _noteInAnchors: new Map(), _noteInNoteParents: new Map(), _noteInWindows: new Map(),
   _noteInPending: new Set(), _noteInQueue: Promise.resolve(), _noteInOrganizing: new Map(),
   noteInMetadata(note, parent, legacy = false) {
    if (!note?.isNote?.() || note.deleted || note.parentID !== parent.id || note.libraryID !== parent.libraryID) return null;
@@ -12,9 +12,11 @@
    for (const pre of template.content.querySelectorAll('pre')) {
     try {
      const data = JSON.parse(pre.textContent);
-     if (['abstractin-notein-v1', 'abstractin-chat-v1'].includes(data.format) && data.itemKey !== parent.key) return null;
+     if (['abstractin-notein-v1', 'abstractin-noteout-v1', 'abstractin-chat-v1', 'abstractin-markdown-note-v1'].includes(data.format) && data.itemKey !== parent.key) return null;
      if (data.format === 'abstractin-notein-v1' && tags.includes('AbstractIn:NoteIn') && data.itemKey === parent.key) return 'anchor';
      if (data.format === 'abstractin-chat-v1' && data.itemKey === parent.key) return 'note';
+     if (data.format === 'abstractin-noteout-v1' && tags.includes('AbstractIn:NoteOut')) return 'out-anchor';
+     if (data.format === 'abstractin-markdown-note-v1' && tags.includes('AbstractIn:Markdown')) return 'out-note';
     } catch (_) {}
    }
    const title = template.content.querySelector('h1')?.textContent || '';
@@ -31,7 +33,7 @@
   async _organizeNoteInParent(id) {
    const epoch = this._noteInEpoch;
    const parent = await Zotero.Items.getAsync(id);
-   if (!parent?.isRegularItem?.() || parent.deleted) { this._noteInGroups.delete(id); return; }
+   if (!parent?.isRegularItem?.() || parent.deleted) { this._noteInGroups.delete(id); this._noteOutGroups.delete(id); return; }
    if (typeof parent.loadChildItems === 'function') await parent.loadChildItems();
    const notes = await Zotero.Items.getAsync(parent.getNotes());
    if (epoch !== this._noteInEpoch || this._noteInRunning === false) return;
@@ -46,9 +48,10 @@
      }
     } catch (_) {}
    }
-   const owned = []; let membershipChanged = false;
+   const owned = [], written = []; let membershipChanged = false;
    for (const note of notes) {
     const strict = this.noteInMetadata(note, parent);
+    if (strict === 'out-note') written.push(note);
     if (strict === 'note' || this.noteInMetadata(note, parent, true) === 'note') {
      owned.push(note);
      if (!strict && !legacyKeys.has(note.key)) { legacyKeys.add(note.key); membershipChanged = true; }
@@ -65,10 +68,31 @@
    }
    const previous = this._noteInGroups.get(id);
    if (previous) this._noteInAnchors.delete(previous.anchor.id);
-   if (!anchor) { this._noteInGroups.delete(id); return; }
-   const group = { parent, anchor, notes: [...owned, ...anchors.slice(1)] };
-   this._noteInGroups.set(id, group); this._noteInAnchors.set(anchor.id, group);
-   this._noteInNoteParents.set(anchor.id, id);
+   if (!anchor) this._noteInGroups.delete(id);
+   else {
+    const group = { parent, anchor, name: 'NoteIn', notes: [...owned, ...anchors.slice(1)] };
+    this._noteInGroups.set(id, group); this._noteInAnchors.set(anchor.id, group); this._noteInNoteParents.set(anchor.id, id);
+   }
+   const outAnchors = notes.filter(note => this.noteInMetadata(note, parent) === 'out-anchor').sort((a,b) => a.id-b.id);
+   let outAnchor = outAnchors[0];
+   if (!outAnchor && written.length && parent.isEditable()) {
+    outAnchor = new Zotero.Item('note'); outAnchor.libraryID = parent.libraryID; outAnchor.parentID = id;
+    outAnchor.setNote(this.noteOutIndexHTML(parent)); outAnchor.addTag('AbstractIn'); outAnchor.addTag('AbstractIn:NoteOut'); await outAnchor.saveTx();
+   }
+   const oldOut = this._noteOutGroups.get(id); if (oldOut) this._noteInAnchors.delete(oldOut.anchor.id);
+   if (!outAnchor) this._noteOutGroups.delete(id);
+   else {
+    const group = { parent, anchor: outAnchor, name: 'NoteOut', notes: [...written, ...outAnchors.slice(1)] };
+    this._noteOutGroups.set(id, group); this._noteInAnchors.set(outAnchor.id, group); this._noteInNoteParents.set(outAnchor.id, id);
+   }
+  },
+  noteInParentGroups(id) { return [this._noteInGroups.get(id), this._noteOutGroups.get(id)].filter(Boolean); },
+  noteGroupForItem(id) { return this.noteInParentGroups(this._noteInNoteParents.get(id)).find(group => group.anchor.id === id || group.notes.some(note => note.id === id)); },
+  noteOutIndexHTML(parent) {
+   const doc = Zotero.getMainWindow().document, body = this.el(doc, 'div');
+   body.append(this.el(doc, 'h1', null, 'NoteOut'), this.el(doc, 'p', null, 'Your own Markdown notes. Open them from the Write note menu or select a note and choose Open selected Markdown note.'),
+    this.el(doc, 'pre', null, JSON.stringify({ format: 'abstractin-noteout-v1', itemKey: parent.key })));
+   return body.outerHTML;
   },
   noteInIndexHTML(parent, legacyKeys) {
    const doc = Zotero.getMainWindow().document, body = this.el(doc, 'div');
@@ -122,7 +146,7 @@
     const parents = new Set();
     for (const id of ids) {
      let item; try { item = await Zotero.Items.getAsync(id); } catch (_) { /* Deleted items can be identified from the previous projection. */ }
-     if (item?.getTags?.().some(t => t.tag === 'AbstractIn:NoteIn')) continue;
+     if (item?.getTags?.().some(t => ['AbstractIn:NoteIn', 'AbstractIn:NoteOut'].includes(t.tag))) continue;
      if (item?.isNote?.() && item.parentID) parents.add(item.parentID);
      if (item?.isRegularItem?.() && this._noteInGroups.has(id)) parents.add(id);
      const oldParent = this._noteInNoteParents.get(id); if (oldParent) parents.add(oldParent);
@@ -204,13 +228,15 @@
    const enabled = () => active && !plugin.noteInViewReason(view);
    const groupAt = index => {
     const group = enabled() && plugin._noteInAnchors.get(provider._rows[index]?.ref?.id);
-    return group && stored.get(group.parent.id)?.size ? group : null;
+    return group && stored.get(group.anchor.id)?.size ? group : null;
    };
    const create = (ref, level) => modern ? provider.createRow(ref, level, false) : { ref, id: ref.treeViewID, level, isOpen: false, getField: (field, plain) => ref.getField(field, plain, true), numNotes: () => 0 };
    const restoreRows = () => {
     for (let at = provider._rows.length - 1; at >= 0; at--) {
-     const row = provider._rows[at], cache = stored.get(row.ref?.id);
-     if (!cache || !row.isOpen) continue;
+     const row = provider._rows[at];
+     const caches = plugin.noteInParentGroups(row.ref?.id).map(group => stored.get(group.anchor.id)).filter(Boolean);
+     if (!caches.length || !row.isOpen) continue;
+     const cache = new Map(caches.flatMap(cache => [...cache]));
      let end = at + 1; while (end < provider._rows.length && provider._rows[end].level > row.level) end++;
      const children = provider._rows.slice(at + 1, end).filter(child => !injected.has(child));
      const present = new Set(children.map(child => child.ref?.id));
@@ -227,26 +253,32 @@
      else if (provider._rows !== lastOutput) stored.clear();
      const input = provider._rows, output = [];
      for (let at = 0; at < input.length;) {
-      const row = input[at], group = enabled() && row.ref?.isRegularItem?.() && row.isOpen ? plugin._noteInGroups.get(row.ref.id) : null;
-      if (!group) { output.push(row); at++; continue; }
+      const row = input[at], groups = enabled() && row.ref?.isRegularItem?.() && row.isOpen ? plugin.noteInParentGroups(row.ref.id) : [];
+      if (!groups.length) { output.push(row); at++; continue; }
       let end = at + 1; while (end < input.length && input[end].level > row.level) end++;
       const children = input.slice(at + 1, end);
+      const projected = new Map(), hidden = new Set();
+      for (const group of groups) {
       let anchorRow = children.find(r => r.ref?.id === group.anchor.id);
       const ids = new Set(group.notes.filter(n => !n.deleted && n.parentID === group.parent.id).map(n => n.id));
-      const cache = stored.get(group.parent.id) || new Map();
+      const cache = stored.get(group.anchor.id) || new Map();
       for (const child of children) if (ids.has(child.ref?.id)) cache.set(child.ref.id, child);
       for (const id of [...cache.keys()]) if (!ids.has(id)) cache.delete(id);
-      stored.set(group.parent.id, cache);
+      stored.set(group.anchor.id, cache);
       if (!anchorRow && cache.size) {
        anchorRow = create(group.anchor, row.level + 1); injected.add(anchorRow);
        const first = children.findIndex(child => ids.has(child.ref?.id));
        children.splice(first < 0 ? children.length : first, 0, anchorRow);
       }
+      for (const id of ids) hidden.add(id);
+      if (anchorRow) projected.set(anchorRow, { group, ids, cache });
+      }
       output.push(row);
       for (const child of children) {
-       if (ids.has(child.ref?.id)) continue;
+       if (hidden.has(child.ref?.id)) continue;
        output.push(child);
-       if (child !== anchorRow) continue;
+       const projection = projected.get(child); if (!projection) continue;
+       const { group, ids, cache } = projection;
        child.isOpen = opened.has(group.anchor.id);
        if (child.isOpen) for (const note of group.notes) if (ids.has(note.id) && cache.has(note.id)) {
         const nested = cache.get(note.id) || create(note, row.level + 2); nested.level = row.level + 2;
@@ -277,7 +309,7 @@
    };
    for (const name of ['isContainer', 'isContainerEmpty', 'isContainerOpen']) patch(view, name, original => function(index, ...args) {
     const group = groupAt(index);
-    return group ? name === 'isContainer' ? true : name === 'isContainerEmpty' ? !stored.get(group.parent.id)?.size : opened.has(group.anchor.id) : original.call(this, index, ...args);
+    return group ? name === 'isContainer' ? true : name === 'isContainerEmpty' ? !stored.get(group.anchor.id)?.size : opened.has(group.anchor.id) : original.call(this, index, ...args);
    });
    const toggleName = modern ? 'onToggleOpenState' : 'toggleOpenState';
    patch(view, toggleName, original => function(index, ...args) { if (toggle(index)) return modern ? undefined : Promise.resolve(); return original.call(this, index, ...args); });
@@ -289,7 +321,7 @@
     patch(view, '_restoreSelection', original => function(selection, expand = true, ...args) {
      if (expand && enabled()) {
       for (const item of selection) {
-       const group = plugin._noteInGroups.get(plugin._noteInNoteParents.get(item.id));
+       const group = plugin.noteGroupForItem(item.id);
        if (group && group.anchor.id !== item.id) opened.add(group.anchor.id);
       }
       provider[mapName]();
@@ -299,7 +331,7 @@
    }
    for (const name of ['selectItem', 'selectItems', 'expandToItem']) patch(view, name, original => function(ids, ...args) {
     for (const id of Array.isArray(ids) ? ids : [ids]) {
-     const parent = plugin._noteInNoteParents.get(id), group = plugin._noteInGroups.get(parent);
+     const group = plugin.noteGroupForItem(id);
      if (group && group.anchor.id !== id) opened.add(group.anchor.id);
     }
     provider[mapName](); return original.call(this, ids, ...args);
@@ -318,7 +350,7 @@
      element.classList.toggle('abstractin-notein-row', !!group);
      if (group) {
       element.dataset.abstractinNoteIn = 'true';
-      element.setAttribute('aria-label', 'NoteIn, ' + stored.get(group.parent.id).size + ' notes'); element.setAttribute('aria-expanded', String(opened.has(group.anchor.id)));
+      element.setAttribute('aria-label', (group.name || 'NoteIn') + ', ' + stored.get(group.anchor.id).size + ' notes'); element.setAttribute('aria-expanded', String(opened.has(group.anchor.id)));
       const icon = element.querySelector('.cell-icon');
       if (icon) {
        const folder = element.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');

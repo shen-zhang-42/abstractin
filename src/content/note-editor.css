@@ -1,0 +1,21 @@
+:root { color-scheme: light dark; }
+html, body { height: 100%; margin: 0; background: Canvas; color: CanvasText; font: 14px system-ui, sans-serif; }
+[hidden] { display: none !important; }
+#abstractin-note-root { display: flex; height: 100%; min-width: 0; --abstractin-text: CanvasText; --abstractin-faint: GrayText; --abstractin-hover: color-mix(in srgb, CanvasText 8%, Canvas); }
+.abstractin-note-editor { flex: 1 1 55%; min-width: 300px; padding: 16px; overflow: auto; box-sizing: border-box; }
+.abstractin-note-title { width: 100%; box-sizing: border-box; font: 600 20px system-ui; background: Canvas; color: CanvasText; border: 0; border-bottom: 1px solid GrayText; padding: 8px 0; }
+.abstractin-note-toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0; }
+.abstractin-note-toolbar button, .abstractin-note-chat select { font: inherit; padding: 5px 9px; }
+.abstractin-note-status { display: block; color: GrayText; min-height: 24px; font-size: 12px; }
+.abstractin-note-source { width: 100%; min-height: 400px; box-sizing: border-box; resize: vertical; font: 15px/1.6 system-ui; color: CanvasText; background: Canvas; }
+.abstractin-note-edit-host .abstractin-composer-frame { width: 100%; border: 0; min-height: 300px; }
+.abstractin-note-preview { line-height: 1.65; overflow-wrap: anywhere; }
+.abstractin-note-preview pre { overflow-x: auto; white-space: pre-wrap; }
+.abstractin-note-preview math[display="block"] { overflow-x: auto; max-width: 100%; }
+.abstractin-note-chat { flex: 1 1 45%; min-width: 320px; height: 100%; border-left: 1px solid GrayText; }
+.abstractin-note-chat .abstractin-root { height: 100%; }
+.abstractin-note-chat .abstractin-history, .abstractin-note-chat .abstractin-new-chat,
+.abstractin-note-chat .abstractin-initialize-contents, .abstractin-note-chat .abstractin-export-reading,
+.abstractin-note-chat .abstractin-write-note, .abstractin-note-chat .abstractin-reading-bar,
+.abstractin-note-chat .abstractin-statusbar, .abstractin-note-chat .abstractin-quick { display: none !important; }
+@media (max-width: 750px) { #abstractin-note-root { flex-direction: column; } .abstractin-note-chat { min-height: 400px; border-left: 0; border-top: 1px solid GrayText; } }
