@@ -285,3 +285,62 @@ test('linked document selection resolves child attachments and rejects other lib
  assert.equal((await p.selectedNoteDocuments(1)).length, 1);
  await assert.rejects(p.selectedNoteDocuments(2), /same library/);
 });
+
+test('the divider supports pointer dragging, bounded widths, keyboard adjustment and persisted sizing', async () => {
+ const { p, window, document, state } = await setup(); await p.mountMarkdownNote(window, state);
+ const host = state.editor.parentElement; host.getBoundingClientRect = () => ({ left: 0, width: 1008 });
+ const pointer = (target, type, clientX) => {
+  const event = new window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX });
+  Object.defineProperty(event, 'pointerId', { value: 7 }); target.dispatchEvent(event);
+ };
+ pointer(state.splitter, 'pointerdown', 580); pointer(document, 'pointermove', 650);
+ assert.equal(state.splitter.getAttribute('aria-valuenow'), '65'); assert.ok(document.querySelector('.abstractin-note-resize-shield'));
+ pointer(document, 'pointerup', 650); assert.equal(p.getPref('noteEditorRatio'), 65); assert.equal(document.querySelector('.abstractin-note-resize-shield'), null);
+ state.splitter.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })); assert.equal(p.getPref('noteEditorRatio'), 63);
+ pointer(state.splitter, 'pointerdown', 630); pointer(document, 'pointermove', 9999); pointer(document, 'pointercancel', 9999);
+ assert.equal(state.splitter.getAttribute('aria-valuenow'), '70');
+ state.splitter.dispatchEvent(new window.MouseEvent('dblclick')); assert.equal(p.getPref('noteEditorRatio'), 58);
+ const toggle = [...document.querySelectorAll('button')].find(button => button.textContent === 'Hide discussion'); await toggle.onclick();
+ assert.equal(state.splitter.hidden, true); assert.ok(host.classList.contains('abstractin-note-chat-hidden'));
+ state.dispose(); window.close();
+});
+
+test('trash requires a named confirmation, preserves source and local drafts, and returns an empty home to the compact start screen', async () => {
+ const { p, window, document, note, parent, items } = await setup(); p._markdownNoteWindows.clear();
+ const other = new window.Zotero.Item('note'); other.parentID = parent.id; other.setNote('<p>Unrelated note</p>'); await other.saveTx();
+ const home = { key: '1', libraryID: 1, states: new Map() }; await p.mountNoteOutHome(window, home);
+ await p.openMarkdownNote({ win: window, note, home }); const state = home.active;
+ p.confirmTrashMarkdownNote(state); assert.match(state.trashPrompt.textContent, /Original note/); assert.equal(!!note.deleted, false);
+ state.trashPrompt.querySelectorAll('button')[1].click(); assert.equal(state.trashPrompt.isConnected, false); assert.equal(!!note.deleted, false);
+ state.input.value = 'Preserve this unsaved source'; state.revision++;
+ const count = items.size; p.confirmTrashMarkdownNote(state); await state.trashPrompt.querySelector('button').onclick();
+ assert.equal(note.deleted, true); assert.equal(items.size, count); assert.equal(other.getNote(), '<p>Unrelated note</p>'); assert.equal(!!other.deleted, false);
+ assert.equal(p._markdownNoteWindows.has(state.key), false); assert.equal(home.states.size, 0); assert.equal(home.active, null);
+ assert.equal(document.querySelector('.abstractin-note-home-empty').hidden, false); assert.equal(document.querySelector('.abstractin-note-home-empty').textContent, '+ New note');
+ const draft = JSON.parse(await readFile(join(state.dir, 'draft.json'), 'utf8')); assert.equal(draft.markdown, 'Preserve this unsaved source');
+ assert.match(note.getNote(), /Preserve this unsaved source/); window.close();
+});
+
+test('failed and read-only trash operations leave the editor and native note available', async () => {
+ const { p, window, note, state } = await setup(); await p.mountMarkdownNote(window, state);
+ const save = note.saveTx.bind(note); note.saveTx = async () => { if (note.deleted) throw new Error('Trash save failed'); return save(); };
+ await assert.rejects(p.trashMarkdownNote(state), /Trash save failed/);
+ assert.equal(note.deleted, false); assert.equal(state.input.disabled, false); assert.equal(state.editor.inert, false); assert.equal(state.disposed, undefined);
+ assert.equal(p._markdownNoteWindows.get(state.key), state);
+ note.isEditable = () => false; await assert.rejects(p.trashMarkdownNote(state), /read-only/); assert.equal(note.deleted, false);
+ state.dispose(); window.close();
+});
+
+test('trashing a shared note removes source links and reopening after native restoration rebuilds them', async () => {
+ const { p, window, parent, note, items } = await setup(); p._markdownNoteWindows.clear();
+ const second = new window.Zotero.Item('book'); second.title = 'Second source'; await second.saveTx();
+ const documents = [parent, second].map(item => p.noteDocumentRef(item));
+ note.parentID = false; note.setNote(p.markdownNoteHTML(note, 'Shared note', 'Shared source text', null, 2, documents));
+ const home = { key: '1', libraryID: 1, states: new Map() }; await p.mountNoteOutHome(window, home); await p.openMarkdownNote({ win: window, note, home });
+ const anchors = [parent, second].map(item => [...items.values()].find(n => n.parentID === item.id && p.noteInMetadata(n, item) === 'out-anchor'));
+ assert.ok(anchors.every(anchor => anchor.getNote().includes('/items/' + note.key)));
+ await p.trashMarkdownNote(home.active); assert.ok(anchors.every(anchor => !anchor.getNote().includes('/items/' + note.key)));
+ note.deleted = false; await note.saveTx(); await p.openMarkdownNote({ win: window, note, home });
+ assert.ok(anchors.every(anchor => anchor.getNote().includes('/items/' + note.key))); assert.equal(home.active.input.value, 'Shared source text');
+ home.active.dispose(); window.close();
+});

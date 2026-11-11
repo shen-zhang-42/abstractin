@@ -26,6 +26,10 @@
 }
 .abstractin-main-toggle:hover { background: var(--fill-quinary, rgba(0, 0, 0, .05)); }
 .abstractin-main-toggle .abstractin-i, .abstractin-main-toggle svg { display: block; width: 20px; height: 20px; }
+#abstractin-main-toggle, #abstractin-notes-toggle { color: var(--fill-primary, CanvasText) !important; opacity: 1; }
+#abstractin-main-toggle svg { stroke: currentColor; }
+#abstractin-main-toggle svg [fill="#ededf0"] { fill: var(--material-sidepane, Canvas); }
+.abstractin-workspace-dot { display: inline-flex; align-items: center; justify-content: center; width: 9px; color: var(--fill-secondary, GrayText); font-size: 18px; user-select: none; pointer-events: none; }
 .abstractin-main-separator { width: 1px; height: 20px; margin-inline: 6px; background: var(--fill-quarternary, rgba(0, 0, 0, .15)); }
 .abstractin-library-picker { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 12px; padding: 14px; color: var(--fill-primary, #222); font: 13px system-ui, sans-serif; }
 .abstractin-library-picker[hidden] { display: none; }

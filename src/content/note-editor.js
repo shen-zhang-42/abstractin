@@ -72,9 +72,8 @@
   },
   async mountNoteOutHome(win, home) {
    home.win = win;
-   const doc = win.document, host = doc.getElementById("abstractin-note-root"); host.classList.add("abstractin-note-home"); doc.title = "NoteOut — notes";
+   const doc = win.document, host = doc.getElementById("abstractin-note-root"); host.classList.add("abstractin-note-home", "abstractin-note-home-idle"); doc.title = "NoteOut — notes";
    const sidebar = this.el(doc, "aside", "abstractin-note-list"), head = this.el(doc, "h1", null, "NoteOut");
-   const description = this.el(doc, "p", "abstractin-note-list-description", "A space for your ideas.");
    const association = this.el(doc, "div"); home.documents ||= home.parent ? [this.noteDocumentRef(home.parent)] : [];
    home.updateAssociation = this.mountNoteDocuments(doc, association, home, () => home.draw?.());
    const create = this.el(doc, "button", null, "New note"), refresh = this.el(doc, "button", null, "Refresh");
@@ -84,19 +83,18 @@
    const all = this.el(doc, "input"); all.type = "checkbox"; all.checked = !home.documents.length;
    const allLabel = this.el(doc, "label", null, "Show all notes in this library"); allLabel.prepend(all);
    home.showLinked = () => { if (home.documents.length) all.checked = false; };
-   sidebar.append(head, description, association, create, refresh, allLabel, filter, list, status);
+   sidebar.append(head, association, create, refresh, allLabel, filter, list, status);
    const workspace = this.el(doc, "div", "abstractin-note-home-workspace"), welcome = this.el(doc, "div", "abstractin-note-home-empty");
-   welcome.append(this.el(doc, "span", "abstractin-note-welcome-mark", "✎"), this.el(doc, "span", "abstractin-note-eyebrow", "YOUR NOTEBOOK"),
-    this.el(doc, "h2", null, "Room to think."), this.el(doc, "p", null, "Capture an idea, connect your sources, and develop it in conversation."));
-   const welcomeCreate = this.el(doc, "button", "abstractin-note-primary", "Create a note"); welcomeCreate.onclick = () => create.click(); welcome.append(welcomeCreate); workspace.append(welcome);
-   host.append(sidebar, workspace); home.workspace = workspace; home.sidebar = sidebar;
+   const welcomeCreate = this.el(doc, "button", "abstractin-note-primary", "+ New note"); welcomeCreate.onclick = () => create.click(); welcome.append(welcomeCreate); workspace.append(welcome);
+   host.append(sidebar, workspace); home.workspace = workspace; home.sidebar = sidebar; home.status = status;
    home.select = state => {
     for (const entry of home.states.values()) entry.host.hidden = entry !== state;
-    workspace.querySelector(".abstractin-note-home-empty")?.remove();
+    welcome.hidden = true; host.classList.remove("abstractin-note-home-idle");
     state.host.hidden = false; home.active = state; sidebar.hidden = true;
     doc.title = "NoteOut — " + state.title.value; state.input.focus();
     for (const button of list.querySelectorAll("button")) button.setAttribute("aria-pressed", String(button.dataset.noteKey === state.note.key));
    };
+   home.showEmpty = () => { home.active = null; welcome.hidden = false; sidebar.hidden = false; host.classList.add("abstractin-note-home-idle"); doc.title = "NoteOut — notes"; };
    let notes = [];
    const draw = () => {
     list.replaceChildren(); const query = filter.value.trim().toLowerCase();
@@ -210,6 +208,7 @@
    if (opened && !opened.win?.closed) { opened.home?.select(opened); opened.win?.focus(); return opened.win; }
    const data = this.markdownNoteData(note);
    documents = data.documents || (parent ? [this.noteDocumentRef(parent)] : []);
+   if (documents.length > 1) await this.syncNoteOutLinks(note, documents, data.title);
    const state = { key, note, parent, documents, linkedDocuments: documents.slice(), dir, sourceView, home, baseHTML: note.getNote(), revision: 0, savedRevision: 0, saveQueue: Promise.resolve() };
    this._markdownNoteWindows.set(key, state);
    try {
@@ -272,6 +271,77 @@
    state.saveQueue = task;
    return task;
   },
+  installNoteSplitter(state, host, editor, chat) {
+   const win = state.win, doc = win.document, splitter = this.el(doc, "div", "abstractin-note-splitter");
+   splitter.tabIndex = 0; splitter.setAttribute("role", "separator"); splitter.setAttribute("aria-orientation", "vertical"); splitter.setAttribute("aria-label", "Resize editor and discussion");
+   splitter.title = "Drag to resize · Double-click to reset"; editor.after(splitter);
+   let ratio = Number(this.getPref("noteEditorRatio")) || 58, drag = null, shield = null;
+   const apply = value => {
+    const width = Math.max(1, host.getBoundingClientRect().width - 8);
+    const min = width > 1 ? Math.max(20, Math.min(260, width * .4) / width * 100) : 20;
+    const max = width > 1 ? Math.min(80, 100 - Math.min(300, width * .4) / width * 100) : 80;
+    ratio = Math.min(max, Math.max(min, value)); host.style.setProperty("--note-editor-ratio", String(ratio));
+    splitter.setAttribute("aria-valuemin", String(Math.round(min))); splitter.setAttribute("aria-valuemax", String(Math.round(max))); splitter.setAttribute("aria-valuenow", String(Math.round(ratio)));
+   };
+   const move = event => { if (drag !== event.pointerId) return; const rect = host.getBoundingClientRect(); if (rect.width > 8) apply((event.clientX - rect.left) / (rect.width - 8) * 100); };
+   const end = event => {
+    if (drag === null || (event?.pointerId !== undefined && event.pointerId !== drag)) return;
+    try { if (splitter.hasPointerCapture?.(drag)) splitter.releasePointerCapture(drag); } catch (_) {}
+    drag = null; shield?.remove(); shield = null; host.classList.remove("abstractin-note-resizing");
+    doc.removeEventListener("pointermove", move, true); doc.removeEventListener("pointerup", end, true); doc.removeEventListener("pointercancel", end, true);
+    this.setPref("noteEditorRatio", Math.round(ratio));
+   };
+   splitter.addEventListener("pointerdown", event => {
+    if (event.button !== 0 || chat.hidden || win.innerWidth <= 720) return;
+    event.preventDefault(); drag = event.pointerId; splitter.focus();
+    try { splitter.setPointerCapture?.(drag); } catch (_) {}
+    shield = this.el(doc, "div", "abstractin-note-resize-shield"); doc.body.append(shield); host.classList.add("abstractin-note-resizing");
+    doc.addEventListener("pointermove", move, true); doc.addEventListener("pointerup", end, true); doc.addEventListener("pointercancel", end, true);
+   });
+   splitter.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
+    event.preventDefault(); apply(event.key === "Home" ? 58 : ratio + (event.key === "ArrowLeft" ? -2 : 2)); this.setPref("noteEditorRatio", Math.round(ratio));
+   });
+   splitter.addEventListener("dblclick", () => { apply(58); this.setPref("noteEditorRatio", Math.round(ratio)); });
+   const resized = () => apply(ratio); win.addEventListener("resize", resized); win.addEventListener("blur", end);
+   apply(ratio); state.splitter = splitter;
+   state.disposeSplitter = () => { end(); win.removeEventListener("resize", resized); win.removeEventListener("blur", end); };
+  },
+  confirmTrashMarkdownNote(state) {
+   if (state.trashPrompt?.isConnected) { state.trashPrompt.querySelector("button").focus(); return; }
+   const doc = state.input.ownerDocument, box = this.el(doc, "section", "abstractin-note-trash-confirm");
+   box.setAttribute("role", "group"); box.setAttribute("aria-label", "Confirm note deletion");
+   box.append(this.el(doc, "p", null, 'Move “' + state.title.value + '” to Zotero Trash?'));
+   const confirm = this.el(doc, "button", "abstractin-note-danger", "Move to Trash"), cancel = this.el(doc, "button", null, "Cancel"), status = this.el(doc, "p");
+   box.append(confirm, cancel, status); state.preview.before(box); state.trashPrompt = box;
+   cancel.onclick = () => box.remove();
+   confirm.onclick = async () => {
+    confirm.disabled = true; cancel.disabled = true;
+    try { await this.trashMarkdownNote(state); }
+    catch (e) { status.textContent = e.message || String(e); confirm.disabled = false; cancel.disabled = false; }
+   };
+   confirm.focus();
+  },
+  async trashMarkdownNote(state) {
+   if (state.deleting || !this.markdownNoteData(state.note) || state.note.isEditable?.() === false) throw new Error("This note is unavailable or read-only.");
+   state.deleting = true; state.input.disabled = true; state.title.disabled = true; state.editor.inert = true; state.chatHost.inert = true;
+   try {
+    if (state.chatView) this._pending.get(state.chatView.ctx.dir)?.cancel();
+    await state.flush();
+    state.note.deleted = true;
+    try { await state.note.saveTx(); } catch (e) { state.note.deleted = false; throw e; }
+    // Trash is reversible. Keep the note's source, local draft and discussion files.
+    let warning = "";
+    try { await this.syncNoteOutLinks(state.note, [], state.title.value, state.linkedDocuments || state.documents || []); }
+    catch (e) { warning = "The note is in Trash; some source links could not be updated."; this.logError("note trash links", e); }
+    state.forceClose = true; state.dispose?.(); this._markdownNoteWindows.delete(state.key);
+    if (state.home) {
+     const home = state.home; home.states.delete(state.key); state.host.remove();
+     if (home.active === state) { const next = [...home.states.values()][0]; if (next) home.select(next); else home.showEmpty(); }
+     await home.refresh(); if (warning && home.status) home.status.textContent = warning;
+    } else state.win.close();
+   } catch (e) { state.deleting = false; state.input.disabled = false; state.title.disabled = false; state.editor.inert = false; state.chatHost.inert = false; throw e; }
+  },
   async mountMarkdownNote(win, state, noteHost = null) {
    state.win = win;
    const doc = win.document, host = noteHost || doc.getElementById("abstractin-note-root"), data = this.markdownNoteData(state.note);
@@ -289,7 +359,8 @@
     const browse = this.el(doc, "button", null, "Notes"); browse.onclick = () => { state.home.sidebar.hidden = !state.home.sidebar.hidden; }; toolbar.append(browse);
    }
    const more = this.el(doc, "details", "abstractin-note-more"), moreLabel = this.el(doc, "summary", null, "More ···"), moreActions = this.el(doc, "div", "abstractin-note-more-actions");
-   moreActions.append(chatToggle, append, toDiscussion); more.append(moreLabel, moreActions);
+   const trash = this.el(doc, "button", "abstractin-note-danger", "Move to Trash…"); trash.onclick = () => this.confirmTrashMarkdownNote(state);
+   moreActions.append(chatToggle, append, toDiscussion, trash); more.append(moreLabel, moreActions);
    moreActions.addEventListener("click", event => { if (event.target.closest("button")) more.open = false; });
    toolbar.append(previewToggle, save, more, closeDraft);
    const input = this.el(doc, "textarea", "abstractin-note-source"); input.value = data.markdown; input.placeholder = "Write Markdown and LaTeX here…"; input.setAttribute("aria-label", "Markdown note");
@@ -297,7 +368,7 @@
    const preview = this.el(doc, "div", "abstractin-note-preview"); preview.hidden = true;
    const top = this.el(doc, "div", "abstractin-note-topline"); top.append(this.el(doc, "span", "abstractin-note-eyebrow", "NOTEOUT / NOTEBOOK"), status);
    editor.append(top, title, toolbar, editHost, preview); host.append(editor);
-   Object.assign(state, { title, input, preview, status });
+   Object.assign(state, { title, input, preview, status, editor });
    const refresh = () => {
     if (preview.hidden) return;
     preview.replaceChildren(); this.renderMarkdown(doc, preview, input.value);
@@ -329,8 +400,11 @@
    win.addEventListener("keydown", scopedShortcut);
    previewToggle.onclick = () => { preview.hidden = !preview.hidden; editHost.hidden = !preview.hidden; previewToggle.textContent = preview.hidden ? "Preview" : "Edit"; refresh(); };
    const chat = this.el(doc, "section", "abstractin-note-chat"); host.append(chat); state.chatHost = chat; chatToggle.textContent = "Hide discussion";
+   this.installNoteSplitter(state, host, editor, chat);
    chatToggle.onclick = async () => {
     chat.hidden = !chat.hidden; chatToggle.textContent = chat.hidden ? "Discuss note" : "Hide discussion";
+    state.splitter.hidden = chat.hidden;
+    host.classList.toggle("abstractin-note-chat-hidden", chat.hidden);
     if (!state.chatView) try { await this.mountMarkdownNoteChat(state, chat); } catch (e) { status.textContent = "Discussion unavailable: " + (e.message || e); }
    };
    append.onclick = async () => {
@@ -365,14 +439,17 @@
     if (!state.closing) { state.closing = true; flush().then(() => { state.forceClose = true; win.close(); }).catch(e => { state.closing = false; report(e); }); }
    };
    if (!state.home) win.addEventListener("beforeunload", state.beforeUnload);
-   win.addEventListener("unload", () => {
-    win.clearTimeout(state.timer); win.clearTimeout(state.previewTimer); win.removeEventListener("keydown", scopedShortcut); state.disposeEditor?.();
+   state.dispose = () => {
+    if (state.disposed) return; state.disposed = true;
+    win.removeEventListener("unload", state.dispose); win.removeEventListener("beforeunload", state.beforeUnload);
+    win.clearTimeout(state.timer); win.clearTimeout(state.previewTimer); win.removeEventListener("keydown", scopedShortcut); state.disposeEditor?.(); state.disposeSplitter?.();
     if (state.chatView) {
      this._pending.get(state.chatView.ctx.dir)?.cancel(); state.chatView.root.disposeUI?.();
      this._views.delete(state.chatView.root); this.endNoteSession(state.chatView.ctx.dir);
     }
     this._markdownNoteWindows.delete(state.key);
-   }, { once: true });
+   };
+   win.addEventListener("unload", state.dispose, { once: true });
    try { await this.mountMarkdownNoteChat(state, chat); } catch (e) { status.textContent = "Discussion unavailable: " + (e.message || e); }
    doc.title = "NoteOut — " + (data.title || "Note"); input.focus();
   },

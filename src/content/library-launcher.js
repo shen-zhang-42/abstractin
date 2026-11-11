@@ -9,6 +9,7 @@
 			this.mountLibraryLauncher(win);
 		},
 		removeFromWindow(win) {
+			win.document.getElementById("abstractin-workspace-dot")?.remove();
 			win.document.getElementById("abstractin-notes-toggle")?.remove();
 			win.document.getElementById("abstractin-main-toggle")?.remove();
 			win.document.getElementById("abstractin-main-separator")?.remove();
@@ -27,10 +28,12 @@
 				this.openNoteOutHome(win).catch(e => Zotero.alert(win, "NoteOut", e.message || String(e)));
 			});
 			notes.id = "abstractin-notes-toggle"; notes.setAttribute("aria-haspopup", "dialog");
+			const dot = doc.getElementById("abstractin-workspace-dot") || this.el(doc, "span", "abstractin-workspace-dot", "·");
+			dot.id = "abstractin-workspace-dot"; dot.setAttribute("aria-hidden", "true");
 			const separator = doc.getElementById("abstractin-main-separator") || this.el(doc, "div", "zotero-tb-separator abstractin-main-separator");
 			separator.id = "abstractin-main-separator";
 			separator.setAttribute("role", "separator"); separator.setAttribute("aria-orientation", "vertical");
-			anchor.before(button, notes, separator);
+			anchor.before(button, dot, notes, separator);
 			return true;
 		},
 		async openLibraryLauncher(win) {

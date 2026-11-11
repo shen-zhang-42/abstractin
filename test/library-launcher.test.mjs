@@ -37,15 +37,17 @@ test('independent Reading and NoteOut icons open their own workspaces without a 
 	assert.equal(button.textContent.trim(),'');assert.ok(button.querySelector('svg'));
 	assert.equal(button.title,'AbstractIn — read and discuss');
 	const notes=doc.getElementById('abstractin-notes-toggle'); assert.ok(notes.querySelector('svg')); assert.equal(notes.textContent.trim(),'');
-	assert.equal(notes.title,'NoteOut — open notes');assert.equal(button.nextElementSibling,notes);assert.equal(notes.nextElementSibling,separator);
+	const dot=doc.getElementById('abstractin-workspace-dot'); assert.equal(dot.textContent,'·'); assert.equal(dot.getAttribute('aria-hidden'),'true');
+	assert.equal(notes.title,'NoteOut — open notes');assert.equal(button.nextElementSibling,dot);assert.equal(dot.nextElementSibling,notes);assert.equal(notes.nextElementSibling,separator);
 	let read=0,write=0;p.openLibraryLauncher=async()=>{read++;};p.openNoteOutHome=async()=>{write++;};
 	button.click();assert.equal(read,1);assert.equal(write,0);notes.click();assert.equal(read,1);assert.equal(write,1);
 	assert.equal(doc.getElementById('abstractin-workspace-menu'),null);
 	assert.equal(separator.nextElementSibling.id,'zotero-tb-tabs-menu');assert.equal(separator.getAttribute('aria-orientation'),'vertical');
 	assert.equal(doc.querySelectorAll('#abstractin-main-toggle').length,1);
 	assert.equal(doc.querySelectorAll('#abstractin-notes-toggle').length,1);
+	assert.equal(doc.querySelectorAll('#abstractin-workspace-dot').length,1);
 	let appended=0;p.renderReaderToolbar({reader,doc,append:()=>appended++});assert.equal(appended,0,'main-window PDFs use the shared title-bar entry');
-	p.removeFromWindow(win);assert.equal(doc.getElementById('abstractin-main-toggle'),null);assert.equal(doc.getElementById('abstractin-notes-toggle'),null);assert.ok(doc.getElementById('zotero-tb-tabs-menu'));
+	p.removeFromWindow(win);assert.equal(doc.getElementById('abstractin-main-toggle'),null);assert.equal(doc.getElementById('abstractin-notes-toggle'),null);assert.equal(doc.getElementById('abstractin-workspace-dot'),null);assert.ok(doc.getElementById('zotero-tb-tabs-menu'));
 });
 
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
