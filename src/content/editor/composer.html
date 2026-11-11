@@ -30,6 +30,11 @@ html.note-rich-root, body.note-rich-document { height: 100%; overflow: hidden; }
 .note-rich-document .tiptap a { color: inherit; text-decoration: underline; }
 .note-rich-document .tiptap .ProseMirror-selectednode { outline: 1px solid var(--editor-faint); }
 .note-rich-document .tiptap-mathematics-render { cursor: pointer; }
+.note-rich-document .note-source-hidden { display: none !important; }
+.note-block-source { margin: .65em 0; padding: 8px 10px; border: 1px solid var(--editor-faint, #aaa); border-radius: 6px; background: var(--editor-hover, #8881); }
+.note-block-source .cm-editor { font: inherit; background: transparent; }
+.note-block-source .cm-editor.cm-focused { outline: none; }
+.note-block-source .cm-scroller { font-family: ui-monospace, Consolas, monospace; line-height: 1.65; overflow: auto; }
 .note-rich-document [data-type="block-math"] { display: block; margin: 16px 0; text-align: center; overflow-x: auto; }
 .note-rich-dialog { position: fixed; z-index: 100; top: 15%; left: 8%; right: 8%; padding: 16px; color: var(--editor-text); background: Canvas; border: 1px solid var(--editor-faint); border-radius: 9px; box-shadow: 0 8px 28px #0003; font: 13px system-ui,sans-serif; }
 .note-rich-dialog label { display: block; margin: 12px 0; }

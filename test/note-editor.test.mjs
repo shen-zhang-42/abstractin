@@ -40,6 +40,18 @@ async function setup() {
  return { ...env, p, dir, parent, note, state, items };
 }
 
+test('font menu uses separate rows and choosing a font changes display without editing Markdown', async () => {
+ const {p,window,document,state}=await setup();await p.mountMarkdownNote(window,state);
+ const menu=document.querySelector('.abstractin-note-font-menu'),options=[...menu.querySelectorAll('[role=option]')];
+ assert.equal(options.length,7);assert.equal(state.fontSelect.hidden,true);
+ const source=state.input.value,revision=state.revision;menu.open=true;
+ options.find(option=>option.dataset.font==='georgia').click();
+ assert.equal(menu.open,false);assert.equal(menu.querySelector('summary').textContent,'Georgia');
+ assert.equal(state.fontSelect.value,'georgia');assert.match(state.input.style.fontFamily,/Georgia/);
+ assert.equal(state.input.value,source);assert.equal(state.revision,revision);assert.equal(menu.querySelectorAll('[aria-selected=true]').length,1);
+ state.dispose();window.close();
+});
+
 test('Markdown source round-trips exactly and rendered native notes contain KaTeX without executing HTML', async () => {
  const { p, note, parent } = await setup();
  const source = '# My note\n\n$$x^2+1$$\n\n```r\nx <- 1\n```\n<script>alert(1)</script>';

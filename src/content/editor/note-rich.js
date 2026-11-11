@@ -9,12 +9,15 @@ import { Mathematics } from '@tiptap/extension-mathematics';
 import { Slice } from '@tiptap/pm/model';
 import { closeHistory } from '@tiptap/pm/history';
 import { markdownShortcuts } from './markdown-shortcuts.js';
+import { noteSource } from './note-source.js';
 
 // The rich document is transient. Only Markdown is sent to the parent/saved.
 export function createRichNote(config) {
  let editor, source = config.text || '', syncing = false, dialog = null;
+ const reveal = noteSource(config);
  const root = document.getElementById('editor'); document.documentElement.classList.add('note-rich-root'); document.body.classList.add('note-rich-document');
  const selectionSnapshot = () => {
+  const active = reveal.selection(); if (active) return active;
   const { from, to, empty } = editor.state.selection;
   if (empty) return { from, to, markdown: '' };
   const slice = editor.state.doc.slice(from, to);
@@ -25,7 +28,7 @@ export function createRichNote(config) {
  };
  const notify = changed => {
   if (syncing) return;
-  if (changed) source = editor.getMarkdown();
+  if (changed) source = reveal.markdown() ?? editor.getMarkdown();
   const { from, to } = editor.state.selection;
   config.onChange(source, Math.min(from, source.length), Math.min(to, source.length), changed);
  };
@@ -45,12 +48,10 @@ export function createRichNote(config) {
  };
  const editMath = (node, pos) => {
   if (!editor.isEditable) return;
-  popup('Formula', [{ label: 'LaTeX', value: node.attrs.latex, multiline: true }], ([latex]) => {
-   const current = editor.state.doc.nodeAt(pos); if (current?.type !== node.type || current.attrs.latex !== node.attrs.latex) return false;
-   editor.commands.command(({ tr }) => { closeHistory(tr); tr.setNodeMarkup(pos, node.type, { ...node.attrs, latex }); return true; });
-  });
+  reveal.open(pos);
  };
  const format = action => {
+  if (reveal.isActive()) return reveal.format(action);
   if (!editor?.isEditable || editor.view.composing) return false;
   editor.view.dispatch(closeHistory(editor.state.tr));
   const commands = {
@@ -77,7 +78,7 @@ export function createRichNote(config) {
   element: root, editable: !config.disabled, injectCSS: false,
   extensions: [StarterKit.configure({ link: { openOnClick: false, protocols: ['zotero'] }, underline: false, trailingNode: false }), Markdown.configure({ markedOptions: { gfm: true } }),
    TableKit.configure({ table: { resizable: false } }), TaskList, TaskItem.configure({ nested: true }), Image.configure({ inline: true, allowBase64: true }),
-   Mathematics.configure({ katexOptions: { output: 'mathml', throwOnError: false, trust: false }, inlineOptions: { onClick: editMath }, blockOptions: { onClick: editMath } }), shortcuts],
+   Mathematics.configure({ katexOptions: { output: 'mathml', throwOnError: false, trust: false }, inlineOptions: { onClick: editMath }, blockOptions: { onClick: editMath } }), shortcuts, reveal.extension],
   content: source, contentType: 'markdown',
   editorProps: {
    attributes: { 'aria-label': 'Markdown note', 'aria-multiline': 'true', spellcheck: 'false', 'data-placeholder': config.placeholder || 'Write a note…' },
@@ -89,8 +90,14 @@ export function createRichNote(config) {
  // Keep the originally loaded Markdown byte-for-byte until an actual edit.
  return {
   markdownShortcuts, formatMarkdown: format, getMarkdown: () => source, getSelectionSnapshot: selectionSnapshot,
-  replaceMarkdownRange(markdown, from, to) {
+  replaceMarkdownRange(markdown, from, to, sourceSelection) {
    if (!editor.isEditable || from < 0 || to > editor.state.doc.content.size) return false;
+   reveal.clear();
+   if (sourceSelection) {
+    markdown = sourceSelection.markdown.slice(0,sourceSelection.from) + markdown + sourceSelection.markdown.slice(sourceSelection.to);
+    const parsed = editor.schema.nodeFromJSON(editor.markdown.parse(markdown));
+    editor.view.dispatch(closeHistory(editor.state.tr).replaceWith(from,to,parsed.content)); return true;
+   }
    const parsed = editor.schema.nodeFromJSON(editor.markdown.parse(markdown));
    const content = parsed.childCount === 1 && parsed.firstChild.type.name === 'paragraph' ? parsed.firstChild.content : parsed.content;
    const slice = parsed.childCount === 1 && parsed.firstChild.type.name === 'paragraph' ? new Slice(content, 0, 0) : Slice.maxOpen(content);
@@ -99,8 +106,8 @@ export function createRichNote(config) {
   sync(markdown, disabled, placeholder) {
    syncing = true;
    try {
-    editor.setEditable(!disabled, false);
-    if (markdown !== source) { source = markdown; editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false }); }
+    if (editor.isEditable === !!disabled) { reveal.clear(); editor.setEditable(!disabled, false); }
+    if (markdown !== source) { reveal.clear(); source = markdown; editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false }); }
     editor.view.dom.setAttribute('data-placeholder', placeholder || 'Write a note…');
    } finally { syncing = false; }
   },

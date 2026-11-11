@@ -405,10 +405,32 @@
    const font = this.el(doc, "select", "abstractin-note-font"); font.setAttribute("aria-label", "Note display font"); font.title = "Display font — Markdown source is unchanged";
    for (const [value, [label]] of Object.entries(fonts)) { const option = this.el(doc, "option", null, label); option.value = value; font.append(option); }
    font.value = fonts[this.getPref("noteFont")] ? this.getPref("noteFont") : "system"; input.style.fontFamily = fonts[font.value][1]; toolbar.insertBefore(font, shortcuts);
+   // Native HTML select popups can collapse option line boxes in Gecko chrome.
+   // Keep the select as the value binding and use a normal HTML menu for display.
+   font.hidden = true;
+   const fontMenu = this.el(doc, "details", "abstractin-note-font-menu"), fontLabel = this.el(doc, "summary", null, fonts[font.value][0]), fontOptions = this.el(doc, "div", "abstractin-note-font-options");
+   fontLabel.setAttribute("aria-label", "Note display font"); fontOptions.setAttribute("role", "listbox"); fontOptions.setAttribute("aria-label", "Display fonts");
+   for (const [value, [label]] of Object.entries(fonts)) {
+    const option = this.el(doc, "button", null, label); option.type = "button"; option.setAttribute("role", "option"); option.dataset.font = value;
+    option.onclick = () => { font.value = value; font.onchange(); fontMenu.open = false; fontLabel.focus(); };
+    fontOptions.append(option);
+   }
+   fontMenu.append(fontLabel, fontOptions); toolbar.insertBefore(fontMenu, shortcuts);
+   fontMenu.addEventListener("focusout", () => win.queueMicrotask(() => { if (!fontMenu.contains(doc.activeElement)) fontMenu.open = false; }));
+   fontMenu.addEventListener("keydown", event => {
+    if (event.key === "Escape") { event.preventDefault(); fontMenu.open = false; fontLabel.focus(); }
+    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+     event.preventDefault(); fontMenu.open = true; const buttons = [...fontOptions.children], index = buttons.indexOf(doc.activeElement);
+     buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowUp" ? -1 : 1) + buttons.length) % buttons.length].focus();
+    }
+   });
+   const refreshFontLabel = () => { fontLabel.textContent = fonts[font.value][0]; for (const option of fontOptions.children) option.setAttribute("aria-selected", String(option.dataset.font === font.value)); };
+   state.refreshFontLabel = refreshFontLabel; refreshFontLabel();
    state.fontSelect = font;
    font.onchange = () => {
     this.setPref("noteFont", font.value);
-    for (const entry of this._markdownNoteWindows.values()) if (entry.input && entry.fontSelect) { entry.fontSelect.value = font.value; entry.input.style.fontFamily = fonts[font.value][1]; entry.input._refreshMathPreview?.(); }
+    refreshFontLabel();
+    for (const entry of this._markdownNoteWindows.values()) if (entry.input && entry.fontSelect) { entry.fontSelect.value = font.value; entry.refreshFontLabel?.(); entry.input.style.fontFamily = fonts[font.value][1]; entry.input._refreshMathPreview?.(); }
    };
    const editHost = this.el(doc, "div", "abstractin-note-edit-host"); editHost.append(input);
    const preview = this.el(doc, "div", "abstractin-note-preview"); preview.hidden = true;
@@ -543,7 +565,7 @@
    apply.onclick = async () => {
     if (state.input.value !== proposal.baseMarkdown || state.title.value !== proposal.baseTitle) { status.textContent = "The note has changed since this proposal. Ask for a new edit against the current note."; return; }
     if (proposal.scope === "selection" && proposal.richRange && state.input._composerEditor?.replaceMarkdownRange) {
-     if (!state.input._composerEditor.replaceMarkdownRange(proposal.markdown, proposal.richRange.from, proposal.richRange.to)) { status.textContent = "This selection cannot be edited. Please select it again."; return; }
+     if (!state.input._composerEditor.replaceMarkdownRange(proposal.markdown, proposal.richRange.from, proposal.richRange.to, proposal.richRange.sourceSelection)) { status.textContent = "This selection cannot be edited. Please select it again."; return; }
     } else {
      state.input.value = proposal.scope === "selection" ? proposal.baseMarkdown.slice(0, proposal.start) + proposal.markdown + proposal.baseMarkdown.slice(proposal.end) : proposal.markdown;
      state.input._refreshMathPreview?.(); state.input.dispatchEvent(new state.win.Event("input", { bubbles: true }));
@@ -587,7 +609,7 @@
      if (!parsed || typeof parsed.markdown !== "string" || typeof parsed.explanation !== "string") return { error: "The model returned an invalid edit proposal. The note has not changed. Please retry." };
      this._noteEditSerial = (this._noteEditSerial || 0) + 1;
      proposal = { explanation: parsed.explanation, markdown: parsed.markdown, id: Date.now() + ":" + this._noteEditSerial, baseMarkdown, baseTitle: snapshot.title, scope: snapshot.scope, start, end,
-      ...(richSelection && snapshot.scope === "selection" ? { richRange: { from: richSelection.from, to: richSelection.to } } : {}) };
+      ...(richSelection && snapshot.scope === "selection" ? { richRange: { from: richSelection.from, to: richSelection.to, ...(richSelection.sourceSelection ? { sourceSelection: richSelection.sourceSelection } : {}) } } : {}) };
      result.text = (parsed.explanation || "A note edit is ready.") + "\n\nReview the proposed edit beside the editor, then choose Apply edit or Discard.";
     }
     const warning = await this.appendHistory(ctx.dir, [{ role: "user", text: question, ts: Date.now(), noteSnapshot: snapshot },
