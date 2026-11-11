@@ -5,29 +5,6 @@
  Object.assign(AbstractIn, {
   _markdownNoteWindows: new Map(),
   _noteOutHomes: new Map(),
-  openWorkspaceMenu(win, anchor, sourceView = null) {
-   const doc = win.document;
-   const old = doc.getElementById("abstractin-workspace-menu");
-   if (old) { old._close(); return; }
-   const menu = this.el(doc, "div"); menu.id = "abstractin-workspace-menu"; menu.setAttribute("role", "menu");
-   const rect = anchor.getBoundingClientRect();
-   menu.style.cssText = `position:fixed;z-index:2147483647;top:${rect.bottom + 4}px;left:${Math.max(8, Math.min(rect.left, win.innerWidth - 240))}px;width:230px;padding:6px;background:Canvas;color:CanvasText;border:1px solid GrayText;border-radius:8px;box-shadow:0 4px 16px #0003`;
-   const close = () => { menu.remove(); anchor.setAttribute("aria-expanded", "false"); doc.removeEventListener("pointerdown", outside, true); doc.removeEventListener("keydown", key, true); win.removeEventListener("unload", close); };
-   const outside = e => { if (!menu.contains(e.target) && !anchor.contains(e.target)) close(); };
-   const key = e => {
-    if (e.key === "Escape") { e.preventDefault(); close(); anchor.focus(); }
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); const buttons = [...menu.children]; buttons[(buttons.indexOf(doc.activeElement) + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length].focus(); }
-   };
-   menu._close = close; anchor.setAttribute("aria-haspopup", "menu"); anchor.setAttribute("aria-expanded", "true");
-   for (const [label, action] of [["AbstractIn — read and discuss", () => sourceView ? sourceView.input.focus() : this.openLibraryLauncher(win)],
-    ["NoteOut — write notes", () => this.openNoteOutHome(win, { parent: sourceView?.ctx.paperItem, sourceView })]]) {
-    const button = this.el(doc, "button", null, label); button.setAttribute("role", "menuitem");
-    button.style.cssText = "display:block;width:100%;padding:10px;text-align:left;background:transparent;color:inherit;border:0;cursor:pointer";
-    button.onclick = async () => { close(); try { await action(); } catch (e) { Zotero.alert(win, "AbstractIn", e.message || String(e)); } }; menu.append(button);
-   }
-   (doc.body || doc.documentElement).append(menu); menu.firstElementChild.focus();
-   doc.addEventListener("pointerdown", outside, true); doc.addEventListener("keydown", key, true); win.addEventListener("unload", close, { once: true });
-  },
   noteDocumentRef(item) { return { id: item.id, key: item.key, libraryID: item.libraryID, title: this.safeField(item, "title") || "Untitled document" }; },
   async resolveNoteDocument(ref) {
    const item = Zotero.Items.getByLibraryAndKey ? Zotero.Items.getByLibraryAndKey(ref.libraryID, ref.key) : await Zotero.Items.getAsync(ref.id);

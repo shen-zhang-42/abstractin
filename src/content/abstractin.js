@@ -1224,13 +1224,7 @@ AbstractIn = {
 		let evidence = this.ghostButton(doc, "abstractin-reading-evidence-mode", "readingSource", "", () =>
 			this.openReadingEvidenceMenu(root, evidence), { chevron: true });
 		evidence.hidden = true;
-		identity.append(this.el(doc, "span", "abstractin-header-title", "AbstractIn"),
-			this.ghostButton(doc, "abstractin-write-note", "noteFull", "▾", () => {
-				const view = this._views.get(root);
-				this.openWorkspaceMenu(doc.defaultView, root.querySelector(".abstractin-write-note"), view);
-			}));
-		identity.lastElementChild.title = "AbstractIn / NoteOut";
-		identity.lastElementChild.setAttribute("aria-label", "Choose AbstractIn or NoteOut");
+		identity.append(this.el(doc, "span", "abstractin-header-title", "AbstractIn"));
 		header.append(
 			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "abstractin-header-icon"),
 			identity,

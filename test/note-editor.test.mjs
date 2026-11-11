@@ -183,12 +183,11 @@ test('NoteOut home keeps the list and switches editors inside one window without
  for (const state of home.states.values()) state.disposeEditor(); window.close();
 });
 
-test('the workspace dropdown sits immediately beside AbstractIn in the header', async () => {
+test('the reading header has no extra NoteOut or workspace entry beside AbstractIn', async () => {
  const { p, document, window } = await setup(); p.renderSkeleton(document, document.body);
  const root = document.querySelector('.abstractin-root'), title = root.querySelector('.abstractin-header-title');
- const shortcut = title.nextElementSibling; assert.ok(shortcut.classList.contains('abstractin-write-note')); assert.equal(shortcut.getAttribute('aria-label'), 'Choose AbstractIn or NoteOut');
- let opened = 0; p.openNoteOutHome = async owner => { assert.equal(owner, window); opened++; };
- shortcut.click(); const menu = document.getElementById('abstractin-workspace-menu'); assert.ok(menu); menu.children[1].click(); assert.equal(opened, 1); root.disposeUI(); window.close();
+ assert.equal(title.nextElementSibling, null); assert.equal(root.querySelector('.abstractin-write-note'), null);
+ root.disposeUI(); window.close();
 });
 
 test('new independent notes use the library selected for the NoteOut home', async () => {

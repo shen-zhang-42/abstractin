@@ -1,6 +1,6 @@
 "use strict";
 
-// The shared title-bar entry opens the existing reader or a document chooser.
+// Reading and writing have independent, top-level title-bar entries.
 (() => {
 	const addWindow = AbstractIn.addToWindow, removeWindow = AbstractIn.removeFromWindow;
 	Object.assign(AbstractIn, {
@@ -9,7 +9,6 @@
 			this.mountLibraryLauncher(win);
 		},
 		removeFromWindow(win) {
-			win.document.getElementById("abstractin-workspace-menu")?._close();
 			win.document.getElementById("abstractin-notes-toggle")?.remove();
 			win.document.getElementById("abstractin-main-toggle")?.remove();
 			win.document.getElementById("abstractin-main-separator")?.remove();
@@ -18,16 +17,20 @@
 		mountLibraryLauncher(win) {
 			const doc = win.document, anchor = doc.getElementById("zotero-tb-tabs-menu");
 			if (!anchor) return false;
-			if (doc.getElementById("abstractin-main-toggle")) return true;
-			const button = this.iconButton(doc, "abstractin-main-toggle zotero-tb-button", "AbstractIn / NoteOut", "app", () => this.openWorkspaceMenu(win, button));
+			const button = doc.getElementById("abstractin-main-toggle") || this.iconButton(doc, "abstractin-main-toggle zotero-tb-button", "AbstractIn — read and discuss", "app", () => {
+				this.openLibraryLauncher(win).catch(e => Zotero.alert(win, "AbstractIn", e.message || String(e)));
+			});
 			button.id = "abstractin-main-toggle";
 			button.setAttribute("aria-controls", "abstractin-reader-panel");
 			button.setAttribute("aria-expanded", "false");
-			button.setAttribute("aria-haspopup", "menu");
-			const separator = this.el(doc, "div", "zotero-tb-separator abstractin-main-separator");
+			const notes = doc.getElementById("abstractin-notes-toggle") || this.iconButton(doc, "abstractin-main-toggle abstractin-notes-toggle zotero-tb-button", "NoteOut — open notes", "noteFull", () => {
+				this.openNoteOutHome(win).catch(e => Zotero.alert(win, "NoteOut", e.message || String(e)));
+			});
+			notes.id = "abstractin-notes-toggle"; notes.setAttribute("aria-haspopup", "dialog");
+			const separator = doc.getElementById("abstractin-main-separator") || this.el(doc, "div", "zotero-tb-separator abstractin-main-separator");
 			separator.id = "abstractin-main-separator";
 			separator.setAttribute("role", "separator"); separator.setAttribute("aria-orientation", "vertical");
-			anchor.before(button, separator);
+			anchor.before(button, notes, separator);
 			return true;
 		},
 		async openLibraryLauncher(win) {
