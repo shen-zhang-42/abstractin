@@ -28,4 +28,13 @@ html, body { height: 100%; margin: 0; background: Canvas; color: CanvasText; fon
 .abstractin-note-home-workspace { flex: 1; min-width: 0; height: 100%; }
 .abstractin-note-home-empty { padding: 24px; }
 .abstractin-note-document { display: flex; width: 100%; height: 100%; }
+.abstractin-note-documents { margin: 10px 0; padding: 9px; border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas); border-radius: 6px; font-size: 12px; }
+.abstractin-note-documents p { margin: 6px 0 0; color: GrayText; }
+.abstractin-note-document-ref { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+.abstractin-note-document-ref span { overflow-wrap: anywhere; }
+.abstractin-note-list input[type="checkbox"] { width: auto; margin: 0 6px 0 0; }
+.abstractin-note-proposal { margin: 12px 0; padding: 12px; border: 1px solid Highlight; border-radius: 6px; }
+.abstractin-note-proposal .abstractin-note-preview { max-height: 350px; overflow: auto; margin-bottom: 12px; }
+.abstractin-note-proposal button { margin-right: 8px; padding: 6px 10px; }
+.abstractin-note-chat .abstractin-header { flex-wrap: wrap; gap: 6px; }
 @media (max-width: 750px) { #abstractin-note-root { flex-direction: column; } .abstractin-note-chat { min-height: 400px; border-left: 0; border-top: 1px solid GrayText; } }

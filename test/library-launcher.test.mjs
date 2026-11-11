@@ -35,9 +35,11 @@ test('title-bar entry is icon only, immediately before a thin separator and the 
 	p.addToWindow(win);p.addToWindow(win);
 	const button=doc.getElementById('abstractin-main-toggle'),separator=doc.getElementById('abstractin-main-separator');
 	assert.equal(button.textContent.trim(),'');assert.ok(button.querySelector('svg'));
-	assert.equal(button.title,'Reading — open literature discussions');assert.equal(button.nextElementSibling,separator);
-	const notes = doc.getElementById('abstractin-notes-toggle'); assert.ok(notes); assert.match(notes.textContent,/NoteOut/);
-	assert.equal(notes.nextElementSibling,button);
+	assert.equal(button.title,'AbstractIn / NoteOut');assert.equal(button.nextElementSibling,separator);
+	assert.equal(doc.getElementById('abstractin-notes-toggle'),null);
+	button.click(); const menu=doc.getElementById('abstractin-workspace-menu'); assert.equal(menu.children.length,2);
+	assert.match(menu.children[0].textContent,/AbstractIn/);assert.match(menu.children[1].textContent,/NoteOut/);
+	let read=0;p.openLibraryLauncher=async()=>{read++;};menu.children[0].click();assert.equal(read,1);assert.equal(doc.getElementById('abstractin-workspace-menu'),null);
 	assert.equal(separator.nextElementSibling.id,'zotero-tb-tabs-menu');assert.equal(separator.getAttribute('aria-orientation'),'vertical');
 	assert.equal(doc.querySelectorAll('#abstractin-main-toggle').length,1);
 	let appended=0;p.renderReaderToolbar({reader,doc,append:()=>appended++});assert.equal(appended,0,'main-window PDFs use the shared title-bar entry');

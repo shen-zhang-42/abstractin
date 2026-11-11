@@ -109,13 +109,15 @@ Codex 通过本地 `app-server` 接收增量文字，边生成边显示完整回
 
 展开文献条目，再展开 **NoteIn** 即可查看笔记。未分类条目、标签筛选、文字搜索和保存的搜索中，文献下的插件笔记都支持折叠分组。搜索视图只分组当前结果中的笔记，不补入未命中的笔记；没有父文献行的独立笔记命中和回收站保留 Zotero 原生显示。关闭插件后笔记恢复平铺显示。
 
-阅读和记笔记是两个平行功能：**Reading** 打开文献阅读／讨论；主界面的 **NoteOut** 按钮直接打开与 Zotero 主窗口并行的独立、非模态笔记窗口，不要求先开始阅读。阅读界面左上角 **AbstractIn** 图标和名称右侧也有带文字的 **NoteOut** 快捷按钮，打开同一个笔记窗口。窗口左侧列出当前书库的手写笔记，点击 **New note** 新建并命名，或选择已有笔记；切换笔记时编辑区保留各自的草稿。原文献讨论继续保留，两边可同时使用。
+阅读和记笔记是两个平行功能：点击主界面插件按钮，或阅读界面 **AbstractIn** 名称右侧的下拉按钮，选择 **AbstractIn** 或 **NoteOut**。AbstractIn 默认停靠在主窗口右侧；NoteOut 打开独立、非模态窗口，不要求先开始阅读。点击 **New note** 新建并命名，或选择已有笔记。打开笔记后默认左侧编辑、右侧对话，点击 **Notes** 展开笔记列表；切换笔记保留各自草稿。原文献讨论继续保留，两边可同时使用。
 
-读者自己创建的 Markdown 笔记单独归入文献下的 **NoteOut**，与自动讨论／阅读记录的 **NoteIn** 并列，互不混合。从文献讨论快捷进入时，新笔记可关联该文献；从独立 NoteOut 入口进入时，新笔记不依赖文献。窗口会显示新笔记的关联范围。书库的 Reading companion 仍提供 **New Markdown note** 和 **Open selected Markdown note** 快捷操作。关联文献的手写笔记进入其 NoteOut；未关联文献的独立笔记仍显示在书库中。
+在 Zotero 主窗口选中文献，再点击 **Add selected Zotero documents**，即可为新建或已有笔记添加一篇或多篇关联文献，关联列表中可解除关联。只关联一篇时，笔记保存在该文献的 **NoteOut** 中；关联多篇时，唯一的正文保存在书库顶层，与文献平级，各篇文献的 NoteOut 索引提供指向同一笔记的链接。从任一关联文献进入 NoteOut，可在列表中找到它；勾选 **Show all notes in this library** 可查看同一书库的全部笔记。改变关联范围后自动调整保存位置，不复制笔记正文。暂不支持跨书库关联。自动讨论／阅读记录继续归入 **NoteIn**。
 
 笔记复用消息输入框的 CodeMirror 编辑器，支持 Markdown、LaTeX 和 KaTeX 公式，使用 **Preview / Edit** 切换渲染与编辑。正文和标题自动保存，也可点击 **Save** 或按 Ctrl/Cmd+S。笔记作为 Zotero 原生 note 保存并同步，Markdown 源文一并保留；外部修改发生冲突时不覆盖已有内容，并保留本机草稿供重新打开后恢复。旧的普通 Zotero 笔记不会被自动转换。
 
-在笔记窗口点击 **Discuss note**，可用现有 CLI／API 模型进行独立对话；默认带入发送时的完整笔记，也可选择 **Use editor selection only**。笔记后续编辑不会改变已经发出的那一版上下文。对话流式显示，历史保存在这条笔记的本机工作目录，并遵守该笔记的 Full／Summary／Don’t save 设置；这一版笔记对话暂不跨设备同步。模型回答留在对话区，点击 **Append last answer** 才会追加到正文。**Use in document discussion** 可把选区或全文放入原文献讨论的输入框，检查后再发送。
+右侧对话沿用已有 CLI／API 模型设置，支持 **Answer questions** 和 **Edit note** 两种模式，可选择整篇笔记或编辑器选中文本作为上下文。Edit note 生成修改预览，点击 **Apply edit** 应用并保存，或点击 **Discard** 放弃；生成期间正文发生变化时，旧提案不会覆盖新内容。关联文献的题名只标识笔记来源，不代表模型已读取其全文。
+
+笔记对话默认展开，可用 **Hide discussion / Discuss note** 收起或重新展开；默认带入发送时的完整笔记，也可选择 **Use editor selection only**。笔记后续编辑不会改变已经发出的那一版上下文。对话流式显示，历史保存在这条笔记的本机工作目录，并遵守该笔记的 Full／Summary／Don’t save 设置；这一版笔记对话暂不跨设备同步。回答问题模式的结果留在对话区，点击 **Append last answer** 可追加到正文。**Use in document discussion** 可把选区或全文放入原文献讨论的输入框，检查后再发送。
 
 阅读界面顶部的 **Export reading summary**，或 **Note saving → Summarize all book conversations**，可以收集这本书全部章节、全部会话中的知识点和相关阅读笔记，不限于当前 chat；论文也有对应入口。这里只筛选已有回答，不重新概述整本书原文。
 

@@ -88,10 +88,19 @@
   },
   noteInParentGroups(id) { return [this._noteInGroups.get(id), this._noteOutGroups.get(id)].filter(Boolean); },
   noteGroupForItem(id) { return this.noteInParentGroups(this._noteInNoteParents.get(id)).find(group => group.anchor.id === id || group.notes.some(note => note.id === id)); },
-  noteOutIndexHTML(parent) {
+  noteOutIndexHTML(parent, sharedNotes = []) {
    const doc = Zotero.getMainWindow().document, body = this.el(doc, 'div');
    body.append(this.el(doc, 'h1', null, 'NoteOut'), this.el(doc, 'p', null, 'Your own Markdown notes. Open them from the Write note menu or select a note and choose Open selected Markdown note.'),
-    this.el(doc, 'pre', null, JSON.stringify({ format: 'abstractin-noteout-v1', itemKey: parent.key })));
+    this.el(doc, 'pre', null, JSON.stringify({ format: 'abstractin-noteout-v1', itemKey: parent.key, sharedNotes })));
+   if (sharedNotes.length) {
+    body.append(this.el(doc, 'h2', null, 'Shared notes at library level'));
+    for (const link of sharedNotes) {
+     const row = this.el(doc, 'p'), a = this.el(doc, 'a', null, link.title || 'Untitled note');
+     const library = Zotero.Libraries.get(parent.libraryID);
+     const path = library?.libraryType === 'group' ? 'groups/' + library.groupID : 'library';
+     a.setAttribute('href', 'zotero://select/' + path + '/items/' + encodeURIComponent(link.key)); row.append(a); body.append(row);
+    }
+   }
    return body.outerHTML;
   },
   noteInIndexHTML(parent, legacyKeys) {

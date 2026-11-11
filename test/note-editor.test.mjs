@@ -65,7 +65,7 @@ test('note window is independent of the document discussion and reopening focuse
 
 test('note editor reuses the composer, previews Markdown/math, and saves source/title changes', async () => {
  const { p, window, document, note, state } = await setup();
- let options; const install = p.installMathComposer; p.installMathComposer = function(input, config) { options = config; return install.call(this, input, config); };
+ let options; const install = p.installMathComposer; p.installMathComposer = function(input, config) { if (config?.note) options = config; return install.call(this, input, config); };
  await p.mountMarkdownNote(window, state); assert.equal(options.note, true);
  state.input.value = '# Updated\n\n$$a=b$$'; state.title.value = 'Updated title'; state.revision++;
  await p.saveMarkdownNote(state);
@@ -97,7 +97,7 @@ test('serialized saves keep the latest text and recover after a failed Zotero sa
 
 test('note discussion sends an immutable note snapshot through the existing model transport', async () => {
  const { p, window, note, state } = await setup(); await p.mountMarkdownNote(window, state);
- const dir = join(state.dir, 'discussion'); await mkdir(dir);
+ const dir = join(state.dir, 'discussion'); await mkdir(dir, { recursive: true });
  const ctx = p.registerChatContext({ dir, paperItem: note, attachmentItem: null, noteWorkspace: true, noteState: state });
  state.input.value = 'Version at send'; state.contextScope = { value: 'full' };
  let release; p.assertAgentReadingReady = () => new Promise(resolve => { release = resolve; });
@@ -117,7 +117,7 @@ test('note discussion sends an immutable note snapshot through the existing mode
 test('selection-only context excludes the rest of the note and reports empty selections', async () => {
  const { p, window, note, state } = await setup(); await p.mountMarkdownNote(window, state);
  state.input.value = 'PRIVATE selected OTHER'; state.input.setSelectionRange(8, 16); state.contextScope = { value: 'selection' };
- const dir = join(state.dir, 'discussion'); await mkdir(dir);
+ const dir = join(state.dir, 'discussion'); await mkdir(dir, { recursive: true });
  const ctx = p.registerChatContext({ dir, paperItem: note, noteWorkspace: true, noteState: state });
  p.runBackend = async (_, request) => { assert.match(request.question, /selected/); assert.doesNotMatch(request.question, /PRIVATE|OTHER/); return { text: 'A reply' }; };
  const pending = { backend: 'codex', model: 'fixture', progress() {}, cancelled: false };
@@ -183,12 +183,12 @@ test('NoteOut home keeps the list and switches editors inside one window without
  for (const state of home.states.values()) state.disposeEditor(); window.close();
 });
 
-test('the visible NoteOut shortcut sits immediately beside AbstractIn in the header', async () => {
+test('the workspace dropdown sits immediately beside AbstractIn in the header', async () => {
  const { p, document, window } = await setup(); p.renderSkeleton(document, document.body);
  const root = document.querySelector('.abstractin-root'), title = root.querySelector('.abstractin-header-title');
- const shortcut = title.nextElementSibling; assert.ok(shortcut.classList.contains('abstractin-write-note')); assert.equal(shortcut.textContent.trim(), 'NoteOut');
+ const shortcut = title.nextElementSibling; assert.ok(shortcut.classList.contains('abstractin-write-note')); assert.equal(shortcut.getAttribute('aria-label'), 'Choose AbstractIn or NoteOut');
  let opened = 0; p.openNoteOutHome = async owner => { assert.equal(owner, window); opened++; };
- shortcut.click(); assert.equal(opened, 1); root.disposeUI(); window.close();
+ shortcut.click(); const menu = document.getElementById('abstractin-workspace-menu'); assert.ok(menu); menu.children[1].click(); assert.equal(opened, 1); root.disposeUI(); window.close();
 });
 
 test('new independent notes use the library selected for the NoteOut home', async () => {
@@ -209,4 +209,80 @@ test('the native window resolves primitive workspace IDs through Zotero and show
   runInNewContext(source, { window: win, Zotero: { AbstractIn: plugin } }); await handler();
   if (valid) assert.equal(mounted, true); else assert.match(host.textContent, /workspace is unavailable/);
  }
+});
+
+test('shared notes keep one top-level source and every linked document has a persistent native link', async () => {
+ const { p, window, parent, items } = await setup(); p._markdownNoteWindows.clear();
+ const second = new window.Zotero.Item('book'); second.title = 'Second paper'; await second.saveTx();
+ window.openDialog = () => ({ closed: false, focus() {} });
+ const documents = [parent, second].map(item => p.noteDocumentRef(item));
+ await p.openMarkdownNote({ win: window, documents });
+ const state = [...p._markdownNoteWindows.values()][0], data = p.markdownNoteData(state.note);
+ assert.equal(!!state.note.parentID, false); assert.deepEqual(Array.from(data.documents, r => r.key), documents.map(r => r.key));
+ for (const item of [parent, second]) {
+  const anchor = [...items.values()].find(n => n.parentID === item.id && p.noteInMetadata(n, item) === 'out-anchor');
+  assert.ok(anchor); assert.match(anchor.getNote(), new RegExp('zotero://select/library/items/' + state.note.key));
+ }
+ assert.equal([...items.values()].filter(n => p.markdownNoteData(n)?.documents?.length === 2).length, 1);
+});
+
+test('changing one-document notes to shared notes and back moves the source and updates links without deleting notes', async () => {
+ const { p, window, note, state, parent, items } = await setup();
+ const second = new window.Zotero.Item('book'); second.title = 'Another document'; await second.saveTx();
+ await p.mountMarkdownNote(window, state);
+ assert.equal(state.chatHost.hidden, false); assert.ok(state.chatView); assert.equal(state.assistantMode.value, 'answer');
+ state.documents = [parent, second].map(item => p.noteDocumentRef(item)); state.revision++; await state.flush();
+ assert.equal(!!note.parentID, false); assert.equal(p.markdownNoteData(note).documents.length, 2);
+ const count = items.size;
+ state.documents = [p.noteDocumentRef(second)]; state.revision++; await state.flush();
+ assert.equal(note.parentID, second.id); assert.equal(p.markdownNoteData(note).itemKey, second.key); assert.equal(items.size, count);
+ for (const item of [parent, second]) {
+  const anchor = [...items.values()].find(n => n.parentID === item.id && p.noteInMetadata(n, item) === 'out-anchor');
+  assert.doesNotMatch(anchor.getNote(), new RegExp('zotero://select/library/items/' + note.key));
+ }
+ state.disposeEditor(); window.close();
+});
+
+test('opening NoteOut from either linked document finds the same shared note', async () => {
+ const { p, window, document, note, parent } = await setup(); p._markdownNoteWindows.clear();
+ const second = new window.Zotero.Item('book'); second.title = 'Another paper'; await second.saveTx();
+ note.parentID = false; note.setNote(p.markdownNoteHTML(note, 'Shared analysis', 'One source', null, 2, [parent, second].map(item => p.noteDocumentRef(item))));
+ const home = { key: '1', libraryID: 1, parent, documents: [p.noteDocumentRef(parent)], states: new Map() };
+ await p.mountNoteOutHome(window, home);
+ assert.match(document.querySelector('.abstractin-note-list-items').textContent, /Shared analysis/);
+ home.documents = [p.noteDocumentRef(second)]; home.updateAssociation(); await home.refresh();
+ assert.match(document.querySelector('.abstractin-note-list-items').textContent, /Shared analysis/);
+ const button = document.querySelector('.abstractin-note-list-item'); await button.onclick();
+ assert.equal(home.active.note.key, note.key); assert.equal(home.active.input.value, 'One source');
+ home.active.disposeEditor(); window.close();
+});
+
+test('edit mode previews a scoped change and applies it only to the unchanged source snapshot', async () => {
+ const { p, window, state } = await setup(); await p.mountMarkdownNote(window, state);
+ state.input.value = 'Before selected after'; state.input.setSelectionRange(7, 15); state.contextScope.value = 'selection'; state.assistantMode.value = 'edit';
+ p.runBackend = async (_, request) => { assert.match(request.question, /complete replacement Markdown/); assert.match(request.question, /selected/); assert.doesNotMatch(request.question, /Before selected after/); return { text: JSON.stringify({ explanation: 'Improved wording', markdown: '**replacement**' }) }; };
+ const pending = { backend: 'codex', model: 'fixture', progress() {}, cancelled: false };
+ const answer = await p.ask(state.chatView.ctx, 'Improve this selection', pending); assert.ok(!answer.error);
+ assert.equal(state.input.value, 'Before selected after'); assert.match(state.proposalHost.textContent, /Improved wording/);
+ await state.proposalHost.querySelector('button').onclick();
+ assert.equal(state.input.value, 'Before **replacement** after'); assert.equal(p.markdownNoteData(state.note).markdown, state.input.value);
+ state.disposeEditor(); window.close();
+});
+
+test('stale and malformed model edits cannot overwrite a newer note', async () => {
+ const { p, window, state } = await setup(); await p.mountMarkdownNote(window, state); state.assistantMode.value = 'edit';
+ const pending = { backend: 'codex', model: 'fixture', progress() {}, cancelled: false };
+ p.runBackend = async () => ({ text: '{"explanation":"Rewrite","markdown":"Replacement"}' });
+ await p.ask(state.chatView.ctx, 'Rewrite', pending); state.input.value = 'Newer manual version';
+ await state.proposalHost.querySelector('button').onclick(); assert.equal(state.input.value, 'Newer manual version'); assert.match(state.proposalHost.textContent, /note has changed/);
+ p.runBackend = async () => ({ text: 'Invalid edit' });
+ assert.match((await p.ask(state.chatView.ctx, 'Retry', pending)).error, /invalid edit proposal/); assert.equal(state.input.value, 'Newer manual version');
+ state.disposeEditor(); window.close();
+});
+
+test('linked document selection resolves child attachments and rejects other libraries', async () => {
+ const { p, window, parent } = await setup();
+ window.ZoteroPane = { itemsView: { getSelectedItems: () => [parent, { parentID: parent.id }] } };
+ assert.equal((await p.selectedNoteDocuments(1)).length, 1);
+ await assert.rejects(p.selectedNoteDocuments(2), /same library/);
 });

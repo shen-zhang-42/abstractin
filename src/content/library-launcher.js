@@ -9,6 +9,7 @@
 			this.mountLibraryLauncher(win);
 		},
 		removeFromWindow(win) {
+			win.document.getElementById("abstractin-workspace-menu")?._close();
 			win.document.getElementById("abstractin-notes-toggle")?.remove();
 			win.document.getElementById("abstractin-main-toggle")?.remove();
 			win.document.getElementById("abstractin-main-separator")?.remove();
@@ -17,21 +18,16 @@
 		mountLibraryLauncher(win) {
 			const doc = win.document, anchor = doc.getElementById("zotero-tb-tabs-menu");
 			if (!anchor) return false;
-			if (doc.getElementById("abstractin-main-toggle")) { this.mountNoteOutLauncher?.(win, doc.getElementById("abstractin-main-toggle")); return true; }
-			const button = this.iconButton(doc, "abstractin-main-toggle zotero-tb-button", "Reading — open literature discussions", "app", () => {
-				this.openLibraryLauncher(win).catch(error => {
-					this.logError("document chooser", error);
-					Zotero.alert(win, "AbstractIn", error.message || String(error));
-				});
-			});
+			if (doc.getElementById("abstractin-main-toggle")) return true;
+			const button = this.iconButton(doc, "abstractin-main-toggle zotero-tb-button", "AbstractIn / NoteOut", "app", () => this.openWorkspaceMenu(win, button));
 			button.id = "abstractin-main-toggle";
 			button.setAttribute("aria-controls", "abstractin-reader-panel");
 			button.setAttribute("aria-expanded", "false");
+			button.setAttribute("aria-haspopup", "menu");
 			const separator = this.el(doc, "div", "zotero-tb-separator abstractin-main-separator");
 			separator.id = "abstractin-main-separator";
 			separator.setAttribute("role", "separator"); separator.setAttribute("aria-orientation", "vertical");
 			anchor.before(button, separator);
-			this.mountNoteOutLauncher?.(win, button);
 			return true;
 		},
 		async openLibraryLauncher(win) {
@@ -72,7 +68,7 @@
 			launcher.append(header, welcome, add, list, status, start);
 			const notes = this.el(doc, "div", "abstractin-library-note-actions");
 			const newNote = this.el(doc, "button", null, "New Markdown note"), openNote = this.el(doc, "button", null, "Open selected Markdown note");
-			newNote.onclick = () => this.openMarkdownNote({ win, parent: selected?.size === 1 ? [...selected.values()][0] : null }).catch(e => { status.textContent = e.message || String(e); });
+			newNote.onclick = () => this.openMarkdownNote({ win, documents: [...selected.values()].map(item => this.noteDocumentRef(item)) }).catch(e => { status.textContent = e.message || String(e); });
 			openNote.onclick = () => this.openSelectedMarkdownNote(win).catch(e => { status.textContent = e.message || String(e); });
 			notes.append(newNote, openNote); launcher.append(notes);
 			const selected = state.readingDocuments ||= new Map();
