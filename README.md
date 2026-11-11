@@ -115,7 +115,22 @@ Codex 通过本地 `app-server` 接收增量文字，边生成边显示完整回
 
 在 Zotero 主窗口选中文献，再点击 **Add selected Zotero documents**，即可为新建或已有笔记添加一篇或多篇关联文献，关联列表中可解除关联。只关联一篇时，笔记保存在该文献的 **NoteOut** 中；关联多篇时，唯一的正文保存在书库顶层，与文献平级，各篇文献的 NoteOut 索引提供指向同一笔记的链接。从任一关联文献进入 NoteOut，可在列表中找到它；勾选 **Show all notes in this library** 可查看同一书库的全部笔记。改变关联范围后自动调整保存位置，不复制笔记正文。暂不支持跨书库关联。自动讨论／阅读记录继续归入 **NoteIn**。
 
-笔记复用消息输入框的 CodeMirror 编辑器，支持 Markdown、LaTeX 和 KaTeX 公式，使用 **Preview / Edit** 切换渲染与编辑。正文和标题自动保存，也可点击 **Save** 或按 Ctrl/Cmd+S。笔记作为 Zotero 原生 note 保存并同步，Markdown 源文一并保留；外部修改发生冲突时不覆盖已有内容，并保留本机草稿供重新打开后恢复。旧的普通 Zotero 笔记不会被自动转换。
+笔记使用 Tiptap／ProseMirror 的所见即所得 Markdown 编辑器，直接显示标题、加粗、列表、表格和 KaTeX 公式，不再区分 Edit／Preview 模式；讨论输入框继续使用 CodeMirror。编辑区铺满剩余窗口高度，仅正文滚动，标题、Sources、字体和工具栏固定在上方。后台以 Markdown 源码作为正文来源，不保存富文本编辑器的内部文档结构；只打开笔记或切换字体不会重写原始 Markdown，实际编辑后可能规范化 Markdown 的排版。正文和标题自动保存，也可点击 **Save** 或按 Ctrl/Cmd+S。笔记作为 Zotero 原生 note 保存并同步，外部修改发生冲突时不覆盖已有内容，并保留本机源码草稿供重新打开后恢复。旧的普通 Zotero 笔记不会被自动转换。
+
+标题下方的字体下拉框支持 System、Arial、Georgia、Times New Roman、Consolas、Microsoft YaHei 和 SimSun；字体仅影响显示，不写入 Markdown。点击旁边的 **Shortcuts** 查看固定快捷键，暂不提供自定义。Windows／Linux 使用 Ctrl，macOS 对应 Cmd，Alt 对应 Option。
+
+| 快捷键 | 功能 |
+|---|---|
+| Ctrl+B / Ctrl+I | 加粗／斜体 |
+| Ctrl+Shift+X | 删除线 |
+| Ctrl+E / Ctrl+Shift+K | 行内代码／代码块 |
+| Ctrl+K | 插入或修改链接 |
+| Ctrl+Alt+1～6 / Ctrl+Alt+0 | 一级至六级标题／普通段落 |
+| Ctrl+Shift+8 / Ctrl+Shift+7 | 无序／有序列表 |
+| Ctrl+Shift+L / Ctrl+Shift+9 | 任务列表／引用 |
+| Ctrl+S / Ctrl+Z / Ctrl+Y | 保存／撤销／重做（macOS 重做为 Cmd+Shift+Z） |
+
+选中文字后使用格式快捷键，标题、列表和引用作用于所在段落；常用样式可再次按相同快捷键取消。点击公式可修改该公式的 LaTeX 源码，应用后直接渲染。
 
 右侧对话沿用已有 CLI／API 模型设置，支持 **Answer questions** 和 **Edit note** 两种模式，可选择整篇笔记或编辑器选中文本作为上下文。Edit note 生成修改预览，点击 **Apply edit** 应用并保存，或点击 **Discard** 放弃；生成期间正文发生变化时，旧提案不会覆盖新内容。关联文献的题名只标识笔记来源，不代表模型已读取其全文。
 

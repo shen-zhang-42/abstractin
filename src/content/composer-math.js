@@ -84,6 +84,7 @@ Object.assign(AbstractIn, {
 				const focused = doc.activeElement === input;
 				const start = input.selectionStart, end = input.selectionEnd, direction = input.selectionDirection;
 				editor = factory.create({
+					note: !!options.note,
 					maxHeight: options.note ? 600 : 180, minHeight: options.note ? 300 : 40, label: options.note ? "Markdown note" : "Message",
 					text: input.value, disabled: input.disabled, placeholder: input.placeholder,
 					tokens: text => this.composerMathTokens(text),
@@ -100,7 +101,7 @@ Object.assign(AbstractIn, {
 						(this.isSendKey(event) || event.key === "Escape" || (event.key === "ArrowUp" && !input.value) || event.altKey) ? forward("keydown", event) : false,
 					onPaste: event => event.clipboardData?.files.length ? forward("paste", event, "clipboardData") : false,
 					onDrop: event => event.dataTransfer?.files.length ? forward("drop", event, "dataTransfer") : false,
-					onHeight: height => { frame.style.height = height + "px"; },
+					onHeight: height => { if (!options.note) frame.style.height = height + "px"; },
 					onError: error => win.setTimeout(() => fail(error), 0),
 				});
 				editor.select(direction === "backward" ? end : start, direction === "backward" ? start : end);
@@ -117,6 +118,7 @@ Object.assign(AbstractIn, {
 				frame.style.removeProperty("position");
 				frame.style.removeProperty("left");
 				frame.style.removeProperty("visibility");
+				if (options.note) { frame.style.height = "100%"; frame.classList.add("abstractin-note-rich-frame"); }
 				frame.hidden = false;
 				sync(); editor.measure();
 				if (focused) editor.focus();

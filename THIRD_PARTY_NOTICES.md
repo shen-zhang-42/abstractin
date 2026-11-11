@@ -7,6 +7,7 @@ AbstractIn bundles the following third-party files. Each licence ships next to t
 | Component | Version | Licence | Files | Licence file |
 |---|---|---|---|---|
 | CodeMirror 6 and dependencies | Locked versions in `src/content/editor/dependencies.json` | MIT | `src/content/editor/composer.bundle.js` | `src/content/editor/CODEMIRROR-LICENSES.txt` |
+| Tiptap, ProseMirror, Markdown and mathematics dependencies | Locked versions in `src/content/editor/rich-dependencies.json` | Licences listed per package | `src/content/editor/composer.bundle.js` | `src/content/editor/RICH-EDITOR-LICENSES.txt` |
 | KaTeX | 0.16.22 | MIT | `src/content/lib/katex.min.js` | `src/content/lib/KATEX-LICENSE` |
 | Latin Modern Math | — | GUST Font License | `src/content/lib/latinmodern-math.otf` | `src/content/lib/LATINMODERN-MATH-LICENSE.txt` |
 | Phosphor Icons (Duotone) | 2.1.1 | MIT | `src/content/icons/*.svg` except `mascot-*.svg`, `app-marmoset.svg` and `lucide-*.svg` | `src/content/icons/PHOSPHOR-LICENSE` |

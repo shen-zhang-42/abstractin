@@ -10,6 +10,32 @@ html, body { margin: 0; padding: 0; background: transparent; color: var(--editor
 .composer-math[data-display="true"] { display: block; margin: 6px 0; overflow-x: auto; text-align: center; }
 .composer-math math { font-size: 1em; }
 .composer-math[data-display="true"] math { font-size: 1.1em; }
+html.note-rich-root, body.note-rich-document { height: 100%; overflow: hidden; }
+.note-rich-document #editor { height: 100%; }
+.note-rich-document .tiptap { box-sizing: border-box; height: 100%; overflow-y: auto; overflow-x: hidden; outline: none; padding: 4px 4px 60px 0; font: inherit; line-height: 1.8; overflow-wrap: anywhere; scrollbar-width: thin; }
+.note-rich-document .tiptap > :first-child { margin-top: 0; }
+.note-rich-document .tiptap :is(h1,h2,h3,h4,h5,h6) { line-height: 1.35; margin: 1.3em 0 .5em; }
+.note-rich-document .tiptap h1 { font-size: 1.85em; } .note-rich-document .tiptap h2 { font-size: 1.5em; } .note-rich-document .tiptap h3 { font-size: 1.25em; }
+.note-rich-document .tiptap p { margin: .65em 0; }
+.note-rich-document .tiptap pre { white-space: pre-wrap; padding: 12px; background: var(--editor-hover); border-radius: 6px; }
+.note-rich-document .tiptap code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
+.note-rich-document .tiptap :not(pre) > code { padding: 2px 4px; background: var(--editor-hover); border-radius: 3px; }
+.note-rich-document .tiptap blockquote { margin-inline: 0; padding-inline-start: 16px; border-inline-start: 3px solid var(--editor-faint); }
+.note-rich-document .tiptap table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+.note-rich-document .tiptap :is(td,th) { border: 1px solid var(--editor-faint); padding: 6px 10px; vertical-align: top; }
+.note-rich-document .tiptap ul[data-type="taskList"] { list-style: none; padding-inline-start: 4px; }
+.note-rich-document .tiptap li[data-type="taskItem"] { display: flex; align-items: baseline; gap: 8px; }
+.note-rich-document .tiptap li[data-type="taskItem"] > div { flex: 1; }
+.note-rich-document .tiptap img { max-width: 100%; height: auto; }
+.note-rich-document .tiptap a { color: inherit; text-decoration: underline; }
+.note-rich-document .tiptap .ProseMirror-selectednode { outline: 1px solid var(--editor-faint); }
+.note-rich-document .tiptap-mathematics-render { cursor: pointer; }
+.note-rich-document [data-type="block-math"] { display: block; margin: 16px 0; text-align: center; overflow-x: auto; }
+.note-rich-dialog { position: fixed; z-index: 100; top: 15%; left: 8%; right: 8%; padding: 16px; color: var(--editor-text); background: Canvas; border: 1px solid var(--editor-faint); border-radius: 9px; box-shadow: 0 8px 28px #0003; font: 13px system-ui,sans-serif; }
+.note-rich-dialog label { display: block; margin: 12px 0; }
+.note-rich-dialog :is(input,textarea) { box-sizing: border-box; display: block; width: 100%; margin-top: 4px; padding: 8px; color: inherit; background: transparent; border: 1px solid var(--editor-faint); border-radius: 5px; font: inherit; }
+.note-rich-dialog textarea { min-height: 100px; font-family: ui-monospace,Consolas,monospace; }
+.note-rich-dialog button { padding: 6px 10px; margin-inline-end: 8px; }
 </style>
 <script defer src="composer.bundle.js"></script>
 </head>

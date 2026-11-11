@@ -40,18 +40,33 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 #abstractin-note-root button:disabled { opacity: .5; cursor: default; }
 #abstractin-note-root .abstractin-note-primary { background: var(--note-accent); border-color: var(--note-accent); color: var(--note-accent-text); font-weight: 600; }
 #abstractin-note-root .abstractin-note-primary:hover { filter: brightness(1.08); }
-.abstractin-note-editor { flex: 0 0 calc((100% - 8px) * var(--note-editor-ratio, 58) / 100); min-width: min(260px, 40%); padding: 26px clamp(24px, 3vw, 48px) 40px; overflow: auto; background: var(--note-paper); scrollbar-width: thin; }
+.abstractin-note-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; flex: 0 0 calc((100% - 8px) * var(--note-editor-ratio, 58) / 100); min-width: min(260px, 40%); padding: 26px clamp(24px, 3vw, 48px) 0; overflow: hidden; background: var(--note-paper); }
+.abstractin-note-editor-head { flex: 0 0 auto; min-height: 0; overflow: visible; }
+.abstractin-note-editor-head .abstractin-note-documents[open] { max-height: 180px; overflow: auto; }
+.abstractin-note-edit-host { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.abstractin-note-edit-host .abstractin-note-rich-frame { flex: 1 1 0; min-height: 0 !important; max-height: none; height: 100% !important; }
+.abstractin-note-notices { flex: 0 1 auto; max-height: 42%; overflow: auto; }
+.abstractin-note-font { width: 135px; max-width: 100%; padding: 6px; border: 1px solid var(--note-line); border-radius: 7px; font: inherit; color: var(--note-text); background: var(--note-paper); }
 .abstractin-note-chat-hidden .abstractin-note-editor { flex: 1 1 0; }
 .abstractin-note-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
 .abstractin-note-eyebrow { display: block; font-size: 10px; font-weight: 650; letter-spacing: .14em; color: var(--note-muted); }
 .abstractin-note-status { color: var(--note-muted); font-size: 11px; text-align: right; }
 .abstractin-note-title { width: 100%; padding: 0 0 14px; border: 0; outline: none; background: transparent; color: var(--note-text); font: 650 29px/1.3 system-ui, sans-serif; letter-spacing: -.035em; }
 .abstractin-note-title:focus-visible { outline: none !important; box-shadow: 0 2px var(--note-accent); }
-.abstractin-note-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 10px 0 14px; }
+.abstractin-note-toolbar { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 10px 0 14px; }
 .abstractin-note-save { margin-inline-start: auto; }
 .abstractin-note-more { position: relative; }
 .abstractin-note-more summary { list-style: none; user-select: none; }
 .abstractin-note-more summary::-webkit-details-marker { display: none; }
+.abstractin-note-shortcuts { position: static; }
+.abstractin-note-shortcuts > summary { list-style: none; border: 1px solid var(--note-line); border-radius: 7px; padding: 6px 11px; background: var(--note-paper); cursor: pointer; user-select: none; }
+.abstractin-note-shortcuts > summary::-webkit-details-marker { display: none; }
+.abstractin-note-shortcuts-body { position: absolute; z-index: 25; left: 0; right: 0; top: calc(100% + 6px); max-height: 55vh; overflow: auto; padding: 14px; border: 1px solid var(--note-line); border-radius: 9px; background: var(--note-paper); box-shadow: var(--note-shadow); font-size: 12px; }
+.abstractin-note-shortcuts-body table { width: 100%; border-collapse: collapse; margin-top: 9px; }
+.abstractin-note-shortcuts-body td { padding: 5px 0; border-bottom: 1px solid var(--note-line); }
+.abstractin-note-shortcuts-body td:last-child { text-align: right; white-space: nowrap; }
+.abstractin-note-shortcuts-body kbd { font: 11px system-ui, sans-serif; padding: 2px 5px; border: 1px solid var(--note-line); border-radius: 4px; background: var(--note-ground); }
+.abstractin-note-shortcuts-body p { color: var(--note-muted); line-height: 1.6; margin-bottom: 0; }
 .abstractin-note-more-actions { position: absolute; z-index: 20; right: 0; top: calc(100% + 6px); width: 228px; padding: 5px; border: 1px solid var(--note-line); border-radius: 10px; box-shadow: var(--note-shadow); background: var(--note-paper); }
 .abstractin-note-more-actions button { display: block; width: 100%; border: 0; background: transparent; text-align: left; padding: 9px 10px; }
 .abstractin-note-documents { margin: 0 0 22px; border-top: 1px solid var(--note-line); border-bottom: 1px solid var(--note-line); padding: 9px 0; font-size: 12px; color: var(--note-muted); }
@@ -61,7 +76,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 .abstractin-note-document-ref { display: flex; align-items: center; gap: 10px; margin: 7px 0; padding: 6px 8px; border-radius: 6px; background: var(--note-ground); color: var(--note-text); }
 .abstractin-note-document-ref span { flex: 1; overflow-wrap: anywhere; }
 .abstractin-note-document-ref button { border: 0; background: transparent; padding: 0 6px; color: var(--note-muted); }
-.abstractin-note-source { width: 100%; min-height: 440px; resize: vertical; border: 0; outline: none; padding: 8px 0; background: transparent; color: var(--note-text); font: 15px/1.85 system-ui, sans-serif; }
+.abstractin-note-source { flex: 1 1 0; width: 100%; min-height: 0; height: 100%; resize: none; border: 0; outline: none; padding: 8px 0; background: transparent; color: var(--note-text); font: 15px/1.85 system-ui, sans-serif; }
 .abstractin-note-edit-host .abstractin-composer-frame { width: 100%; border: 0; min-height: 400px; }
 .abstractin-note-preview { font-size: 15px; line-height: 1.85; overflow-wrap: anywhere; color: var(--note-text); }
 .abstractin-note-preview :is(h1,h2,h3) { line-height: 1.4; letter-spacing: -.02em; margin-top: 1.5em; }
@@ -137,7 +152,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 .abstractin-note-home .abstractin-note-list { flex: 0 0 calc((100% - 8px) * var(--note-sidebar-ratio, 18) / 100); width: auto; min-width: 180px; max-width: 40%; height: 100%; max-height: none; border: 0; }
 .abstractin-note-home .abstractin-note-home-workspace { min-width: 520px; height: 100%; }
 .abstractin-note-home .abstractin-note-document { flex-direction: row; height: 100%; min-height: 0; }
-.abstractin-note-home .abstractin-note-editor { flex: 0 0 calc((100% - 8px) * var(--note-editor-ratio, 58) / 100); min-height: 0; padding: 22px 24px 32px; }
+.abstractin-note-home .abstractin-note-editor { flex: 0 0 calc((100% - 8px) * var(--note-editor-ratio, 58) / 100); min-height: 0; padding: 22px 24px 0; }
 .abstractin-note-home .abstractin-note-chat { flex: 1 1 0; width: auto; height: 100%; border: 0; }
 .abstractin-note-home .abstractin-note-splitter { display: block; }
 .abstractin-note-home .abstractin-note-home-empty { align-items: stretch; justify-content: normal; text-align: left; padding: 0; }

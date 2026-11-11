@@ -2,11 +2,13 @@ import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateFiel
 import { Decoration, EditorView, WidgetType, keymap, placeholder } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { latexSourceBlocks, latexHighlightRanges } from "./latex-highlights.js";
+import { createRichNote } from "./note-rich.js";
 
 // This module runs in an HTML iframe, rather than Zotero's chrome document.
-// CodeMirror owns the document, selection, history, clipboard and IME handling.
+// Discussion inputs use CodeMirror; notes use the visual Markdown editor.
 window.AbstractInComposer = {
 	create(config) {
+		if (config.note) return createRichNote(config);
 		const enabled = new Compartment(), hint = new Compartment();
 		const focusChanged = StateEffect.define();
 		let syncing = false, destroyed = false;
@@ -123,6 +125,8 @@ window.AbstractInComposer = {
 		const size = new ResizeObserver(() => config.onHeight(Math.min(config.maxHeight || 180, Math.max(config.minHeight || 40, view.dom.getBoundingClientRect().height))));
 		size.observe(view.dom);
 		return {
+			markdownShortcuts: [],
+			formatMarkdown() { return false; },
 			sync(text, disabled, label) {
 				if (destroyed) return;
 				syncing = true;

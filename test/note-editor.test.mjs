@@ -63,15 +63,17 @@ test('note window is independent of the document discussion and reopening focuse
  assert.equal(state.note, note);
 });
 
-test('note editor reuses the composer, previews Markdown/math, and saves source/title changes', async () => {
+test('the visual note editor has a fixed header, one editing surface, and saves Markdown source', async () => {
  const { p, window, document, note, state } = await setup();
  let options; const install = p.installMathComposer; p.installMathComposer = function(input, config) { if (config?.note) options = config; return install.call(this, input, config); };
  await p.mountMarkdownNote(window, state); assert.equal(options.note, true);
  state.input.value = '# Updated\n\n$$a=b$$'; state.title.value = 'Updated title'; state.revision++;
  await p.saveMarkdownNote(state);
  assert.equal(p.markdownNoteData(note).markdown, state.input.value); assert.equal(p.markdownNoteData(note).title, 'Updated title');
- [...document.querySelectorAll('button')].find(b => b.textContent === 'Preview').click();
- assert.match(state.preview.textContent, /Updated/); assert.ok(state.preview.querySelector('math'));
+ assert.equal([...state.editor.querySelectorAll('button')].some(b => ['Preview', 'Edit'].includes(b.textContent)), false);
+ const header = state.editor.querySelector('.abstractin-note-editor-head'); assert.ok(header.contains(state.title)); assert.ok(header.querySelector('.abstractin-note-documents'));
+ assert.equal(state.editor.querySelector('.abstractin-note-edit-host').contains(state.title), false);
+ const revision = state.revision; state.fontSelect.value = 'georgia'; state.fontSelect.onchange(); assert.equal(p.getPref('noteFont'), 'georgia'); assert.match(state.input.style.fontFamily, /Georgia/); assert.equal(state.revision, revision);
  assert.equal(state.input.value, '# Updated\n\n$$a=b$$');
  state.disposeEditor(); window.close();
 });
@@ -393,4 +395,15 @@ test('native selected-note and new-note shortcuts route into the same three-colu
  await p.openNoteOutHome(window, { documents: [p.noteDocumentRef(parent)], create: true });
  assert.notEqual(home.active.note.key, note.key); assert.equal(home.active.note.parentID, parent.id); assert.equal(home.states.size, 2);
  assert.equal(home.sidebar.hidden, false); for (const state of home.states.values()) state.dispose(); window.close();
+});
+
+test('the editor exposes an in-place shortcut reference from the actual binding catalog', async () => {
+ const { markdownShortcuts } = await import('../src/content/editor/markdown-shortcuts.js');
+ const { p, window, document, state } = await setup(); await p.mountMarkdownNote(window, state);
+ state.input._composerEditor = { markdownShortcuts };
+ const help = document.querySelector('.abstractin-note-shortcuts'); assert.equal(help.querySelector('summary').textContent, 'Shortcuts');
+ help.open = true; help.dispatchEvent(new window.Event('toggle'));
+ assert.match(help.textContent, /Ctrl\+B/); assert.match(help.textContent, /Ctrl\+Alt\+1/); assert.match(help.textContent, /Fixed shortcuts/);
+ assert.equal(help.querySelectorAll('tbody tr').length, markdownShortcuts.length + 3);
+ assert.equal(state.input.value, p.markdownNoteData(state.note).markdown); state.dispose(); window.close();
 });

@@ -387,7 +387,7 @@
    title.value = data.title; title.setAttribute("aria-label", "Note title");
    const toolbar = this.el(doc, "div", "abstractin-note-toolbar"), status = this.el(doc, "span", "abstractin-note-status", "Saved to Zotero");
    status.setAttribute("role", "status");
-   const save = this.el(doc, "button", null, "Save"), previewToggle = this.el(doc, "button", null, "Preview"), chatToggle = this.el(doc, "button", null, "Discuss note");
+   const save = this.el(doc, "button", null, "Save"), chatToggle = this.el(doc, "button", null, "Discuss note");
    save.className = "abstractin-note-primary abstractin-note-save";
    const closeDraft = this.el(doc, "button", null, "Close keeping local draft"); closeDraft.hidden = true;
    const append = this.el(doc, "button", null, "Append last answer"), toDiscussion = this.el(doc, "button", null, "Use in document discussion");
@@ -397,17 +397,39 @@
    const trash = this.el(doc, "button", "abstractin-note-danger", "Move to Trash…"); trash.onclick = () => this.confirmTrashMarkdownNote(state);
    moreActions.append(chatToggle, append, toDiscussion, trash); more.append(moreLabel, moreActions);
    moreActions.addEventListener("click", event => { if (event.target.closest("button")) more.open = false; });
-   toolbar.append(previewToggle, save, more, closeDraft);
+   toolbar.append(save, more, closeDraft);
+   const shortcuts = this.el(doc, "details", "abstractin-note-shortcuts"), shortcutsTitle = this.el(doc, "summary", null, "Shortcuts"), shortcutsBody = this.el(doc, "div", "abstractin-note-shortcuts-body");
+   shortcuts.append(shortcutsTitle, shortcutsBody); toolbar.insertBefore(shortcuts, save);
    const input = this.el(doc, "textarea", "abstractin-note-source"); input.value = data.markdown; input.placeholder = "Write Markdown and LaTeX here…"; input.setAttribute("aria-label", "Markdown note");
+   const fonts = { system: ['System', 'system-ui, sans-serif'], arial: ['Arial', 'Arial, sans-serif'], georgia: ['Georgia', 'Georgia, serif'], times: ['Times New Roman', '"Times New Roman", serif'], mono: ['Consolas', 'Consolas, ui-monospace, monospace'], yahei: ['Microsoft YaHei', '"Microsoft YaHei", sans-serif'], song: ['SimSun', 'SimSun, serif'] };
+   const font = this.el(doc, "select", "abstractin-note-font"); font.setAttribute("aria-label", "Note display font"); font.title = "Display font — Markdown source is unchanged";
+   for (const [value, [label]] of Object.entries(fonts)) { const option = this.el(doc, "option", null, label); option.value = value; font.append(option); }
+   font.value = fonts[this.getPref("noteFont")] ? this.getPref("noteFont") : "system"; input.style.fontFamily = fonts[font.value][1]; toolbar.insertBefore(font, shortcuts);
+   state.fontSelect = font;
+   font.onchange = () => {
+    this.setPref("noteFont", font.value);
+    for (const entry of this._markdownNoteWindows.values()) if (entry.input && entry.fontSelect) { entry.fontSelect.value = font.value; entry.input.style.fontFamily = fonts[font.value][1]; entry.input._refreshMathPreview?.(); }
+   };
    const editHost = this.el(doc, "div", "abstractin-note-edit-host"); editHost.append(input);
    const preview = this.el(doc, "div", "abstractin-note-preview"); preview.hidden = true;
    const top = this.el(doc, "div", "abstractin-note-topline"); top.append(this.el(doc, "span", "abstractin-note-eyebrow", "NOTEOUT / NOTEBOOK"), status);
-   editor.append(top, title, toolbar, editHost, preview); host.append(editor);
+   const header = this.el(doc, "header", "abstractin-note-editor-head"), notices = this.el(doc, "div", "abstractin-note-notices");
+   header.append(top, title, toolbar); notices.append(preview); editor.append(header, editHost, notices); host.append(editor);
    Object.assign(state, { title, input, preview, status, editor });
-   const refresh = () => {
-    if (preview.hidden) return;
-    preview.replaceChildren(); this.renderMarkdown(doc, preview, input.value);
-   };
+   shortcuts.addEventListener("toggle", () => {
+    if (!shortcuts.open) return;
+    shortcutsBody.replaceChildren();
+    const bindings = input._composerEditor?.markdownShortcuts;
+    if (!bindings?.length) { shortcutsBody.append(this.el(doc, "p", null, "Formatting shortcuts are available when the note editor is ready. Reopen this panel to refresh.")); return; }
+    shortcutsBody.append(this.el(doc, "strong", null, "Markdown shortcuts"));
+    const table = this.el(doc, "table"), body = this.el(doc, "tbody");
+    const basics = [{ key: "Mod-s", label: "Save" }, { key: "Mod-z", label: "Undo" }, { key: Zotero.isMac ? "Mod-Shift-z" : "Mod-y", label: "Redo" }];
+    for (const item of [...bindings, ...basics]) {
+     const row = this.el(doc, "tr"), key = item.key.split("-").map(part => part === "Mod" ? Zotero.isMac ? "Cmd" : "Ctrl" : part === "Alt" && Zotero.isMac ? "Option" : part.length === 1 ? part.toUpperCase() : part).join("+");
+     const cell = this.el(doc, "td"); cell.append(this.el(doc, "kbd", null, key)); row.append(this.el(doc, "td", null, item.label), cell); body.append(row);
+    }
+    table.append(body); shortcutsBody.append(table, this.el(doc, "p", null, "Select text to format it. List, heading and quote shortcuts apply to whole lines. Fixed shortcuts; no customization."));
+   });
    const report = e => { status.textContent = "Not saved: " + (e.message || e); closeDraft.hidden = false; this.logError("Markdown note", e); };
    closeDraft.onclick = async () => {
     try {
@@ -422,18 +444,15 @@
    const change = () => {
     state.revision++; status.textContent = "Unsaved changes…"; win.clearTimeout(state.timer);
     state.timer = win.setTimeout(() => { state.timer = null; this.saveMarkdownNote(state).catch(report); }, 800);
-    win.clearTimeout(state.previewTimer); state.previewTimer = win.setTimeout(refresh, 180);
    };
    state.documents ||= data.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : []);
-   const redrawDocuments = this.mountNoteDocuments(doc, editor, state, change);
-   const associations = editor.lastElementChild; toolbar.after(associations);
+   const redrawDocuments = this.mountNoteDocuments(doc, header, state, change);
    title.addEventListener("input", change); input.addEventListener("input", change);
    state.disposeEditor = this.installMathComposer(input, { note: true });
    save.onclick = () => flush().catch(report);
    const shortcut = event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); flush().catch(report); } };
    const scopedShortcut = event => { if (!state.home || state.home.active === state) shortcut(event); };
    win.addEventListener("keydown", scopedShortcut);
-   previewToggle.onclick = () => { preview.hidden = !preview.hidden; editHost.hidden = !preview.hidden; previewToggle.textContent = preview.hidden ? "Preview" : "Edit"; refresh(); };
    const chat = this.el(doc, "section", "abstractin-note-chat"); host.append(chat); state.chatHost = chat; chatToggle.textContent = "Hide discussion";
    this.installNoteSplitter(state, host, editor, chat);
    chatToggle.onclick = async () => {
@@ -453,7 +472,7 @@
    toDiscussion.onclick = () => {
     const view = state.sourceView;
     if (!view?.root.isConnected || this._views.get(view.root) !== view) { status.textContent = "The original document discussion is closed or has changed."; return; }
-    const text = input.value.slice(input.selectionStart, input.selectionEnd) || input.value;
+    const text = input._composerEditor?.getSelectionSnapshot?.().markdown || input.value.slice(input.selectionStart, input.selectionEnd) || input.value;
     view.input.value += (view.input.value ? "\n\n" : "") + "Note: " + title.value + "\n\n" + text;
     this.autoGrow(view.input); view.input.dispatchEvent(new view.doc.defaultView.Event("input", { bubbles: true })); view.doc.defaultView.focus(); view.input.focus();
     status.textContent = "Note added to the document's message draft. Review it before sending.";
@@ -523,8 +542,13 @@
    box.append(apply, discard, status); state.preview.before(box); state.proposalHost = box;
    apply.onclick = async () => {
     if (state.input.value !== proposal.baseMarkdown || state.title.value !== proposal.baseTitle) { status.textContent = "The note has changed since this proposal. Ask for a new edit against the current note."; return; }
-    state.input.value = proposal.scope === "selection" ? proposal.baseMarkdown.slice(0, proposal.start) + proposal.markdown + proposal.baseMarkdown.slice(proposal.end) : proposal.markdown;
-    state.input._refreshMathPreview?.(); state.input.dispatchEvent(new state.win.Event("input", { bubbles: true })); apply.disabled = true;
+    if (proposal.scope === "selection" && proposal.richRange && state.input._composerEditor?.replaceMarkdownRange) {
+     if (!state.input._composerEditor.replaceMarkdownRange(proposal.markdown, proposal.richRange.from, proposal.richRange.to)) { status.textContent = "This selection cannot be edited. Please select it again."; return; }
+    } else {
+     state.input.value = proposal.scope === "selection" ? proposal.baseMarkdown.slice(0, proposal.start) + proposal.markdown + proposal.baseMarkdown.slice(proposal.end) : proposal.markdown;
+     state.input._refreshMathPreview?.(); state.input.dispatchEvent(new state.win.Event("input", { bubbles: true }));
+    }
+    apply.disabled = true;
     try { await state.flush(); await Zotero.File.putContentsAsync(OS.Path.join(state.dir, "edit-decision.json"), JSON.stringify({ id: proposal.id, action: "applied" })); status.textContent = "Edit applied and saved."; }
     catch (e) { status.textContent = "Edit applied to editor; save failed: " + (e.message || e); }
    };
@@ -538,8 +562,9 @@
    const state = ctx.noteState;
    // Capture the exact note version synchronously at Send, before any asynchronous work.
    const baseMarkdown = state.input.value, start = state.input.selectionStart, end = state.input.selectionEnd;
+   const richSelection = state.input._composerEditor?.getSelectionSnapshot?.();
    const editing = state.assistantMode?.value === "edit";
-   const snapshot = { title: state.title.value, markdown: state.contextScope?.value === "selection" ? baseMarkdown.slice(start, end) : baseMarkdown,
+   const snapshot = { title: state.title.value, markdown: state.contextScope?.value === "selection" ? richSelection ? richSelection.markdown : baseMarkdown.slice(start, end) : baseMarkdown,
     documents: state.documents || [], scope: state.contextScope?.value || "full", revision: state.revision };
    try {
     if (!snapshot.markdown.trim() && snapshot.scope === "selection") throw new Error("Select text in the note editor, or choose Use full note.");
@@ -561,7 +586,8 @@
      let parsed; try { parsed = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```$/, "")); } catch (_) {}
      if (!parsed || typeof parsed.markdown !== "string" || typeof parsed.explanation !== "string") return { error: "The model returned an invalid edit proposal. The note has not changed. Please retry." };
      this._noteEditSerial = (this._noteEditSerial || 0) + 1;
-     proposal = { explanation: parsed.explanation, markdown: parsed.markdown, id: Date.now() + ":" + this._noteEditSerial, baseMarkdown, baseTitle: snapshot.title, scope: snapshot.scope, start, end };
+     proposal = { explanation: parsed.explanation, markdown: parsed.markdown, id: Date.now() + ":" + this._noteEditSerial, baseMarkdown, baseTitle: snapshot.title, scope: snapshot.scope, start, end,
+      ...(richSelection && snapshot.scope === "selection" ? { richRange: { from: richSelection.from, to: richSelection.to } } : {}) };
      result.text = (parsed.explanation || "A note edit is ready.") + "\n\nReview the proposed edit beside the editor, then choose Apply edit or Discard.";
     }
     const warning = await this.appendHistory(ctx.dir, [{ role: "user", text: question, ts: Date.now(), noteSnapshot: snapshot },
