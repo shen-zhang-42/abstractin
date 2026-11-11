@@ -1224,14 +1224,17 @@ AbstractIn = {
 		let evidence = this.ghostButton(doc, "abstractin-reading-evidence-mode", "readingSource", "", () =>
 			this.openReadingEvidenceMenu(root, evidence), { chevron: true });
 		evidence.hidden = true;
-		identity.append(this.el(doc, "span", "abstractin-header-title", "AbstractIn"));
+		identity.append(this.el(doc, "span", "abstractin-header-title", "AbstractIn"),
+			this.ghostButton(doc, "abstractin-write-note", "noteFull", "NoteOut", () => {
+				const view = this._views.get(root);
+				this.openNoteOutHome(doc.defaultView, { parent: view?.ctx.paperItem, sourceView: view }).catch(e => { if (view) this.appendError(view, e.message || String(e)); });
+			}));
 		header.append(
 			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "abstractin-header-icon"),
 			identity,
 			this.iconButton(doc, "abstractin-history abstractin-chats", "Chats", "chatManager", () => this.openHistoryMenu(root)),
 			this.iconButton(doc, "abstractin-initialize-contents", "Initialize contents", "book", () => this.initializeBookContents(root)),
 			this.iconButton(doc, "abstractin-export-reading", "Export reading summary", "save", () => this.openReadingExport(root)),
-			this.iconButton(doc, "abstractin-write-note", "Write or open a NoteOut note", "noteFull", () => this.openMarkdownNoteMenu(root)),
 			this.iconButton(doc, "abstractin-open-settings", "Settings", "settings", () => this.openSettings()),
 		);
 

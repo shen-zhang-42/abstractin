@@ -109,7 +109,9 @@ Codex 通过本地 `app-server` 接收增量文字，边生成边显示完整回
 
 展开文献条目，再展开 **NoteIn** 即可查看笔记。未分类条目、标签筛选、文字搜索和保存的搜索中，文献下的插件笔记都支持折叠分组。搜索视图只分组当前结果中的笔记，不补入未命中的笔记；没有父文献行的独立笔记命中和回收站保留 Zotero 原生显示。关闭插件后笔记恢复平铺显示。
 
-读者自己创建的 Markdown 笔记单独归入文献下的 **NoteOut**，与自动讨论／阅读记录的 **NoteIn** 并列，互不混合。点击讨论界面顶部的 **Write or open a NoteOut note** 图标，选择 **New note** 或已有笔记，打开独立编辑窗口；原有文献讨论窗口继续保留。书库的 Reading companion 也提供 **New Markdown note** 和 **Open selected Markdown note**。关联文献的手写笔记进入 NoteOut；未关联文献的独立笔记仍显示在书库中。
+阅读和记笔记是两个平行功能：**Reading** 打开文献阅读／讨论；主界面的 **NoteOut** 按钮直接打开与 Zotero 主窗口并行的独立、非模态笔记窗口，不要求先开始阅读。阅读界面左上角 **AbstractIn** 图标和名称右侧也有带文字的 **NoteOut** 快捷按钮，打开同一个笔记窗口。窗口左侧列出当前书库的手写笔记，点击 **New note** 新建并命名，或选择已有笔记；切换笔记时编辑区保留各自的草稿。原文献讨论继续保留，两边可同时使用。
+
+读者自己创建的 Markdown 笔记单独归入文献下的 **NoteOut**，与自动讨论／阅读记录的 **NoteIn** 并列，互不混合。从文献讨论快捷进入时，新笔记可关联该文献；从独立 NoteOut 入口进入时，新笔记不依赖文献。窗口会显示新笔记的关联范围。书库的 Reading companion 仍提供 **New Markdown note** 和 **Open selected Markdown note** 快捷操作。关联文献的手写笔记进入其 NoteOut；未关联文献的独立笔记仍显示在书库中。
 
 笔记复用消息输入框的 CodeMirror 编辑器，支持 Markdown、LaTeX 和 KaTeX 公式，使用 **Preview / Edit** 切换渲染与编辑。正文和标题自动保存，也可点击 **Save** 或按 Ctrl/Cmd+S。笔记作为 Zotero 原生 note 保存并同步，Markdown 源文一并保留；外部修改发生冲突时不覆盖已有内容，并保留本机草稿供重新打开后恢复。旧的普通 Zotero 笔记不会被自动转换。
 

@@ -9,6 +9,7 @@
 			this.mountLibraryLauncher(win);
 		},
 		removeFromWindow(win) {
+			win.document.getElementById("abstractin-notes-toggle")?.remove();
 			win.document.getElementById("abstractin-main-toggle")?.remove();
 			win.document.getElementById("abstractin-main-separator")?.remove();
 			removeWindow.call(this, win);
@@ -16,8 +17,8 @@
 		mountLibraryLauncher(win) {
 			const doc = win.document, anchor = doc.getElementById("zotero-tb-tabs-menu");
 			if (!anchor) return false;
-			if (doc.getElementById("abstractin-main-toggle")) return true;
-			const button = this.iconButton(doc, "abstractin-main-toggle zotero-tb-button", "Open AbstractIn", "app", () => {
+			if (doc.getElementById("abstractin-main-toggle")) { this.mountNoteOutLauncher?.(win, doc.getElementById("abstractin-main-toggle")); return true; }
+			const button = this.iconButton(doc, "abstractin-main-toggle zotero-tb-button", "Reading — open literature discussions", "app", () => {
 				this.openLibraryLauncher(win).catch(error => {
 					this.logError("document chooser", error);
 					Zotero.alert(win, "AbstractIn", error.message || String(error));
@@ -30,6 +31,7 @@
 			separator.id = "abstractin-main-separator";
 			separator.setAttribute("role", "separator"); separator.setAttribute("aria-orientation", "vertical");
 			anchor.before(button, separator);
+			this.mountNoteOutLauncher?.(win, button);
 			return true;
 		},
 		async openLibraryLauncher(win) {

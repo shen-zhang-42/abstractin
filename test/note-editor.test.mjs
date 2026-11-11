@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadPlugin } from './load-plugin.mjs';
+import { runInNewContext } from 'node:vm';
 
 async function setup() {
  const env = loadPlugin(), { plugin: p, window, document } = env;
@@ -25,7 +26,9 @@ async function setup() {
   getNotes() { return [...items.values()].filter(n => n.parentID === this.id).map(n => n.id); }
   getField(field) { return field === 'title' ? this.title || '' : ''; }
  }
- window.Zotero.Item = Item; window.Zotero.Items = { get: id => items.get(id), getAsync: async id => items.get(id) };
+ window.Zotero.Item = Item; window.Zotero.Items = { get: id => items.get(id), getAsync: async id => Array.isArray(id) ? id.map(value => items.get(value)) : items.get(id) };
+ window.Zotero.Search = class { addCondition() {} async search() { return [...items.values()].filter(n => n.libraryID === this.libraryID && n.isNote() && n.getTags().some(t => t.tag === 'AbstractIn:Markdown')).map(n => n.id); } };
+ window.Zotero.Notifier = { registerObserver: () => 1, unregisterObserver() {} };
  window.Zotero.Libraries = { userLibraryID: 1, get: () => ({ editable: true }) };
  const parent = new Item('book'); parent.title = 'Source book'; await parent.saveTx();
  const note = new Item('note'); note.parentID = parent.id; note.addTag('AbstractIn'); note.addTag('AbstractIn:Markdown');
@@ -51,12 +54,12 @@ test('note window is independent of the document discussion and reopening focuse
  let focused = 0, opened = 0; const native = { closed: false, focus() { focused++; } };
  const discussion = { unchanged: true }; p._readerPanelWindows.set(window, discussion);
  window.openDialog = (url, name, features, args) => {
-  opened++; assert.match(url, /note-window.xhtml$/); assert.equal(args.plugin, p); assert.equal(args.state.note, note);
+  opened++; assert.match(url, /note-window.xhtml$/); assert.equal(args.noteKey, state.key);
   assert.match(features, /resizable=yes/); return native;
  };
  assert.equal(await p.openMarkdownNote({ win: window, note }), native);
  assert.equal(await p.openMarkdownNote({ win: window, note }), native);
- assert.equal(opened, 1); assert.equal(focused, 1); assert.equal(p._readerPanelWindows.get(window), discussion);
+ assert.equal(opened, 1); assert.equal(focused, 2); assert.equal(p._readerPanelWindows.get(window), discussion);
  assert.equal(state.note, note);
 });
 
@@ -149,4 +152,61 @@ test('the note chat uses the existing send pipeline without a PDF setup and can 
  assert.equal((await p.loadHistory(view.ctx.dir))[1].text, 'Independent note answer');
  assert.equal(p.markdownNoteData(note).markdown, '# Heading\n\n$x^2$\n\n**Important**');
  view.root.disposeUI(); state.disposeEditor(); window.close();
+});
+
+test('NoteOut is a separate nonmodal entry that does not open or replace Reading', async () => {
+ const { p, window } = await setup(); let opened = 0, focused = 0;
+ const reading = { active: true }; p._readerPanelWindows.set(window, reading);
+ window.openDialog = (url, name, features, args) => {
+  opened++; assert.match(features, /dialog=no/); assert.equal(args.homeKey, '1'); assert.match(url, /note-window.xhtml$/);
+  return { closed: false, focus() { focused++; } };
+ };
+ const first = await p.openNoteOutHome(window), second = await p.openNoteOutHome(window);
+ assert.equal(first, second); assert.equal(opened, 1); assert.equal(focused, 2);
+ assert.equal(p._readerPanelWindows.get(window), reading);
+});
+
+test('NoteOut home keeps the list and switches editors inside one window without discarding drafts', async () => {
+ const { p, window, document, note } = await setup(); p._markdownNoteWindows.clear();
+ const home = { key: '1', libraryID: 1, states: new Map() }; p._noteOutHomes.set('1', home);
+ window.openDialog = () => { throw new Error('Editor should stay in the NoteOut window'); };
+ await p.mountNoteOutHome(window, home);
+ const create = [...document.querySelectorAll('.abstractin-note-list > button')].find(b => b.textContent === 'New note');
+ await create.onclick(); const first = home.active;
+ assert.ok(first); assert.equal(first.note.parentID, undefined);
+ first.input.value = 'Unsaved source'; first.title.value = 'Named note'; first.input.dispatchEvent(new window.Event('input', { bubbles: true }));
+ await p.openMarkdownNote({ win: window, note, home });
+ assert.equal(first.host.hidden, true); assert.equal(home.active.note, note); assert.equal(first.input.value, 'Unsaved source');
+ home.select(first); assert.equal(first.host.hidden, false); assert.equal(home.active, first);
+ await first.flush(); assert.equal(p.markdownNoteData(first.note).title, 'Named note');
+ await home.refresh(); assert.match(document.querySelector('.abstractin-note-list-items').textContent, /Named note/);
+ for (const state of home.states.values()) state.disposeEditor(); window.close();
+});
+
+test('the visible NoteOut shortcut sits immediately beside AbstractIn in the header', async () => {
+ const { p, document, window } = await setup(); p.renderSkeleton(document, document.body);
+ const root = document.querySelector('.abstractin-root'), title = root.querySelector('.abstractin-header-title');
+ const shortcut = title.nextElementSibling; assert.ok(shortcut.classList.contains('abstractin-write-note')); assert.equal(shortcut.textContent.trim(), 'NoteOut');
+ let opened = 0; p.openNoteOutHome = async owner => { assert.equal(owner, window); opened++; };
+ shortcut.click(); assert.equal(opened, 1); root.disposeUI(); window.close();
+});
+
+test('new independent notes use the library selected for the NoteOut home', async () => {
+ const { p, window } = await setup(); p._markdownNoteWindows.clear();
+ const home = { key: '2', libraryID: 2, states: new Map() }; p._noteOutHomes.set('2', home);
+ await p.mountNoteOutHome(window, home); await p.openMarkdownNote({ win: window, home });
+ assert.equal(home.active.note.libraryID, 2); assert.equal(home.active.note.parentID, undefined);
+ home.active.disposeEditor(); window.close();
+});
+
+test('the native window resolves primitive workspace IDs through Zotero and shows startup errors visibly', async () => {
+ const source = await readFile(new URL('../src/note-window.js', import.meta.url), 'utf8');
+ for (const valid of [true, false]) {
+  const { document } = loadPlugin(); const host = document.createElement('main'); host.id = 'abstractin-note-root'; document.body.append(host);
+  let handler, mounted = false;
+  const home = {}, plugin = { _noteOutHomes: new Map(valid ? [['1', home]] : []), mountNoteOutHome: async (_win, received) => { assert.equal(received, home); mounted = true; } };
+  const win = { arguments: [{ homeKey: '1' }], document, addEventListener: (_type, fn) => { handler = fn; } };
+  runInNewContext(source, { window: win, Zotero: { AbstractIn: plugin } }); await handler();
+  if (valid) assert.equal(mounted, true); else assert.match(host.textContent, /workspace is unavailable/);
+ }
 });
