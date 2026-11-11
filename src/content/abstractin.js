@@ -2157,7 +2157,7 @@ AbstractIn = {
 		let empty = this.el(doc, "div", "abstractin-empty");
 		if (view.ctx?.noteWorkspace) {
 			view.root.dataset.readingIntro = "false";
-			empty.append(this.el(doc, "div", "abstractin-empty-title", "Discuss your note"), this.el(doc, "p", null, "Ask about the current note, or choose a selection from the editor. Model replies do not change the note until you append them."));
+			empty.append(this.el(doc, "div", "abstractin-empty-title", "Think it through."), this.el(doc, "p", null, "Ask a question, explore an idea, or switch to Edit note to refine your writing. Choose the full note or a passage from the editor."));
 			view.logEl.append(empty); return;
 		}
 		view.root.dataset.readingIntro = String(!view.ctx?.reading);

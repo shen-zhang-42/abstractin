@@ -117,7 +117,7 @@ Codex 通过本地 `app-server` 接收增量文字，边生成边显示完整回
 
 右侧对话沿用已有 CLI／API 模型设置，支持 **Answer questions** 和 **Edit note** 两种模式，可选择整篇笔记或编辑器选中文本作为上下文。Edit note 生成修改预览，点击 **Apply edit** 应用并保存，或点击 **Discard** 放弃；生成期间正文发生变化时，旧提案不会覆盖新内容。关联文献的题名只标识笔记来源，不代表模型已读取其全文。
 
-笔记对话默认展开，可用 **Hide discussion / Discuss note** 收起或重新展开；默认带入发送时的完整笔记，也可选择 **Use editor selection only**。笔记后续编辑不会改变已经发出的那一版上下文。对话流式显示，历史保存在这条笔记的本机工作目录，并遵守该笔记的 Full／Summary／Don’t save 设置；这一版笔记对话暂不跨设备同步。回答问题模式的结果留在对话区，点击 **Append last answer** 可追加到正文。**Use in document discussion** 可把选区或全文放入原文献讨论的输入框，检查后再发送。
+笔记对话默认展开，可在 **More** 中使用 **Hide discussion / Discuss note** 收起或重新展开；默认带入发送时的完整笔记，也可选择 **Use editor selection only**。**Sources** 折叠区展示关联文献。笔记后续编辑不会改变已经发出的那一版上下文。对话流式显示，历史保存在这条笔记的本机工作目录，并遵守该笔记的 Full／Summary／Don’t save 设置；这一版笔记对话暂不跨设备同步。回答问题模式的结果留在对话区，使用 **More → Append last answer** 可追加到正文。**More → Use in document discussion** 可把选区或全文放入原文献讨论的输入框，检查后再发送。
 
 阅读界面顶部的 **Export reading summary**，或 **Note saving → Summarize all book conversations**，可以收集这本书全部章节、全部会话中的知识点和相关阅读笔记，不限于当前 chat；论文也有对应入口。这里只筛选已有回答，不重新概述整本书原文。
 

@@ -46,9 +46,10 @@
    return [...refs.values()];
   },
   mountNoteDocuments(doc, host, owner, changed) {
-   const box = this.el(doc, "div", "abstractin-note-documents"), list = this.el(doc, "div"), add = this.el(doc, "button", null, "Add selected Zotero documents");
+   const box = this.el(doc, "details", "abstractin-note-documents"), summary = this.el(doc, "summary"), list = this.el(doc, "div"), add = this.el(doc, "button", null, "Add selected Zotero documents");
    const status = this.el(doc, "p"); status.setAttribute("role", "status");
    const draw = () => {
+    summary.textContent = "Sources · " + (owner.documents?.length ? owner.documents.length + (owner.documents.length === 1 ? " document" : " documents") : "Independent note");
     list.replaceChildren();
     for (const ref of owner.documents || []) {
      const row = this.el(doc, "div", "abstractin-note-document-ref"), remove = this.el(doc, "button", null, "×"); remove.setAttribute("aria-label", "Unlink " + ref.title);
@@ -65,7 +66,7 @@
      owner.documents = [...merged.values()]; draw(); changed?.();
     } catch (e) { status.textContent = e.message || String(e); }
    };
-   box.append(this.el(doc, "strong", null, "Linked documents"), list, add, status); host.append(box); draw(); return draw;
+   box.append(summary, list, add, status); host.append(box); draw(); return draw;
   },
   async openNoteOutHome(win = Zotero.getMainWindow(), { parent = null, sourceView = null } = {}) {
    if (!parent && win.Zotero_Tabs?.selectedType === "reader") {
@@ -96,17 +97,21 @@
    home.win = win;
    const doc = win.document, host = doc.getElementById("abstractin-note-root"); host.classList.add("abstractin-note-home"); doc.title = "NoteOut — notes";
    const sidebar = this.el(doc, "aside", "abstractin-note-list"), head = this.el(doc, "h1", null, "NoteOut");
-   const description = this.el(doc, "p", null, "Write notes independently of Reading. Both windows can stay open.");
+   const description = this.el(doc, "p", "abstractin-note-list-description", "A space for your ideas.");
    const association = this.el(doc, "div"); home.documents ||= home.parent ? [this.noteDocumentRef(home.parent)] : [];
    home.updateAssociation = this.mountNoteDocuments(doc, association, home, () => home.draw?.());
    const create = this.el(doc, "button", null, "New note"), refresh = this.el(doc, "button", null, "Refresh");
+   create.className = "abstractin-note-primary"; refresh.className = "abstractin-note-refresh";
    const filter = this.el(doc, "input"); filter.placeholder = "Find a note…"; filter.setAttribute("aria-label", "Find a NoteOut note");
    const list = this.el(doc, "div", "abstractin-note-list-items"), status = this.el(doc, "p", "abstractin-note-list-status"); status.setAttribute("role", "status");
    const all = this.el(doc, "input"); all.type = "checkbox"; all.checked = !home.documents.length;
    const allLabel = this.el(doc, "label", null, "Show all notes in this library"); allLabel.prepend(all);
    home.showLinked = () => { if (home.documents.length) all.checked = false; };
    sidebar.append(head, description, association, create, refresh, allLabel, filter, list, status);
-   const workspace = this.el(doc, "div", "abstractin-note-home-workspace"); workspace.append(this.el(doc, "p", "abstractin-note-home-empty", "Create a note or select one from the list. Give each note its own title in the editor."));
+   const workspace = this.el(doc, "div", "abstractin-note-home-workspace"), welcome = this.el(doc, "div", "abstractin-note-home-empty");
+   welcome.append(this.el(doc, "span", "abstractin-note-welcome-mark", "✎"), this.el(doc, "span", "abstractin-note-eyebrow", "YOUR NOTEBOOK"),
+    this.el(doc, "h2", null, "Room to think."), this.el(doc, "p", null, "Capture an idea, connect your sources, and develop it in conversation."));
+   const welcomeCreate = this.el(doc, "button", "abstractin-note-primary", "Create a note"); welcomeCreate.onclick = () => create.click(); welcome.append(welcomeCreate); workspace.append(welcome);
    host.append(sidebar, workspace); home.workspace = workspace; home.sidebar = sidebar;
    home.select = state => {
     for (const entry of home.states.values()) entry.host.hidden = entry !== state;
@@ -122,6 +127,7 @@
      if (query && !data.title.toLowerCase().includes(query)) continue;
      if (!all.checked && home.documents.length && !home.documents.some(ref => (data.documents || [{ key: data.itemKey }]).some(link => link.key === ref.key))) continue;
      const button = this.el(doc, "button", "abstractin-note-list-item", data.title || "Untitled note"); button.dataset.noteKey = note.key;
+     const detail = this.el(doc, "span", "abstractin-note-list-detail", data.documents?.length > 1 ? data.documents.length + " linked sources" : data.itemKey ? "Document note" : "Independent note"); button.append(detail);
      button.setAttribute("aria-pressed", String(home.active?.note.key === note.key));
      button.onclick = () => this.openMarkdownNote({ win, note, home, sourceView: home.sourceView }).catch(e => { status.textContent = e.message || String(e); });
      list.append(button);
@@ -298,17 +304,22 @@
    const toolbar = this.el(doc, "div", "abstractin-note-toolbar"), status = this.el(doc, "span", "abstractin-note-status", "Saved to Zotero");
    status.setAttribute("role", "status");
    const save = this.el(doc, "button", null, "Save"), previewToggle = this.el(doc, "button", null, "Preview"), chatToggle = this.el(doc, "button", null, "Discuss note");
+   save.className = "abstractin-note-primary abstractin-note-save";
    const closeDraft = this.el(doc, "button", null, "Close keeping local draft"); closeDraft.hidden = true;
    const append = this.el(doc, "button", null, "Append last answer"), toDiscussion = this.el(doc, "button", null, "Use in document discussion");
    toDiscussion.hidden = !state.sourceView || !!state.sourceView.ctx.noteWorkspace;
    if (state.home) {
     const browse = this.el(doc, "button", null, "Notes"); browse.onclick = () => { state.home.sidebar.hidden = !state.home.sidebar.hidden; }; toolbar.append(browse);
    }
-   toolbar.append(save, previewToggle, chatToggle, append, toDiscussion, closeDraft);
+   const more = this.el(doc, "details", "abstractin-note-more"), moreLabel = this.el(doc, "summary", null, "More ···"), moreActions = this.el(doc, "div", "abstractin-note-more-actions");
+   moreActions.append(chatToggle, append, toDiscussion); more.append(moreLabel, moreActions);
+   moreActions.addEventListener("click", event => { if (event.target.closest("button")) more.open = false; });
+   toolbar.append(previewToggle, save, more, closeDraft);
    const input = this.el(doc, "textarea", "abstractin-note-source"); input.value = data.markdown; input.placeholder = "Write Markdown and LaTeX here…"; input.setAttribute("aria-label", "Markdown note");
    const editHost = this.el(doc, "div", "abstractin-note-edit-host"); editHost.append(input);
    const preview = this.el(doc, "div", "abstractin-note-preview"); preview.hidden = true;
-   editor.append(title, toolbar, status, editHost, preview); host.append(editor);
+   const top = this.el(doc, "div", "abstractin-note-topline"); top.append(this.el(doc, "span", "abstractin-note-eyebrow", "NOTEOUT / NOTEBOOK"), status);
+   editor.append(top, title, toolbar, editHost, preview); host.append(editor);
    Object.assign(state, { title, input, preview, status });
    const refresh = () => {
     if (preview.hidden) return;
@@ -332,7 +343,7 @@
    };
    state.documents ||= data.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : []);
    const redrawDocuments = this.mountNoteDocuments(doc, editor, state, change);
-   const associations = editor.lastElementChild; title.after(associations);
+   const associations = editor.lastElementChild; toolbar.after(associations);
    title.addEventListener("input", change); input.addEventListener("input", change);
    state.disposeEditor = this.installMathComposer(input, { note: true });
    save.onclick = () => flush().catch(report);
@@ -392,6 +403,7 @@
    if (state.chatView) return state.chatView;
    const doc = host.ownerDocument; this.renderSkeleton(doc, host);
    const root = host.querySelector(".abstractin-root"), input = root.querySelector(".abstractin-input");
+   root.querySelector(".abstractin-header-title").textContent = "Note assistant";
    const dir = OS.Path.join(state.dir, "discussion"); await Zotero.File.createDirectoryIfMissingAsync(dir);
    const ctx = this.registerChatContext({ dir, paperItem: state.note, attachmentItem: null, noteWorkspace: true, noteState: state });
    const view = { doc, root, input, logEl: root.querySelector(".abstractin-log"), ctx };
@@ -402,7 +414,8 @@
    }
    const mode = this.el(doc, "select"); mode.setAttribute("aria-label", "Note assistant action");
    for (const [value, text] of [["answer", "Answer questions"], ["edit", "Edit note"]]) { const option = this.el(doc, "option", null, text); option.value = value; mode.append(option); }
-   state.contextScope = scope; state.assistantMode = mode; root.querySelector(".abstractin-header").append(scope, mode);
+   const controls = this.el(doc, "div", "abstractin-note-chat-controls"); controls.append(mode, scope);
+   state.contextScope = scope; state.assistantMode = mode; root.querySelector(".abstractin-header").after(controls);
    const history = await this.loadHistory(dir);
    this.renderMessages(view, history); input.disabled = false;
    const last = history[history.length - 1], decision = await this.readDiscussionJSON(OS.Path.join(state.dir, "edit-decision.json"), null);
