@@ -96,7 +96,8 @@ export function createRichNote(config) {
    if (sourceSelection) {
     markdown = sourceSelection.markdown.slice(0,sourceSelection.from) + markdown + sourceSelection.markdown.slice(sourceSelection.to);
     const parsed = editor.schema.nodeFromJSON(editor.markdown.parse(markdown));
-    editor.view.dispatch(closeHistory(editor.state.tr).replaceWith(from,to,parsed.content)); return true;
+    const replacement=sourceSelection.inline && parsed.childCount===1 && parsed.firstChild.type.name==='paragraph' ? parsed.firstChild.content : parsed.content;
+    editor.view.dispatch(closeHistory(editor.state.tr).replaceWith(from,to,replacement)); return true;
    }
    const parsed = editor.schema.nodeFromJSON(editor.markdown.parse(markdown));
    const content = parsed.childCount === 1 && parsed.firstChild.type.name === 'paragraph' ? parsed.firstChild.content : parsed.content;

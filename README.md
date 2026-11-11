@@ -117,7 +117,7 @@ Codex 通过本地 `app-server` 接收增量文字，边生成边显示完整回
 
 笔记使用 Tiptap／ProseMirror 的所见即所得 Markdown 编辑器，直接显示标题、加粗、列表、表格和 KaTeX 公式，不再区分 Edit／Preview 模式；讨论输入框继续使用 CodeMirror。编辑区铺满剩余窗口高度，仅正文滚动，标题、Sources、字体和工具栏固定在上方。后台以 Markdown 源码作为正文来源，不保存富文本编辑器的内部文档结构；只打开笔记或切换字体不会重写原始 Markdown，实际编辑后可能规范化 Markdown 的排版。正文和标题自动保存，也可点击 **Save** 或按 Ctrl/Cmd+S。笔记作为 Zotero 原生 note 保存并同步，外部修改发生冲突时不覆盖已有内容，并保留本机源码草稿供重新打开后恢复。旧的普通 Zotero 笔记不会被自动转换。
 
-光标进入渲染好的标题、段落、列表、表格或公式时，仅当前块展开 Markdown 源码，其他块继续渲染。移开焦点或按 Escape 恢复显示；在源码边界按方向键可以进入相邻块。源码编辑即时同步到保存内容，未输入完的 Markdown 标记也会保留。
+光标进入加粗、斜体、删除线、链接、行内代码或公式时，只在原位置展开这一处的 Markdown 源码，段落其余文字和格式继续渲染。光标移出这一处或焦点移开时自动恢复渲染；方向键可以自然进入旁边的文字。源码编辑即时同步到保存内容，未输入完的 Markdown 标记也会保留。标题、列表和表格保留直接编辑及格式快捷键；独立公式和代码块按各自的单个构件编辑。
 
 标题下方的字体菜单支持 System、Arial、Georgia、Times New Roman、Consolas、Microsoft YaHei 和 SimSun，每种字体独占一行；字体仅影响显示，不写入 Markdown。点击旁边的 **Shortcuts** 查看固定快捷键，暂不提供自定义。Windows／Linux 使用 Ctrl，macOS 对应 Cmd，Alt 对应 Option。
 

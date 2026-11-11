@@ -62,30 +62,49 @@ test('visual selections supply only the selected Markdown and support targeted r
 test('formula editing renders MathML and persists LaTeX Markdown rather than editor HTML',async()=>{
  const env=await editor({text:'Equation $x^2$.'}),math=env.instance.view.dom.querySelector('[data-type=inline-math]');
  assert.ok(math.querySelector('math'));math.dispatchEvent(new env.window.MouseEvent('click',{bubbles:true,cancelable:true}));
- const block=env.instance.view.dom.querySelector('.note-block-source');assert.ok(block);
- const source=EditorView.findFromDOM(block.querySelector('.cm-editor'));assert.equal(source.state.doc.toString(),'Equation $x^2$.');
- source.dispatch({changes:{from:0,to:source.state.doc.length,insert:'Equation $y^3$.'}});
- source.contentDOM.dispatchEvent(new env.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await Promise.resolve();
- assert.equal(env.instance.view.dom.querySelector('.note-block-source'),null);
+ const block=env.instance.view.dom.querySelector('.note-inline-source');assert.ok(block);
+ const source=EditorView.findFromDOM(block.querySelector('.cm-editor'));assert.equal(source.state.doc.toString(),'$x^2$');
+ source.dispatch({changes:{from:0,to:source.state.doc.length,insert:'$y^3$'}});
+ source.dispatch({selection:{anchor:source.state.doc.length}});
+ source.contentDOM.dispatchEvent(new env.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));await Promise.resolve();
+ assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null);
  assert.match(env.text(),/\$y\^3\$/);assert.doesNotMatch(env.text(),/<math|<span|latex/);assert.ok(env.instance.view.dom.querySelector('math'));env.close();
 });
 
-test('cursor entry expands only its block and source edits remain saveable while focused',async()=>{
+test('plain text does not expand neighbouring marks and each inline construct restores automatically',async()=>{
+ const original='Start **bold** then [link](https://example.org) and *italic* and `code`.';
+ const env=await editor({text:original});env.instance.view.focus();env.instance.editor.commands.setTextSelection(3);await Promise.resolve();
+ assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null);assert.ok(env.instance.view.dom.querySelector('strong'));
+ for(const [text,expected] of [['bold','**bold**'],['link','[link](https://example.org)'],['italic','*italic*'],['code','`code`']]){
+  let position;env.instance.editor.state.doc.descendants((node,pos)=>{if(node.isText&&node.text===text)position=pos+1;});
+  env.instance.view.focus();env.instance.editor.commands.setTextSelection(position);await Promise.resolve();
+  const dom=env.instance.view.dom.querySelector('.note-inline-source');assert.ok(dom,text);
+  const source=EditorView.findFromDOM(dom.querySelector('.cm-editor'));assert.equal(source.state.doc.toString(),expected);
+  assert.equal(env.instance.view.dom.querySelectorAll('.note-inline-source').length,1);assert.equal(env.text(),original);assert.equal(env.changes(),0);
+  source.dispatch({selection:{anchor:source.state.doc.length}});source.contentDOM.dispatchEvent(new env.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));await Promise.resolve();
+  assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null,text+' collapses by normal caret movement');
+ }
+ assert.ok(env.instance.view.dom.querySelector('strong'));assert.ok(env.instance.view.dom.querySelector('a'));assert.ok(env.instance.view.dom.querySelector('em'));assert.ok(env.instance.view.dom.querySelector('code'));env.close();
+});
+
+test('cursor entry reveals only the active inline construct and restores rendering on focus leave',async()=>{
  const original='# First\n\nA **bold** paragraph.\n\n## Last';
  const env=await editor({text:original});env.instance.view.focus();env.instance.editor.commands.setTextSelection(12);await Promise.resolve();
- const block=env.instance.view.dom.querySelector('.note-block-source');assert.ok(block);assert.equal(env.changes(),0);assert.equal(env.text(),original);
+ const block=env.instance.view.dom.querySelector('.note-inline-source');assert.ok(block);assert.equal(env.changes(),0);assert.equal(env.text(),original);
  assert.equal(env.instance.view.dom.querySelectorAll('.note-source-hidden').length,1);
- const source=EditorView.findFromDOM(block.querySelector('.cm-editor'));assert.equal(source.state.doc.toString(),'A **bold** paragraph.');
+ const source=EditorView.findFromDOM(block.querySelector('.cm-editor'));assert.equal(source.state.doc.toString(),'**bold**');
+ assert.equal(env.instance.view.dom.querySelector('p').textContent.includes('A '),true);
+ assert.equal(env.instance.view.dom.querySelectorAll('.note-block-source').length,0);
  source.dispatch({changes:{from:0,to:source.state.doc.length,insert:'Unfinished **'}});assert.match(env.text(),/Unfinished \*\*/, 'unfinished source is saved literally while editing');
- source.dispatch({changes:{from:0,to:source.state.doc.length,insert:'A **changed** paragraph.\n\nNew *block*.'}});
- assert.match(env.text(),/\*\*changed\*\*/);assert.match(env.text(),/New \*block\*/);assert.match(env.text(),/## Last/);assert.equal(env.changes(),2);
- assert.equal(env.instance.view.dom.querySelector('.note-block-source'),block,'typing keeps the same focused source editor');
+ source.dispatch({changes:{from:0,to:source.state.doc.length,insert:'**changed**'}});
+ assert.match(env.text(),/\*\*changed\*\*/);assert.match(env.text(),/A \*\*.*?\*\* paragraph\./);assert.match(env.text(),/## Last/);assert.equal(env.changes(),2);
+ assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),block,'typing keeps the same focused source editor');
  const start=source.state.doc.toString().indexOf('changed');source.dispatch({selection:{anchor:start,head:start+7}});
  const snapshot=env.instance.getSelectionSnapshot();assert.equal(snapshot.markdown,'changed');
  const button=env.window.document.createElement('button');env.window.document.body.append(button);button.focus();await Promise.resolve();
- assert.equal(env.instance.view.dom.querySelector('.note-block-source'),null);assert.equal(env.instance.getSelectionSnapshot().markdown,'changed','selection survives focus moving into the discussion');
+ assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null);assert.equal(env.instance.getSelectionSnapshot().markdown,'changed','selection survives focus moving into the discussion');
  assert.equal(env.instance.replaceMarkdownRange('revised',snapshot.from,snapshot.to,snapshot.sourceSelection),true);
- assert.match(env.text(),/\*\*revised\*\*/);assert.match(env.text(),/New \*block\*/);env.close();
+ assert.match(env.text(),/\*\*revised\*\*/);assert.match(env.text(),/A \*\*.*?\*\* paragraph\./);env.close();
 });
 
 test('external source updates refresh the rendered document without emitting edits',async()=>{
