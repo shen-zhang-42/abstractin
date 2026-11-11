@@ -74,7 +74,7 @@
 			launcher.append(header, welcome, add, list, status, start);
 			const notes = this.el(doc, "div", "abstractin-library-note-actions");
 			const newNote = this.el(doc, "button", null, "New Markdown note"), openNote = this.el(doc, "button", null, "Open selected Markdown note");
-			newNote.onclick = () => this.openMarkdownNote({ win, documents: [...selected.values()].map(item => this.noteDocumentRef(item)) }).catch(e => { status.textContent = e.message || String(e); });
+			newNote.onclick = () => this.openNoteOutHome(win, { documents: [...selected.values()].map(item => this.noteDocumentRef(item)), create: true }).catch(e => { status.textContent = e.message || String(e); });
 			openNote.onclick = () => this.openSelectedMarkdownNote(win).catch(e => { status.textContent = e.message || String(e); });
 			notes.append(newNote, openNote); launcher.append(notes);
 			const selected = state.readingDocuments ||= new Map();

@@ -316,7 +316,7 @@ test('trash requires a named confirmation, preserves source and local drafts, an
  const count = items.size; p.confirmTrashMarkdownNote(state); await state.trashPrompt.querySelector('button').onclick();
  assert.equal(note.deleted, true); assert.equal(items.size, count); assert.equal(other.getNote(), '<p>Unrelated note</p>'); assert.equal(!!other.deleted, false);
  assert.equal(p._markdownNoteWindows.has(state.key), false); assert.equal(home.states.size, 0); assert.equal(home.active, null);
- assert.equal(document.querySelector('.abstractin-note-home-empty').hidden, false); assert.equal(document.querySelector('.abstractin-note-home-empty').textContent, '+ New note');
+ assert.equal(document.querySelector('.abstractin-note-home-empty').hidden, false); assert.equal(document.querySelector('.abstractin-note-home-empty button').textContent, '+ New note');
  const draft = JSON.parse(await readFile(join(state.dir, 'draft.json'), 'utf8')); assert.equal(draft.markdown, 'Preserve this unsaved source');
  assert.match(note.getNote(), /Preserve this unsaved source/); window.close();
 });
@@ -343,4 +343,54 @@ test('trashing a shared note removes source links and reopening after native res
  note.deleted = false; await note.saveTx(); await p.openMarkdownNote({ win: window, note, home });
  assert.ok(anchors.every(anchor => anchor.getNote().includes('/items/' + note.key))); assert.equal(home.active.input.value, 'Shared source text');
  home.active.dispose(); window.close();
+});
+
+test('the persistent three-column workspace keeps its list visible and remembers both divider widths independently', async () => {
+ const { p, window, document, note } = await setup(); p._markdownNoteWindows.clear();
+ const home = { key: '1', libraryID: 1, states: new Map() }; await p.mountNoteOutHome(window, home);
+ assert.equal(home.active.note, note); assert.equal(home.sidebar.hidden, false);
+ const visible = [...document.querySelectorAll('.abstractin-note-splitter')].filter(node => !node.closest('[hidden]')); assert.equal(visible.length, 2);
+ const host = document.getElementById('abstractin-note-root'); host.getBoundingClientRect = () => ({ left: 0, width: 1408 });
+ home.active.host.getBoundingClientRect = () => ({ left: 288, width: 1120 });
+ const drag = (splitter, clientX) => {
+  for (const [target, type] of [[splitter, 'pointerdown'], [document, 'pointermove'], [document, 'pointerup']]) {
+   const event = new window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX }); Object.defineProperty(event, 'pointerId', { value: 8 }); target.dispatchEvent(event);
+  }
+ };
+ drag(home.sidebarSplitState.splitter, 280); assert.equal(p.getPref('noteSidebarRatio'), 20);
+ drag(home.active.splitter, 955.2); assert.equal(p.getPref('noteEditorRatio'), 60); assert.equal(p.getPref('noteSidebarRatio'), 20);
+ home.active.input.value = 'Draft remains while browsing';
+ await p.openMarkdownNote({ win: window, home });
+ assert.equal(home.sidebar.hidden, false); assert.equal(home.active.splitter.getAttribute('aria-valuenow'), '60');
+ const original = [...home.states.values()].find(state => state.note.key === note.key); assert.equal(original.input.value, 'Draft remains while browsing');
+ assert.equal(document.querySelectorAll('.abstractin-note-toolbar button').length > 0, true);
+ for (const state of home.states.values()) state.dispose(); window.close();
+});
+
+test('a list delete button confirms and trashes an unopened note without changing the active editor', async () => {
+ const { p, window, document, note, parent } = await setup(); p._markdownNoteWindows.clear();
+ const home = { key: '1', libraryID: 1, states: new Map() }; await p.mountNoteOutHome(window, home); const active = home.active;
+ const other = new window.Zotero.Item('note'); other.parentID = parent.id; other.addTag('AbstractIn:Markdown');
+ other.setNote(p.markdownNoteHTML(other, 'Unopened note', 'Keep source recoverable', parent, 3)); await other.saveTx(); await home.refresh();
+ p.openMarkdownNote = async () => { throw new Error('Deleting an unopened note must not open it'); };
+ const row = [...document.querySelectorAll('.abstractin-note-list-row')].find(row => row.querySelector('.abstractin-note-list-item').dataset.noteKey === other.key);
+ row.querySelector('.abstractin-note-list-trash').click(); assert.equal(home.active, active); assert.equal(!!other.deleted, false); assert.match(row.textContent, /Unopened note/);
+ row.querySelector('.abstractin-note-trash-confirm button:last-child').click(); assert.equal(row.querySelector('.abstractin-note-trash-confirm'), null);
+ row.querySelector('.abstractin-note-list-trash').click(); await row.querySelector('.abstractin-note-trash-confirm button').onclick();
+ assert.equal(other.deleted, true); assert.equal(!!note.deleted, false); assert.equal(home.active, active); assert.equal(active.disposed, undefined);
+ assert.match(other.getNote(), /Keep source recoverable/); assert.equal(p._markdownNoteWindows.has('1:' + other.key), false);
+ assert.equal([...document.querySelectorAll('.abstractin-note-list-item')].some(button => button.dataset.noteKey === other.key), false);
+ active.dispose(); window.close();
+});
+
+test('native selected-note and new-note shortcuts route into the same three-column home', async () => {
+ const { p, window, note, parent } = await setup(); p._markdownNoteWindows.clear();
+ window.ZoteroPane = { itemsView: { getSelectedItems: () => [note] } };
+ let args; window.openDialog = (_url, _name, _features, value) => { args = value; return { closed: false, focus() {} }; };
+ await p.openSelectedMarkdownNote(window); assert.equal(args.homeKey, '1'); assert.equal(args.noteKey, undefined);
+ const home = p._noteOutHomes.get('1'); assert.equal(home.initialNote, note);
+ await p.mountNoteOutHome(window, home); assert.equal(home.active.note, note); assert.equal(home.sidebar.hidden, false);
+ await p.openNoteOutHome(window, { documents: [p.noteDocumentRef(parent)], create: true });
+ assert.notEqual(home.active.note.key, note.key); assert.equal(home.active.note.parentID, parent.id); assert.equal(home.states.size, 2);
+ assert.equal(home.sidebar.hidden, false); for (const state of home.states.values()) state.dispose(); window.close();
 });
