@@ -4,50 +4,26 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
 <title>Note editor</title>
+<link rel="stylesheet" href="vditor/dist/index.css">
 <style>
-html, body { margin: 0; padding: 0; background: transparent; color: var(--editor-text, CanvasText); font: 13px system-ui, sans-serif; }
-.composer-math { display: inline; max-width: 100%; vertical-align: baseline; cursor: text; }
-.composer-math[data-display="true"] { display: block; margin: 6px 0; overflow-x: auto; text-align: center; }
-.composer-math math { font-size: 1em; }
-.composer-math[data-display="true"] math { font-size: 1.1em; }
-html.note-rich-root, body.note-rich-document { height: 100%; overflow: hidden; }
-.note-rich-document #editor { height: 100%; }
-.note-rich-document .tiptap { box-sizing: border-box; height: 100%; overflow-y: auto; overflow-x: hidden; outline: none; padding: 4px 4px 60px 0; font: inherit; line-height: 1.8; overflow-wrap: anywhere; scrollbar-width: thin; }
-.note-rich-document .tiptap > :first-child { margin-top: 0; }
-.note-rich-document .tiptap :is(h1,h2,h3,h4,h5,h6) { line-height: 1.35; margin: 1.3em 0 .5em; }
-.note-rich-document .tiptap h1 { font-size: 1.85em; } .note-rich-document .tiptap h2 { font-size: 1.5em; } .note-rich-document .tiptap h3 { font-size: 1.25em; }
-.note-rich-document .tiptap p { margin: .65em 0; }
-.note-rich-document .tiptap pre { white-space: pre-wrap; padding: 12px; background: var(--editor-hover); border-radius: 6px; }
-.note-rich-document .tiptap code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
-.note-rich-document .tiptap :not(pre) > code { padding: 2px 4px; background: var(--editor-hover); border-radius: 3px; }
-.note-rich-document .tiptap blockquote { margin-inline: 0; padding-inline-start: 16px; border-inline-start: 3px solid var(--editor-faint); }
-.note-rich-document .tiptap table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-.note-rich-document .tiptap :is(td,th) { border: 1px solid var(--editor-faint); padding: 6px 10px; vertical-align: top; }
-.note-rich-document .tiptap ul[data-type="taskList"] { list-style: none; padding-inline-start: 4px; }
-.note-rich-document .tiptap li[data-type="taskItem"] { display: flex; align-items: baseline; gap: 8px; }
-.note-rich-document .tiptap li[data-type="taskItem"] > div { flex: 1; }
-.note-rich-document .tiptap img { max-width: 100%; height: auto; }
-.note-rich-document .tiptap a { color: inherit; text-decoration: underline; }
-.note-rich-document .tiptap .ProseMirror-selectednode { outline: 1px solid var(--editor-faint); }
-.note-rich-document .tiptap-mathematics-render { cursor: pointer; }
-.note-rich-document .note-source-hidden { display: none !important; }
-.note-block-source { margin: .65em 0; padding: 8px 10px; border: 1px solid var(--editor-faint, #aaa); border-radius: 6px; background: var(--editor-hover, #8881); }
-.note-block-source .cm-editor { font: inherit; background: transparent; }
-.note-block-source .cm-editor.cm-focused { outline: none; }
-.note-block-source .cm-scroller { font-family: ui-monospace, Consolas, monospace; line-height: 1.65; overflow: auto; }
-.note-inline-source { display: inline-block; vertical-align: baseline; max-width: 100%; margin: 0; padding: 0 2px; border: 0; border-radius: 3px; background: var(--editor-hover, #8881); font: inherit; }
-.note-inline-source .cm-editor { display: inline-block; vertical-align: bottom; max-width: 100%; background: transparent; font: inherit; }
-.note-inline-source .cm-editor.cm-focused { outline: none; }
-.note-inline-source .cm-scroller { font: inherit; line-height: inherit; overflow: auto; }
-.note-inline-source .cm-content { padding: 0; min-height: 0; }
-.note-inline-source .cm-line { padding: 0; }
-.note-rich-document [data-type="block-math"] { display: block; margin: 16px 0; text-align: center; overflow-x: auto; }
-.note-rich-dialog { position: fixed; z-index: 100; top: 15%; left: 8%; right: 8%; padding: 16px; color: var(--editor-text); background: Canvas; border: 1px solid var(--editor-faint); border-radius: 9px; box-shadow: 0 8px 28px #0003; font: 13px system-ui,sans-serif; }
-.note-rich-dialog label { display: block; margin: 12px 0; }
-.note-rich-dialog :is(input,textarea) { box-sizing: border-box; display: block; width: 100%; margin-top: 4px; padding: 8px; color: inherit; background: transparent; border: 1px solid var(--editor-faint); border-radius: 5px; font: inherit; }
-.note-rich-dialog textarea { min-height: 100px; font-family: ui-monospace,Consolas,monospace; }
-.note-rich-dialog button { padding: 6px 10px; margin-inline-end: 8px; }
+html, body, #editor { height: 100%; margin: 0; overflow: hidden; }
+body { background: transparent; color: var(--editor-text, CanvasText); font: 13px/1.8 system-ui, sans-serif; }
+#editor.vditor { border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; --panel-background-color: Canvas; --panel-shadow: 0 3px 10px #0002; --textarea-text-color: var(--editor-text, CanvasText); --toolbar-background-color: transparent; --toolbar-icon-color: var(--editor-text, CanvasText); --toolbar-icon-hover-color: var(--editor-text, CanvasText); --toolbar-icon-hover-background-color: var(--editor-hover, #8882); --border-color: var(--editor-faint, #aaa); }
+#editor .vditor-toolbar { padding: 4px 2px; border-bottom: 1px solid var(--editor-faint, #aaa); background: transparent; }
+#editor .vditor-toolbar__item { padding: 0 4px; }
+#editor .vditor-content { min-height: 0; background: transparent; }
+#editor .vditor-ir { min-width: 0; background: transparent; }
+#editor .vditor-reset { box-sizing: border-box; padding: 14px 6px 60px 0 !important; color: inherit; background: transparent; font: inherit; overflow-wrap: anywhere; }
+#editor .vditor-reset table { display: table; width: 100%; }
+#editor .vditor-reset :is(td, th) { border-color: var(--editor-faint, #aaa); }
+#editor .vditor-reset tr { background: transparent; }
+#editor .vditor-reset tr:nth-child(2n), #editor .vditor-reset th { background: var(--editor-hover, #8881); }
+#editor .vditor-reset :is(code, pre), #editor .vditor-ir__marker { font-family: ui-monospace, Consolas, monospace; }
+#editor .vditor-reset blockquote { color: inherit; border-color: var(--editor-faint, #aaa); }
+#editor .vditor-reset a { color: inherit; }
 </style>
+<script defer id="vditorLuteScript" src="vditor/dist/js/lute/lute.min.js"></script>
+<script defer id="vditorI18nScripten_US" src="vditor/dist/js/i18n/en_US.js"></script>
 <script defer src="note.bundle.js"></script>
 </head>
 <body><div id="editor"></div></body>

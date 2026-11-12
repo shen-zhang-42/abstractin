@@ -40,8 +40,8 @@ test("font longhands refresh the live iframe even when Gecko cannot serialize a 
 	assert.equal(frame.contentDocument.body.style.fontFamily,"Georgia, serif");
 	input.style.fontFamily="Arial, sans-serif";input._refreshMathPreview();
 	assert.equal(frame.contentDocument.body.style.fontFamily,"Arial, sans-serif");assert.ok(measured>=2);
-	const button=env.document.createElement("button");env.document.body.append(button);button.dispatchEvent(new env.window.MouseEvent("mousedown",{bubbles:true,button:0}));assert.equal(finished,1);
-	dispose();button.dispatchEvent(new env.window.MouseEvent("mousedown",{bubbles:true,button:0}));assert.equal(finished,1);env.window.close();
+	const button=env.document.createElement("button");env.document.body.append(button);button.dispatchEvent(new env.window.MouseEvent("mousedown",{bubbles:true,button:0}));assert.equal(finished,0,'source boundaries belong to the native note editor');
+	dispose();button.dispatchEvent(new env.window.MouseEvent("mousedown",{bubbles:true,button:0}));assert.equal(finished,0);env.window.close();
 });
 
 test("composer recognizes inline and multiline math without treating escaped or unfinished delimiters as formulas", () => {
@@ -56,6 +56,16 @@ c&=d\end{aligned}$$ and $unfinished`;
 	assert.match(tokens[1].tex, /\n/);
 	for (const token of tokens) assert.equal(text.slice(token.start, token.end), token.source);
 	assert.equal(plugin.composerMathTokens("$a\nb$").length, 0);
+});
+
+test('NoteOut supports asynchronous native-editor initialization and disposal before it finishes',async()=>{
+ const env=loadPlugin(),input=env.document.createElement('textarea');env.document.body.append(input);
+ let resolve,disposed=0;
+ const dispose=env.plugin.installMathComposer(input,{note:true}),frame=env.document.querySelector('iframe');
+ frame.contentWindow.AbstractInComposer={create:()=>new Promise(done=>{resolve=done;})};
+ frame.dispatchEvent(new env.window.Event('load'));assert.equal(input.hidden,false);
+ dispose();resolve({destroy(){disposed++;}});await new Promise(done=>setTimeout(done,0));
+ assert.equal(disposed,1);assert.equal(input.hidden,false);assert.equal(input._composerEditor,undefined);env.window.close();
 });
 
 

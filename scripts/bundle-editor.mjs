@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, cpSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 const components = ["@codemirror/state", "@codemirror/view", "@codemirror/commands", "@codemirror/language", "@marijn/find-cluster-break", "crelt", "style-mod", "w3c-keyname", "@lezer/common", "@lezer/highlight", "@lezer/lr"];
@@ -14,8 +14,14 @@ for (const name of components) {
 writeFileSync(new URL("../src/content/editor/CODEMIRROR-LICENSES.txt", import.meta.url), licenses);
 writeFileSync(new URL("../src/content/editor/dependencies.json", import.meta.url), JSON.stringify(versions, null, "\t") + "\n");
 const results = await Promise.all(['composer', 'note'].map(name => build({ entryPoints: [fileURLToPath(new URL(`../src/content/editor/${name}-entry.js`, import.meta.url))], outfile: fileURLToPath(new URL(`../src/content/editor/${name}.bundle.js`, import.meta.url)), bundle: true, format: "iife", target: "firefox115", supported: { 'template-literal': false }, minify: true, legalComments: "eof", metafile: true })));
-writeFileSync(new URL('../src/content/editor/note.html', import.meta.url), readFileSync(new URL('../src/content/editor/composer.html', import.meta.url), 'utf8').replace('<title>Message editor</title>', '<title>Note editor</title>').replace('src="composer.bundle.js"', 'src="note.bundle.js"'));
-if (Object.keys(results[0].metafile.inputs).some(path => /node_modules\/(?:@tiptap|prosemirror-|katex|marked)/.test(path))) throw new Error('Rich note dependencies leaked into the discussion bundle');
+writeFileSync(new URL('../src/content/editor/note.html', import.meta.url), readFileSync(new URL('../src/content/editor/note-vditor.html', import.meta.url), 'utf8'));
+const vendor = new URL('../src/content/editor/vditor/', import.meta.url), upstream = new URL('../node_modules/vditor/', import.meta.url);
+mkdirSync(new URL('dist/', vendor), { recursive: true });
+for (const asset of ['js', 'css', 'images', 'index.css']) cpSync(new URL('dist/' + asset, upstream), new URL('dist/' + asset, vendor), { recursive: true });
+cpSync(new URL('LICENSE', upstream), new URL('LICENSE', vendor));
+writeFileSync(new URL('package.json', vendor), JSON.stringify({ name: 'vditor', version: JSON.parse(readFileSync(new URL('package.json', upstream))).version, license: 'MIT' }, null, 2) + '\n');
+if (Object.keys(results[0].metafile.inputs).some(path => /node_modules\/(?:vditor|@tiptap|prosemirror-|katex|marked)/.test(path))) throw new Error('Rich note dependencies leaked into the discussion bundle');
+if (Object.keys(results[1].metafile.inputs).some(path => /(?:note-source\.js|note-rich\.js|node_modules\/(?:@tiptap|prosemirror-))/.test(path))) throw new Error('Legacy custom editing leaked into the Vditor bundle');
 const packages = new Map(), project = fileURLToPath(new URL("../", import.meta.url));
 for (const input of new Set(results.flatMap(result => Object.keys(result.metafile.inputs)))) {
  if (!input.includes('node_modules/')) continue;
@@ -27,7 +33,7 @@ for (const input of new Set(results.flatMap(result => Object.keys(result.metafil
  if (!license) throw new Error('Missing bundled editor license: ' + pkg.name);
  packages.set(pkg.name + '@' + pkg.version, { pkg, license });
 }
-let richLicenses = 'Tiptap, ProseMirror and visual Markdown editor dependencies\n\n';
+let richLicenses = 'Vditor and visual Markdown editor dependencies\n\n';
 const richVersions = {};
 for (const [name, {pkg, license}] of [...packages].sort(([a],[b]) => a.localeCompare(b))) { richVersions[name] = pkg.license; richLicenses += name + '\n' + readFileSync(license, 'utf8') + '\n\n'; }
 writeFileSync(new URL('../src/content/editor/RICH-EDITOR-LICENSES.txt', import.meta.url), richLicenses);

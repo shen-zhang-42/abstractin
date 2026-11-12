@@ -1,7 +1,7 @@
 {
 	"name": "abstractin",
 	"private": true,
-	"version": "0.2.131",
+	"version": "0.2.132",
 	"description": "AbstractIn: skill-driven reading of books and scientific papers in Zotero with local Codex.",
 	"type": "module",
 	"scripts": {
@@ -26,6 +26,7 @@
 		"@tiptap/markdown": "3.33.1",
 		"@tiptap/starter-kit": "3.33.1",
 		"esbuild": "0.28.2",
-		"jsdom": "^26.1.0"
+		"jsdom": "^26.1.0",
+		"vditor": "4.0.1"
 	}
 }

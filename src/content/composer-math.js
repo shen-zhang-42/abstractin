@@ -38,7 +38,7 @@ Object.assign(AbstractIn, {
 		const nativeFocus = input.focus, nativeSelect = input.setSelectionRange;
 		const focusDescriptor = Object.getOwnPropertyDescriptor(input, "focus");
 		const selectDescriptor = Object.getOwnPropertyDescriptor(input, "setSelectionRange");
-		let editor = null, disposed = false, failed = false, updating = false;
+		let editor = null, disposed = false, failed = false, updating = false, initializing = false;
 		const sync = () => {
 			if (!editor || updating) return;
 			editor.sync(input.value, input.disabled, input.placeholder);
@@ -87,14 +87,15 @@ Object.assign(AbstractIn, {
 			input.dispatchEvent(event);
 			return event.defaultPrevented;
 		};
-		const loaded = () => {
-			if (disposed || failed || editor) return;
+		const loaded = async () => {
+			if (disposed || failed || editor || initializing) return;
+			initializing = true;
 			try {
 				const factory = frame.contentWindow.AbstractInComposer;
 				if (!factory) throw new Error("Editor bundle did not load");
 				const focused = doc.activeElement === input;
 				const start = input.selectionStart, end = input.selectionEnd, direction = input.selectionDirection;
-				editor = factory.create({
+				const created = factory.create({
 					note: !!options.note,
 					maxHeight: options.note ? 600 : 180, minHeight: options.note ? 300 : 40, label: options.note ? "Markdown note" : "Message",
 					text: input.value, disabled: input.disabled, placeholder: input.placeholder,
@@ -115,6 +116,8 @@ Object.assign(AbstractIn, {
 					onHeight: height => { if (!options.note) frame.style.height = height + "px"; },
 					onError: error => win.setTimeout(() => fail(error), 0),
 				});
+				editor = created?.then ? await created : created;
+				if (disposed || failed) { editor?.destroy(); editor = null; return; }
 				editor.select(direction === "backward" ? end : start, direction === "backward" ? start : end);
 				disposeNative(); disposeNative = null;
 				input._refreshMathPreview = sync;
@@ -134,20 +137,18 @@ Object.assign(AbstractIn, {
 				sync(); editor.measure();
 				if (focused) editor.focus();
 			} catch (error) { fail(error); }
+			finally { initializing = false; }
 		};
 		frame.addEventListener("load", loaded, true);
 		frame.addEventListener("error", fail);
 		const observer = new win.MutationObserver(() => { try { sync(); } catch (error) { fail(error); } });
 		observer.observe(input, { attributes: true, attributeFilter: ["disabled", "placeholder"] });
-		const leaveSource = event => { if (options.note && event.target !== frame && !frame.contains(event.target)) editor?.finishSourceEditing?.(); };
-		if (options.note) doc.addEventListener("mousedown", leaveSource, true);
 		frame.src = (this.resourceURI || this.rootURI || "") + "content/editor/" + (options.note ? "note.html" : "composer.html");
 		input.after(frame);
 		// Chrome documents can load a local frame synchronously during insertion.
 		if (frame.contentWindow?.AbstractInComposer) loaded();
 		return () => {
 			disposed = true;
-			if (options.note) doc.removeEventListener("mousedown", leaveSource, true);
 			observer.disconnect();
 			frame.removeEventListener("load", loaded, true);
 			frame.removeEventListener("error", fail);

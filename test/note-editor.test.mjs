@@ -442,7 +442,7 @@ test('the editor exposes an in-place shortcut reference from the actual binding 
  state.input._composerEditor = { markdownShortcuts };
  const help = document.querySelector('.abstractin-note-shortcuts'); assert.equal(help.querySelector('summary').textContent, 'Shortcuts');
  help.open = true; help.dispatchEvent(new window.Event('toggle'));
- assert.match(help.textContent, /Ctrl\+B/); assert.match(help.textContent, /Ctrl\+Alt\+1/); assert.match(help.textContent, /Fixed shortcuts/);
+ assert.match(help.textContent, /Ctrl\+B/); assert.match(help.textContent, /Ctrl\+Alt\+1/); assert.match(help.textContent, /Vditor's native shortcuts/);
  assert.equal(help.querySelectorAll('tbody tr').length, markdownShortcuts.length + 3);
  assert.equal(state.input.value, p.markdownNoteData(state.note).markdown); state.dispose(); window.close();
 });

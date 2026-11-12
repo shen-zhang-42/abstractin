@@ -140,6 +140,7 @@
    };
    home.notifier = Zotero.Notifier.registerObserver({ notify: () => { win.clearTimeout(home.timer); home.timer = win.setTimeout(home.refresh, 200); } }, ["item"], "abstractin-noteout-home");
    win.addEventListener("beforeunload", event => {
+    if (!home.forceClose) for (const state of home.states.values()) if (!state.forceClose) state.input?._composerEditor?.flush?.();
     if (home.forceClose || ![...home.states.values()].some(s => !s.forceClose && (s.savedRevision !== s.revision || s.timer))) return;
     event.preventDefault(); event.returnValue = "";
     if (home.closing) return; home.closing = true;
@@ -262,6 +263,7 @@
    if (state.saveButton) state.saveButton.dataset.unsaved = String(state.revision !== state.savedRevision);
   },
   saveMarkdownNote(state) {
+   state.input._composerEditor?.flush?.();
    const snapshot = { title: state.title.value || "Untitled note", markdown: state.input.value, documents: (state.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : [])).slice(), revision: state.revision, updatedAt: Date.now() };
    const task = state.saveQueue.catch(() => {}).then(async () => {
     // Keep a recoverable source draft even if Zotero rejects a save or detects a conflict.
@@ -455,7 +457,7 @@
      const row = this.el(doc, "tr"), key = item.key.split("-").map(part => part === "Mod" ? Zotero.isMac ? "Cmd" : "Ctrl" : part === "Alt" && Zotero.isMac ? "Option" : part.length === 1 ? part.toUpperCase() : part).join("+");
      const cell = this.el(doc, "td"); cell.append(this.el(doc, "kbd", null, key)); row.append(this.el(doc, "td", null, item.label), cell); body.append(row);
     }
-    table.append(body); shortcutsBody.append(table, this.el(doc, "p", null, "Select text to format it. List, heading and quote shortcuts apply to whole lines. Fixed shortcuts; no customization."));
+    table.append(body); shortcutsBody.append(table, this.el(doc, "p", null, "Formatting uses Vditor's native shortcuts. Hover toolbar buttons for their shortcuts. Ctrl/Cmd+S saves the note."));
    });
    const report = e => { status.textContent = "Not saved: " + (e.message || e); closeDraft.hidden = false; this.logError("Markdown note", e); };
    closeDraft.onclick = async () => {
@@ -516,6 +518,7 @@
    }
    state.flush = flush;
    state.beforeUnload = event => {
+    if (!state.forceClose) state.input._composerEditor?.flush?.();
     if (state.forceClose || (state.savedRevision === state.revision && !state.timer)) return;
     event.preventDefault(); event.returnValue = "";
     if (!state.closing) { state.closing = true; flush().then(() => { state.forceClose = true; win.close(); }).catch(e => { state.closing = false; report(e); }); }
@@ -569,6 +572,7 @@
    const apply = this.el(doc, "button", null, "Apply edit"), discard = this.el(doc, "button", null, "Discard"), status = this.el(doc, "p");
    box.append(apply, discard, status); state.preview.before(box); state.proposalHost = box;
    apply.onclick = async () => {
+    state.input._composerEditor?.flush?.();
     if (state.input.value !== proposal.baseMarkdown || state.title.value !== proposal.baseTitle) { status.textContent = "The note has changed since this proposal. Ask for a new edit against the current note."; return; }
     if (proposal.scope === "selection" && proposal.richRange && state.input._composerEditor?.replaceMarkdownRange) {
      if (!state.input._composerEditor.replaceMarkdownRange(proposal.markdown, proposal.richRange.from, proposal.richRange.to, proposal.richRange.sourceSelection)) { status.textContent = "This selection cannot be edited. Please select it again."; return; }
@@ -588,6 +592,7 @@
   async ask(ctx, question, pending) {
    if (!ctx.noteWorkspace) return previous.ask.call(this, ctx, question, pending);
    const state = ctx.noteState;
+   state.input._composerEditor?.flush?.();
    // Capture the exact note version synchronously at Send, before any asynchronous work.
    const baseMarkdown = state.input.value, start = state.input.selectionStart, end = state.input.selectionEnd;
    const richSelection = state.input._composerEditor?.getSelectionSnapshot?.();
