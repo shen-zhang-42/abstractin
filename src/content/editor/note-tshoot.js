@@ -19,6 +19,7 @@ import { noteQuoteBoundaries } from './note-quote-boundaries.js';
 import '../../../vendor/tshoot/media/webview-editor-theme.css';
 import '../../../vendor/tshoot/media/webview-ui.css';
 import { markdownShortcuts } from './markdown-shortcuts.js';
+import { noteToolbarControls } from './note-toolbar.js';
 
 // The upstream library owns preview boundaries and pointer interactions. This
 // adapter supplies application commands, persistence and exact source selections.
@@ -68,6 +69,7 @@ export function createTshootNote(config) {
   const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.title = title; button.dataset.action = action;
   button.addEventListener('mousedown', event => event.preventDefault()); button.addEventListener('click', () => format(action)); toolbar.append(button);
  }
+ const controls = noteToolbarControls(toolbar, { ...config, onFontChange: value => { view.requestMeasure(); config.onFontChange?.(value); } });
  root.append(toolbar);
  const publish = update => {
   if (syncing || destroyed) return;
@@ -109,6 +111,7 @@ export function createTshootNote(config) {
  const flush = () => { if (!destroyed) commitActiveTableCell(view); };
  return {
   view, markdownShortcuts, flush, formatMarkdown: format,
+  setFont(value) { if (controls.setFont(value)) view.requestMeasure(); },
   getMarkdown() { flush(); return view.state.doc.toString(); },
   getSelectionSnapshot() { flush(); return savedSelection || { from: 0, to: 0, markdown: '' }; },
   replaceMarkdownRange(markdown, from, to, snapshot) {
@@ -130,12 +133,12 @@ export function createTshootNote(config) {
     if (replaced || disabled !== !!nextDisabled) { disabled = !!nextDisabled; effects.push(enabled.reconfigure([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)])); }
     if (replaced || currentHint !== (label || '')) { currentHint = label || ''; effects.push(hint.reconfigure(placeholder(currentHint))); }
     if (effects.length) view.dispatch({ effects });
-    for (const button of toolbar.children) button.disabled = disabled;
+    for (const button of toolbar.querySelectorAll('[data-action]')) button.disabled = disabled;
    } finally { syncing = false; }
   },
   focus() { if (!disabled) view.focus(); },
   select(anchor, head) { view.dispatch({ selection: EditorSelection.single(Math.min(anchor, view.state.doc.length), Math.min(head, view.state.doc.length)), scrollIntoView: true }); },
   measure() { view.requestMeasure(); },
-  destroy() { destroyed = true; root.removeEventListener('mousedown', preventReadOnly, true); root.removeEventListener('keydown', appKey, true); view.destroy(); toolbar.remove(); },
+  destroy() { destroyed = true; controls.destroy(); root.removeEventListener('mousedown', preventReadOnly, true); root.removeEventListener('keydown', appKey, true); view.destroy(); toolbar.remove(); },
  };
 }

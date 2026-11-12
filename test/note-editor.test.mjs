@@ -40,18 +40,17 @@ async function setup() {
  return { ...env, p, dir, parent, note, state, items };
 }
 
-test('font menu uses separate rows and choosing a font changes display without editing Markdown', async () => {
+test('note header has a compact source list and Source immediately after Save', async () => {
  const {p,window,document,state}=await setup();await p.mountMarkdownNote(window,state);
- assert.ok(document.querySelector('.abstractin-note-topline .abstractin-note-title'));
- assert.ok(document.querySelector('.abstractin-note-file-actions .abstractin-note-save'));
- assert.deepEqual([...document.querySelector('.abstractin-note-editor-head').children].map(node=>node.className), ['abstractin-note-topline','abstractin-note-documents','abstractin-note-toolbar']);
- const menu=document.querySelector('.abstractin-note-font-menu'),options=[...menu.querySelectorAll('[role=option]')];
- assert.equal(options.length,7);assert.equal(state.fontSelect.hidden,true);
- const source=state.input.value,revision=state.revision;menu.open=true;
- options.find(option=>option.dataset.font==='georgia').click();
- assert.equal(menu.open,false);assert.equal(menu.querySelector('summary').textContent,'Georgia');
- assert.equal(state.fontSelect.value,'georgia');assert.match(state.input.style.fontFamily,/Georgia/);
- assert.equal(state.input.value,source);assert.equal(state.revision,revision);assert.equal(menu.querySelectorAll('[aria-selected=true]').length,1);
+ const actions=document.querySelector('.abstractin-note-file-actions'), children=[...actions.children];
+ assert.equal(children[children.indexOf(state.saveButton)+1].querySelector('button').textContent,'Source');
+ const rows=document.querySelectorAll('.abstractin-note-editor-head .abstractin-note-document-ref');
+ assert.equal(rows.length,1);assert.match(rows[0].textContent,/Source book/);assert.ok(rows[0].querySelector('button'));
+ assert.equal(document.querySelector('.abstractin-note-font-menu'),null);
+ let refreshed=0;state.input._refreshMathPreview=()=>refreshed++;
+ const source=state.input.value,revision=state.revision;p.setNoteDisplayFont('georgia');
+ assert.equal(p.getPref('noteFont'),'georgia');assert.equal(refreshed,1);
+ assert.equal(state.input.value,source);assert.equal(state.revision,revision);
  state.dispose();window.close();
 });
 
@@ -115,7 +114,7 @@ test('the visual note editor has a fixed header, one editing surface, and saves 
  assert.equal([...state.editor.querySelectorAll('button')].some(b => ['Preview', 'Edit'].includes(b.textContent)), false);
  const header = state.editor.querySelector('.abstractin-note-editor-head'); assert.ok(header.contains(state.title)); assert.ok(header.querySelector('.abstractin-note-documents'));
  assert.equal(state.editor.querySelector('.abstractin-note-edit-host').contains(state.title), false);
- const revision = state.revision; state.fontSelect.value = 'georgia'; state.fontSelect.onchange(); assert.equal(p.getPref('noteFont'), 'georgia'); assert.match(state.input.style.fontFamily, /Georgia/); assert.equal(state.revision, revision);
+ const revision = state.revision; p.setNoteDisplayFont('georgia'); assert.equal(p.getPref('noteFont'), 'georgia'); assert.equal(state.revision, revision);
  assert.equal(state.input.value, '# Updated\n\n$$a=b$$');
  state.disposeEditor(); window.close();
 });
@@ -407,7 +406,7 @@ test('the persistent three-column workspace keeps its list visible and remembers
  await p.openMarkdownNote({ win: window, home });
  assert.equal(home.sidebar.hidden, false); assert.equal(home.active.splitter.getAttribute('aria-valuenow'), '60');
  const original = [...home.states.values()].find(state => state.note.key === note.key); assert.equal(original.input.value, 'Draft remains while browsing');
- assert.equal(document.querySelectorAll('.abstractin-note-toolbar button').length > 0, true);
+ assert.equal(document.querySelectorAll('.abstractin-note-file-actions .abstractin-note-source-button').length > 0, true);
  for (const state of home.states.values()) state.dispose(); window.close();
 });
 
@@ -439,13 +438,37 @@ test('native selected-note and new-note shortcuts route into the same three-colu
  assert.equal(home.sidebar.hidden, false); for (const state of home.states.values()) state.dispose(); window.close();
 });
 
-test('the editor exposes an in-place shortcut reference from the actual binding catalog', async () => {
- const { markdownShortcuts } = await import('../src/content/editor/markdown-shortcuts.js');
- const { p, window, document, state } = await setup(); await p.mountMarkdownNote(window, state);
- state.input._composerEditor = { markdownShortcuts };
- const help = document.querySelector('.abstractin-note-shortcuts'); assert.equal(help.querySelector('summary').getAttribute('aria-label'), 'Keyboard shortcuts');
- help.open = true; help.dispatchEvent(new window.Event('toggle'));
- assert.match(help.textContent, /Ctrl\+B/); assert.match(help.textContent, /Ctrl\+Alt\+1/); assert.match(help.textContent, /Markdown markers appear near the cursor/);
- assert.equal(help.querySelectorAll('tbody tr').length, markdownShortcuts.length + 3);
- assert.equal(state.input.value, p.markdownNoteData(state.note).markdown); state.dispose(); window.close();
+test('source picker adds selected documents without conflating editor and note sources', async () => {
+ const {p,window,document,state,parent,note}=await setup();await p.mountMarkdownNote(window,state);
+ const second=new window.Zotero.Item('book');second.title='Second paper';await second.saveTx();
+ window.ZoteroPane={itemsView:{getSelectedItems:()=>[second]}};
+ const control=document.querySelector('.abstractin-note-file-actions .abstractin-note-source-control');
+ control.querySelector('button').click();await new Promise(resolve=>setTimeout(resolve,0));
+ const add=[...control.querySelectorAll('button')].find(button=>button.textContent==='Add selected in Zotero');await add.onclick();
+ assert.deepEqual(Array.from(state.documents,ref=>ref.key),[parent.key,second.key]);
+ await state.flush();assert.equal(p.markdownNoteData(note).documents.length,2);assert.equal(!!note.parentID,false);
+ state.dispose();window.close();
+});
+
+test('editor source filters use a union and stay independent of source links saved on each note', async () => {
+ const {p,window,document,note,parent}=await setup();p._markdownNoteWindows.clear();
+ const second=new window.Zotero.Item('book');second.title='Second paper';await second.saveTx();
+ const make=async(title,documents)=>{const item=new window.Zotero.Item('note');item.addTag('AbstractIn:Markdown');item.setNote(p.markdownNoteHTML(item,title,'Note content',null,3,documents));await item.saveTx();return item;};
+ const refs=[parent,second].map(item=>p.noteDocumentRef(item));
+ await make('Second only',[refs[1]]);await make('Shared analysis',refs);
+ const home={key:'1',libraryID:1,documents:[refs[0]],states:new Map()};await p.mountNoteOutHome(window,home);
+ const titles=()=>[...document.querySelectorAll('.abstractin-note-list-item')].map(button=>button.firstChild.textContent);
+ assert.ok(titles().includes('Shared analysis'));assert.ok(!titles().includes('Second only'));
+ await p.openMarkdownNote({win:window,home,note});
+ const original=home.active;
+ original.editor.querySelector('.abstractin-note-document-ref button').click();await original.flush();
+ assert.equal(original.documents.length,0);assert.equal(p.markdownNoteData(note).documents.length,0);
+ assert.equal(home.documents[0].key,parent.key,'unlinking note sources must not change the window filter');
+ home.documents=[refs[1]];home.updateAssociation();await home.refresh();
+ assert.ok(titles().includes('Shared analysis'));assert.ok(titles().includes('Second only'));
+ home.documents=refs.map(ref=>({...ref}));home.updateAssociation();await home.refresh();
+ assert.equal(titles().filter(title=>title==='Shared analysis').length,1,'shared notes appear once across the union');
+ document.querySelector('[data-source-scope="workspace"] .abstractin-note-document-ref button').click();
+ assert.equal(original.documents.length,0,'changing window sources must not relink the open note');
+ for(const state of home.states.values())state.dispose();window.close();
 });

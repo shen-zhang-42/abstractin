@@ -44,7 +44,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 #abstractin-note-root .abstractin-note-save[data-unsaved="true"] { background: #202124; border-color: #202124; color: #fff; }
 #abstractin-note-root .abstractin-note-save:hover { filter: brightness(1.08); }
 .abstractin-note-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; flex: 0 0 calc((100% - 8px) * var(--note-editor-ratio, 58) / 100); min-width: min(260px, 40%); padding: 26px clamp(24px, 3vw, 48px) 0; overflow: hidden; background: var(--note-paper); }
-.abstractin-note-editor-head { flex: 0 0 auto; min-height: 0; overflow: visible; }
+.abstractin-note-editor-head { position:relative; z-index:5; flex: 0 0 auto; min-height: 0; overflow: visible; }
 .abstractin-note-editor-head .abstractin-note-documents[open] { max-height: 180px; overflow: auto; }
 .abstractin-note-edit-host { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 .abstractin-note-edit-host .abstractin-note-rich-frame { flex: 1 1 0; min-height: 0 !important; max-height: none; height: 100% !important; }
@@ -66,6 +66,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 .abstractin-note-title { width: 100%; padding: 0 0 14px; border: 0; outline: none; background: transparent; color: var(--note-text); font: 650 29px/1.3 system-ui, sans-serif; letter-spacing: -.035em; }
 .abstractin-note-title:focus-visible { outline: none !important; box-shadow: 0 2px var(--note-accent); }
 .abstractin-note-toolbar { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 10px 0 14px; }
+.abstractin-note-toolbar:empty { display:none; }
 .abstractin-note-save { margin-inline-start: 0; }
 .abstractin-note-more { position: relative; }
 .abstractin-note-more summary { list-style: none; user-select: none; }
@@ -81,13 +82,22 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 .abstractin-note-shortcuts-body p { color: var(--note-muted); line-height: 1.6; margin-bottom: 0; }
 .abstractin-note-more-actions { position: absolute; z-index: 20; right: 0; top: calc(100% + 6px); width: 228px; padding: 5px; border: 1px solid var(--note-line); border-radius: 10px; box-shadow: var(--note-shadow); background: var(--note-paper); }
 .abstractin-note-more-actions button { display: block; width: 100%; border: 0; background: transparent; text-align: left; padding: 9px 10px; }
-.abstractin-note-documents { margin: 0 0 4px; padding: 2px 0 6px; font-size: 12px; color: var(--note-muted); }
+.abstractin-note-documents { margin:0 0 8px; padding:0; max-height:120px; overflow:auto; font-size:12px; color:var(--note-muted); }
 .abstractin-note-documents summary { cursor: pointer; padding: 3px 0; font-weight: 500; }
 .abstractin-note-documents[open] summary { margin-bottom: 10px; }
 .abstractin-note-documents p { margin: 8px 0 3px; line-height: 1.6; font-size: 11px; }
-.abstractin-note-document-ref { display: flex; align-items: center; gap: 10px; margin: 7px 0; padding: 6px 8px; border-radius: 6px; background: var(--note-ground); color: var(--note-text); }
-.abstractin-note-document-ref span { flex: 1; overflow-wrap: anywhere; }
-.abstractin-note-document-ref button { border: 0; background: transparent; padding: 0 6px; color: var(--note-muted); }
+.abstractin-note-document-ref { display:flex; align-items:center; gap:8px; margin:0; min-height:26px; color:var(--note-muted); }
+.abstractin-note-document-ref span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#abstractin-note-root .abstractin-note-document-ref button { flex-shrink:0; width:22px; height:22px; border:0; background:transparent; padding:0; color:var(--note-muted); font-size:16px; line-height:1; }
+#abstractin-note-root .abstractin-note-document-ref button:hover { color:#ba4242; background:var(--note-soft); }
+.abstractin-note-source-control { position:relative; flex-shrink:0; }
+.abstractin-note-source-popover { position:fixed; z-index:40; width:300px; max-width:calc(100vw - 50px); max-height:55vh; overflow:auto; padding:10px; border:1px solid var(--note-line); border-radius:9px; background:var(--note-paper); box-shadow:var(--note-shadow); }
+.abstractin-note-source-popover input { width:100%; margin:0 0 8px; padding:8px; border:1px solid var(--note-line); border-radius:5px; background:var(--note-ground); color:var(--note-text); font:inherit; }
+.abstractin-note-source-results { max-height:240px; overflow:auto; }
+#abstractin-note-root .abstractin-note-source-results button { display:block; width:100%; padding:7px 6px; border:0; background:transparent; text-align:left; }
+.abstractin-note-source-popover p { margin:6px 0 0; font-size:11px; color:var(--note-muted); }
+.abstractin-note-list-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px; }
+.abstractin-note-list-head + div .abstractin-note-documents { margin-bottom:14px; max-height:150px; }
 .abstractin-note-source { flex: 1 1 0; width: 100%; min-height: 0; height: 100%; resize: none; border: 0; outline: none; padding: 8px 0; background: transparent; color: var(--note-text); font: 15px/1.85 system-ui, sans-serif; }
 .abstractin-note-edit-host .abstractin-composer-frame { width: 100%; border: 0; min-height: 400px; }
 .abstractin-note-preview { font-size: 15px; line-height: 1.85; overflow-wrap: anywhere; color: var(--note-text); }
@@ -154,7 +164,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 .abstractin-note-home-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 36px; }
 .abstractin-note-home-idle { --note-ground: #ededee; --note-sidebar: #e7e7e9; --note-accent: #595f68; --note-soft: #dddfe2; --note-line: #d5d7da; background: var(--note-ground); }
 .abstractin-note-home-idle .abstractin-note-home-workspace { background: var(--note-ground); }
-.abstractin-note-home-idle .abstractin-note-list h1 { margin-bottom: 20px; }
+.abstractin-note-home-idle .abstractin-note-list h1 { margin-bottom: 0; }
 .abstractin-note-home-idle .abstractin-note-home-empty button { padding: 10px 22px; }
 .abstractin-note-welcome-mark { width: 60px; height: 60px; line-height: 60px; margin-bottom: 24px; border: 1px solid var(--note-line); border-radius: 18px; background: var(--note-paper); color: var(--note-accent); font-size: 32px; box-shadow: var(--note-shadow); }
 .abstractin-note-home-empty h2 { margin: 12px 0 0; font-size: clamp(28px, 4vw, 40px); font-weight: 600; letter-spacing: -.045em; }

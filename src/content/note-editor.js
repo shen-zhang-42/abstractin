@@ -22,28 +22,83 @@
    }
    return [...refs.values()];
   },
-  mountNoteDocuments(doc, host, owner, changed) {
-   const box = this.el(doc, "details", "abstractin-note-documents"), summary = this.el(doc, "summary"), list = this.el(doc, "div"), add = this.el(doc, "button", null, "Add selected Zotero documents");
-   const status = this.el(doc, "p"); status.setAttribute("role", "status");
+  setNoteDisplayFont(value) {
+   if (!["system", "arial", "georgia", "times", "mono", "yahei", "song"].includes(value)) return;
+   this.setPref("noteFont", value);
+   for (const state of this._markdownNoteWindows.values()) state.input?._refreshMathPreview?.();
+  },
+  mountNoteDocuments(doc, host, owner, changed, { controls = host, scope = "note" } = {}) {
+   const list = this.el(doc, "div", "abstractin-note-documents"); list.dataset.sourceScope = scope;
+   const control = this.el(doc, "div", "abstractin-note-source-control"), button = this.el(doc, "button", "abstractin-note-source-button", "Source");
+   button.type = "button"; button.dataset.sourceScope = scope; button.setAttribute("aria-expanded", "false");
+   button.setAttribute("aria-label", scope === "workspace" ? "Manage editor sources" : "Manage note sources");
+   const popup = this.el(doc, "div", "abstractin-note-source-popover"); popup.hidden = true;
+   popup.setAttribute("role", "region"); popup.setAttribute("aria-label", scope === "workspace" ? "Editor sources" : "Note sources");
+   const search = this.el(doc, "input"); search.placeholder = "Find a document…"; search.setAttribute("aria-label", "Find source documents");
+   const results = this.el(doc, "div", "abstractin-note-source-results"), status = this.el(doc, "p"); status.setAttribute("role", "status");
+   const add = this.el(doc, "button", null, "Add selected in Zotero"); add.type = "button";
+   popup.append(search, results, add, status); control.append(button, popup); controls.append(control); host.append(list);
+   let generation = 0, timer;
+   const libraryID = () => owner.libraryID ?? owner.note.libraryID;
+   const addRefs = refs => {
+    const merged = new Map((owner.documents || []).map(ref => [ref.key, ref]));
+    for (const ref of refs) if (ref.libraryID === libraryID()) merged.set(ref.key, { ...ref });
+    owner.documents = [...merged.values()]; draw(); changed?.();
+   };
    const draw = () => {
-    summary.textContent = "Sources · " + (owner.documents?.length === 1 ? owner.documents[0].title : owner.documents?.length ? owner.documents.length + " documents" : "Independent note");
     list.replaceChildren();
     for (const ref of owner.documents || []) {
-     const row = this.el(doc, "div", "abstractin-note-document-ref"), remove = this.el(doc, "button", null, "×"); remove.setAttribute("aria-label", "Unlink " + ref.title);
-     row.append(this.el(doc, "span", null, ref.title), remove); list.append(row);
-     remove.onclick = () => { owner.documents = owner.documents.filter(r => r.key !== ref.key); draw(); changed?.(); };
+     const row = this.el(doc, "div", "abstractin-note-document-ref"), name = this.el(doc, "span", null, ref.title), remove = this.el(doc, "button", null, "×");
+     name.title = ref.title; remove.type = "button"; remove.title = "Remove source"; remove.setAttribute("aria-label", "Remove source " + ref.title);
+     remove.onclick = () => { owner.documents = owner.documents.filter(item => item.key !== ref.key); draw(); changed?.(); };
+     row.append(name, remove); list.append(row);
     }
-    status.textContent = owner.documents?.length === 1 ? "Stored under this document → NoteOut." : owner.documents?.length > 1 ? "Shared note stored at library level; linked from every document's NoteOut." : "Independent note stored at library level.";
+    list.hidden = !list.children.length;
+    for (const candidate of results.querySelectorAll("button")) candidate.disabled = (owner.documents || []).some(ref => ref.key === candidate.dataset.sourceKey);
    };
-   add.onclick = async () => {
+   const find = async () => {
+    const request = ++generation, query = search.value.trim(); status.textContent = "";
     try {
-     const refs = await this.selectedNoteDocuments(owner.libraryID ?? owner.note.libraryID);
-     if (!refs.length) throw new Error("Select books or papers in Zotero, then click Add selected Zotero documents.");
-     const merged = new Map((owner.documents || []).map(ref => [ref.key, ref])); for (const ref of refs) merged.set(ref.key, ref);
-     owner.documents = [...merged.values()]; draw(); changed?.();
-    } catch (e) { status.textContent = e.message || String(e); }
+     let refs;
+     if (query) {
+      const searcher = new Zotero.Search(); searcher.libraryID = libraryID(); searcher.addCondition("title", "contains", query);
+      searcher.addCondition("itemType", "isNot", "note"); searcher.addCondition("itemType", "isNot", "attachment");
+      const ids = await searcher.search(), items = await Zotero.Items.getAsync(ids.slice(0, 40));
+      refs = items.filter(item => item?.isRegularItem?.() && !item.deleted && item.libraryID === libraryID()).map(item => this.noteDocumentRef(item));
+     } else {
+      refs = [...(owner.documents || []), ...(owner.home?.documents || []), ...await this.selectedNoteDocuments(libraryID())];
+     }
+     if (request !== generation || popup.hidden) return;
+     results.replaceChildren();
+     for (const ref of new Map(refs.map(item => [item.key, item])).values()) {
+      const candidate = this.el(doc, "button", null, ref.title); candidate.type = "button"; candidate.dataset.sourceKey = ref.key;
+      candidate.disabled = (owner.documents || []).some(item => item.key === ref.key);
+      candidate.onclick = () => addRefs([ref]); results.append(candidate);
+     }
+     if (!results.children.length) status.textContent = query ? "No matching documents." : "Search by title or select documents in Zotero.";
+    } catch (error) { if (request === generation && !popup.hidden) status.textContent = error.message || String(error); }
    };
-   box.append(summary, list, add, status); host.append(box); draw(); return draw;
+   const close = () => { popup.hidden = true; button.setAttribute("aria-expanded", "false"); generation++; doc.defaultView.clearTimeout(timer); };
+   button.onclick = () => {
+    if (!popup.hidden) { close(); return; }
+    const rect = button.getBoundingClientRect(), win = doc.defaultView, width = scope === "workspace" ? 260 : 300;
+    popup.style.width = Math.min(width, win.innerWidth - 32) + "px";
+    popup.style.left = Math.max(12, Math.min(scope === "workspace" ? rect.left : rect.right - width, win.innerWidth - width - 12)) + "px";
+    popup.style.top = (rect.bottom + 6) + "px";
+    popup.style.maxHeight = Math.max(120, win.innerHeight - rect.bottom - 24) + "px";
+    popup.hidden = false; button.setAttribute("aria-expanded", "true"); search.focus(); find();
+   };
+   search.oninput = () => { generation++; doc.defaultView.clearTimeout(timer); timer = doc.defaultView.setTimeout(find, 180); };
+   add.onclick = async () => {
+    try { const refs = await this.selectedNoteDocuments(libraryID()); if (!refs.length) throw new Error("Select documents in Zotero first."); addRefs(refs); await find(); }
+    catch (error) { status.textContent = error.message || String(error); }
+   };
+   const outside = event => { if (!control.contains(event.target)) close(); };
+   const blurred = event => { if (event.relatedTarget && !control.contains(event.relatedTarget)) close(); };
+   const escape = event => { if (event.key === "Escape" && !popup.hidden) { close(); button.focus(); event.preventDefault(); event.stopPropagation(); } };
+   doc.addEventListener("mousedown", outside); control.addEventListener("keydown", escape); control.addEventListener("focusout", blurred);
+   (owner.sourceDisposers ||= []).push(() => { close(); doc.removeEventListener("mousedown", outside); control.removeEventListener("keydown", escape); control.removeEventListener("focusout", blurred); });
+   draw(); return draw;
   },
   async openNoteOutHome(win = Zotero.getMainWindow(), { parent = null, sourceView = null, documents = null, note = null, create = false } = {}) {
    if (!parent && win.Zotero_Tabs?.selectedType === "reader") {
@@ -55,7 +110,7 @@
    const key = String(libraryID), existing = this._noteOutHomes.get(key);
    if (existing && !existing.win.closed) {
     existing.sourceView = sourceView; existing.parent = parent;
-    existing.documents = documents || (parent ? [this.noteDocumentRef(parent)] : existing.documents);
+    existing.documents = (documents || (parent ? [this.noteDocumentRef(parent)] : existing.documents)).map(ref => ({ ...ref }));
     existing.updateAssociation?.(); existing.showLinked?.(); existing.refresh?.(); if (existing.sidebar) existing.sidebar.hidden = false;
     const selected = win.ZoteroPane?.itemsView?.getSelectedItems?.() || [], chosen = note || (selected.length === 1 && this.markdownNoteData(selected[0]) ? selected[0] : null);
     if (create || chosen) {
@@ -64,7 +119,12 @@
     }
     existing.win.focus(); return existing.win;
    }
-   const home = { key, libraryID, parent, sourceView, documents: documents || (parent ? [this.noteDocumentRef(parent)] : await this.selectedNoteDocuments(libraryID)), states: new Map() }; this._noteOutHomes.set(key, home);
+   let scope = documents || (parent ? [this.noteDocumentRef(parent)] : await this.selectedNoteDocuments(libraryID));
+   if (!documents && !parent && !scope.length) {
+    const saved = this.getJSONPref("noteWorkspaceSources." + libraryID, []);
+    if (Array.isArray(saved)) scope = saved.filter(ref => ref?.libraryID === libraryID && typeof ref.key === "string" && typeof ref.title === "string");
+   }
+   const home = { key, libraryID, parent, sourceView, documents: scope.map(ref => ({ ...ref })), states: new Map() }; this._noteOutHomes.set(key, home);
    const selected = win.ZoteroPane?.itemsView?.getSelectedItems?.() || [];
    if (create) home.pendingOpen = { documents: home.documents, sourceView };
    else if (note) home.initialNote = note;
@@ -79,16 +139,17 @@
    home.win = win;
    const doc = win.document, host = doc.getElementById("abstractin-note-root"); host.classList.add("abstractin-note-home", "abstractin-note-home-idle"); doc.title = "NoteOut — notes";
    const sidebar = this.el(doc, "aside", "abstractin-note-list"), head = this.el(doc, "h1", null, "NoteOut");
+   const sidebarHead = this.el(doc, "div", "abstractin-note-list-head"); sidebarHead.append(head);
    const association = this.el(doc, "div"); home.documents ||= home.parent ? [this.noteDocumentRef(home.parent)] : [];
-   home.updateAssociation = this.mountNoteDocuments(doc, association, home, () => home.draw?.());
+   home.updateAssociation = this.mountNoteDocuments(doc, association, home, () => {
+    this.setPref("noteWorkspaceSources." + home.libraryID, JSON.stringify(home.documents)); home.draw?.();
+   }, { controls: sidebarHead, scope: "workspace" });
    const create = this.el(doc, "button", null, "New note"), refresh = this.el(doc, "button", null, "Refresh");
    create.className = "abstractin-note-primary"; refresh.className = "abstractin-note-refresh";
    const filter = this.el(doc, "input"); filter.placeholder = "Find a note…"; filter.setAttribute("aria-label", "Find a NoteOut note");
    const list = this.el(doc, "div", "abstractin-note-list-items"), status = this.el(doc, "p", "abstractin-note-list-status"); status.setAttribute("role", "status");
-   const all = this.el(doc, "input"); all.type = "checkbox"; all.checked = !home.documents.length;
-   const allLabel = this.el(doc, "label", null, "Show all notes in this library"); allLabel.prepend(all);
-   home.showLinked = () => { if (home.documents.length) all.checked = false; };
-   sidebar.append(head, association, create, refresh, allLabel, filter, list, status);
+   home.showLinked = () => home.draw?.();
+   sidebar.append(sidebarHead, association, create, refresh, filter, list, status);
    const workspace = this.el(doc, "div", "abstractin-note-home-workspace"), welcome = this.el(doc, "div", "abstractin-note-document abstractin-note-home-empty");
    const emptyEditor = this.el(doc, "section", "abstractin-note-editor abstractin-note-empty-editor"), emptyChat = this.el(doc, "section", "abstractin-note-chat");
    const welcomeCreate = this.el(doc, "button", "abstractin-note-primary", "+ New note"); welcomeCreate.onclick = () => create.click(); emptyEditor.append(welcomeCreate);
@@ -109,7 +170,7 @@
     list.replaceChildren(); const query = filter.value.trim().toLowerCase();
     for (const { note, data } of notes) {
      if (query && !data.title.toLowerCase().includes(query)) continue;
-     if (!all.checked && home.documents.length && !home.documents.some(ref => (data.documents || [{ key: data.itemKey }]).some(link => link.key === ref.key))) continue;
+     if (home.documents.length && !home.documents.some(ref => (data.documents || [{ key: data.itemKey }]).some(link => link.key === ref.key))) continue;
      const row = this.el(doc, "div", "abstractin-note-list-row"), button = this.el(doc, "button", "abstractin-note-list-item", data.title || "Untitled note"); button.dataset.noteKey = note.key;
      const detail = this.el(doc, "span", "abstractin-note-list-detail", data.documents?.length > 1 ? data.documents.length + " linked sources" : data.itemKey ? "Document note" : "Independent note"); button.append(detail);
      button.setAttribute("aria-pressed", String(home.active?.note.key === note.key));
@@ -120,7 +181,7 @@
     }
     if (!list.children.length) list.append(this.el(doc, "p", null, query ? "No matching notes." : "No notes yet. Click New note."));
    };
-   home.draw = draw; all.onchange = draw;
+   home.draw = draw;
    home.refresh = async () => {
     try {
      const search = new Zotero.Search(); search.libraryID = home.libraryID;
@@ -147,7 +208,7 @@
     Promise.all([...home.states.values()].filter(s => !s.forceClose).map(s => s.flush())).then(() => { home.forceClose = true; win.close(); })
      .catch(e => { home.closing = false; status.textContent = "Not saved: " + (e.message || e); });
    });
-   win.addEventListener("unload", () => { home.sidebarSplitState.disposeSplitter(); home.emptySplitState.disposeSplitter(); win.clearTimeout(home.timer); Zotero.Notifier.unregisterObserver(home.notifier); this._noteOutHomes.delete(home.key); }, { once: true });
+   win.addEventListener("unload", () => { home.sidebarSplitState.disposeSplitter(); home.emptySplitState.disposeSplitter(); win.clearTimeout(home.timer); home.sourceDisposers?.forEach(dispose => dispose()); Zotero.Notifier.unregisterObserver(home.notifier); this._noteOutHomes.delete(home.key); }, { once: true });
    await home.refresh();
    if (home.pendingOpen) { const options = home.pendingOpen; home.pendingOpen = null; await this.openMarkdownNote({ win, home, ...options }); }
    else if (home.initialNote) await this.openMarkdownNote({ win, note: home.initialNote, home, sourceView: home.sourceView });
@@ -405,41 +466,7 @@
    moreActions.append(chatToggle, append, toDiscussion, trash); more.append(moreLabel, moreActions);
    moreActions.addEventListener("click", event => { if (event.target.closest("button")) more.open = false; });
    toolbar.append(save, more, closeDraft);
-   const shortcuts = this.el(doc, "details", "abstractin-note-shortcuts"), shortcutsTitle = this.el(doc, "summary", null, "?"), shortcutsBody = this.el(doc, "div", "abstractin-note-shortcuts-body");
-   shortcutsTitle.setAttribute("aria-label", "Keyboard shortcuts"); shortcutsTitle.title = "Keyboard shortcuts";
-   shortcuts.append(shortcutsTitle, shortcutsBody); toolbar.insertBefore(shortcuts, save);
    const input = this.el(doc, "textarea", "abstractin-note-source"); input.value = data.markdown; input.placeholder = "Write Markdown and LaTeX here…"; input.setAttribute("aria-label", "Markdown note");
-   const fonts = { system: ['System', 'system-ui, sans-serif'], arial: ['Arial', 'Arial, sans-serif'], georgia: ['Georgia', 'Georgia, serif'], times: ['Times New Roman', '"Times New Roman", serif'], mono: ['Consolas', 'Consolas, ui-monospace, monospace'], yahei: ['Microsoft YaHei', '"Microsoft YaHei", sans-serif'], song: ['SimSun', 'SimSun, serif'] };
-   const font = this.el(doc, "select", "abstractin-note-font"); font.setAttribute("aria-label", "Note display font"); font.title = "Display font — Markdown source is unchanged";
-   for (const [value, [label]] of Object.entries(fonts)) { const option = this.el(doc, "option", null, label); option.value = value; font.append(option); }
-   font.value = fonts[this.getPref("noteFont")] ? this.getPref("noteFont") : "system"; input.style.fontFamily = fonts[font.value][1]; toolbar.insertBefore(font, shortcuts);
-   // Native HTML select popups can collapse option line boxes in Gecko chrome.
-   // Keep the select as the value binding and use a normal HTML menu for display.
-   font.hidden = true;
-   const fontMenu = this.el(doc, "details", "abstractin-note-font-menu"), fontLabel = this.el(doc, "summary", null, fonts[font.value][0]), fontOptions = this.el(doc, "div", "abstractin-note-font-options");
-   fontLabel.setAttribute("aria-label", "Note display font"); fontOptions.setAttribute("role", "listbox"); fontOptions.setAttribute("aria-label", "Display fonts");
-   for (const [value, [label]] of Object.entries(fonts)) {
-    const option = this.el(doc, "button", null, label); option.type = "button"; option.setAttribute("role", "option"); option.dataset.font = value;
-    option.onclick = () => { font.value = value; font.onchange(); fontMenu.open = false; fontLabel.focus(); };
-    fontOptions.append(option);
-   }
-   fontMenu.append(fontLabel, fontOptions); toolbar.insertBefore(fontMenu, shortcuts);
-   fontMenu.addEventListener("focusout", () => win.queueMicrotask(() => { if (!fontMenu.contains(doc.activeElement)) fontMenu.open = false; }));
-   fontMenu.addEventListener("keydown", event => {
-    if (event.key === "Escape") { event.preventDefault(); fontMenu.open = false; fontLabel.focus(); }
-    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-     event.preventDefault(); fontMenu.open = true; const buttons = [...fontOptions.children], index = buttons.indexOf(doc.activeElement);
-     buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowUp" ? -1 : 1) + buttons.length) % buttons.length].focus();
-    }
-   });
-   const refreshFontLabel = () => { fontLabel.textContent = fonts[font.value][0]; for (const option of fontOptions.children) option.setAttribute("aria-selected", String(option.dataset.font === font.value)); };
-   state.refreshFontLabel = refreshFontLabel; refreshFontLabel();
-   state.fontSelect = font;
-   font.onchange = () => {
-    this.setPref("noteFont", font.value);
-    refreshFontLabel();
-    for (const entry of this._markdownNoteWindows.values()) if (entry.input && entry.fontSelect) { entry.fontSelect.value = font.value; entry.refreshFontLabel?.(); entry.input.style.fontFamily = fonts[font.value][1]; entry.input._refreshMathPreview?.(); }
-   };
    const editHost = this.el(doc, "div", "abstractin-note-edit-host"); editHost.append(input);
    const preview = this.el(doc, "div", "abstractin-note-preview"); preview.hidden = true;
    const top = this.el(doc, "div", "abstractin-note-topline"), actions = this.el(doc, "div", "abstractin-note-file-actions");
@@ -448,20 +475,6 @@
    header.append(top, toolbar); notices.append(preview); editor.append(header, editHost, notices); host.append(editor);
    Object.assign(state, { title, input, preview, status, editor, saveButton: save });
    this.updateNoteSaveButton(state);
-   shortcuts.addEventListener("toggle", () => {
-    if (!shortcuts.open) return;
-    shortcutsBody.replaceChildren();
-    const bindings = input._composerEditor?.markdownShortcuts;
-    if (!bindings?.length) { shortcutsBody.append(this.el(doc, "p", null, "Formatting shortcuts are available when the note editor is ready. Reopen this panel to refresh.")); return; }
-    shortcutsBody.append(this.el(doc, "strong", null, "Markdown shortcuts"));
-    const table = this.el(doc, "table"), body = this.el(doc, "tbody");
-    const basics = [{ key: "Mod-s", label: "Save" }, { key: "Mod-z", label: "Undo" }, { key: Zotero.isMac ? "Mod-Shift-z" : "Mod-y", label: "Redo" }];
-    for (const item of [...bindings, ...basics]) {
-     const row = this.el(doc, "tr"), key = item.key.split("-").map(part => part === "Mod" ? Zotero.isMac ? "Cmd" : "Ctrl" : part === "Alt" && Zotero.isMac ? "Option" : part.length === 1 ? part.toUpperCase() : part).join("+");
-     const cell = this.el(doc, "td"); cell.append(this.el(doc, "kbd", null, key)); row.append(this.el(doc, "td", null, item.label), cell); body.append(row);
-    }
-    table.append(body); shortcutsBody.append(table, this.el(doc, "p", null, "Markdown markers appear near the cursor. Ctrl/Cmd+S saves the note. Table cells can be edited directly; MD shows table source."));
-   });
    const report = e => { status.textContent = "Not saved: " + (e.message || e); closeDraft.hidden = false; this.logError("Markdown note", e); };
    closeDraft.onclick = async () => {
     try {
@@ -479,7 +492,8 @@
     state.timer = win.setTimeout(() => { state.timer = null; this.saveMarkdownNote(state).catch(report); }, 800);
    };
    state.documents ||= data.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : []);
-   const redrawDocuments = this.mountNoteDocuments(doc, header, state, change);
+   const redrawDocuments = this.mountNoteDocuments(doc, header, state, change, { controls: actions });
+   actions.insertBefore(actions.querySelector(".abstractin-note-source-control"), more);
    header.insertBefore(header.querySelector(".abstractin-note-documents"), toolbar);
    title.addEventListener("input", change); input.addEventListener("input", change);
    state.disposeEditor = this.installMathComposer(input, { note: true });
@@ -530,6 +544,7 @@
    if (!state.home) win.addEventListener("beforeunload", state.beforeUnload);
    state.dispose = () => {
     if (state.disposed) return; state.disposed = true;
+    state.sourceDisposers?.forEach(dispose => dispose());
     win.removeEventListener("unload", state.dispose); win.removeEventListener("beforeunload", state.beforeUnload);
     win.clearTimeout(state.timer); win.clearTimeout(state.previewTimer); win.removeEventListener("keydown", scopedShortcut); state.disposeEditor?.(); state.disposeSplitter?.();
     if (state.chatView) {

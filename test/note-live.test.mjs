@@ -19,7 +19,7 @@ async function setup(text) {
 test('Live Markdown preserves source on open, selection changes and external sync', async () => {
  const original = '# Heading\n\nBefore **bold** after.\n\n| A | B |\n| --- | --- |\n| x | y |\n';
  const env = await setup(original), { api, changes, window } = env;
- assert.equal(api.getMarkdown(), original); assert.ok(window.document.querySelector('table'));
+ assert.equal(api.getMarkdown(), original); assert.ok(window.document.querySelector('.mlp-table'));
  api.select(3, 6); assert.equal(changes.length, 0);
  api.sync('External **text**', false, 'Write'); assert.equal(api.getMarkdown(), 'External **text**'); assert.equal(changes.length, 0);
  env.close();
@@ -45,7 +45,7 @@ test('Live Markdown AI edits target exact source occurrences and reject stale pr
 
 test('Live Markdown flush commits table cells and read-only state disables cell editing and commands', async () => {
  const env = await setup('| A | B |\n| --- | --- |\n| x | y |'), { api, window } = env;
- const cell = window.document.querySelector('td');
+ const cell = window.document.querySelector('.mlp-table td');
  for (const type of ['mousedown', 'mouseup']) cell.dispatchEvent(new window.MouseEvent(type, { bubbles: true, button: 0 }));
  const cellView = api.view.constructor.findFromDOM(window.document.querySelector('.mlp-cell-editor'));
  assert.ok(cellView, 'table opens its native cell editor');
@@ -61,7 +61,7 @@ test('Live Markdown flush commits table cells and read-only state disables cell 
 
 test('note formatting inside a table targets its cell and keeps edge spaces outside bold markers', async () => {
  const env = await setup('| A | B |\n| --- | --- |\n| Word here | y |'), { api, window } = env;
- const cell = window.document.querySelector('td');
+ const cell = window.document.querySelector('.mlp-table td');
  for (const type of ['mousedown', 'mouseup']) cell.dispatchEvent(new window.MouseEvent(type, { bubbles: true, button: 0, clientX: -1, clientY: -1 }));
  const cellView = api.view.constructor.findFromDOM(window.document.querySelector('.mlp-cell-editor'));
  cellView.dispatch({ selection: { anchor: 0, head: 5 } });
@@ -110,5 +110,19 @@ test('loading, AI replacements and external sync do not rewrite pre-existing laz
  const snapshot = api.getSelectionSnapshot();
  assert.equal(api.replaceMarkdownRange(source, 0, 8, snapshot.sourceSelection), true);
  assert.equal(api.getMarkdown(), source);
+ env.close();
+});
+
+test('font selection and shortcut help live in the formatting toolbar and do not change Markdown', async () => {
+ const env = await setup('Before **bold** after.'), { api, window, changes } = env;
+ const toolbar = window.document.querySelector('.note-format-toolbar'), font = toolbar.querySelector('select');
+ assert.equal(toolbar.firstElementChild, font); assert.equal(font.options.length, 7);
+ font.value = 'georgia'; font.dispatchEvent(new window.Event('change', { bubbles: true }));
+ assert.match(window.document.documentElement.style.getPropertyValue('--note-display-font'), /Georgia/);
+ const help = toolbar.querySelector('.note-shortcuts-button'), panel = toolbar.querySelector('.note-shortcuts-panel');
+ assert.equal(panel.hidden, true); help.click(); assert.equal(panel.hidden, false);
+ assert.match(panel.textContent, /Ctrl\+B/); assert.match(panel.textContent, /Ctrl\+Alt\+1/);
+ api.setFont('mono'); assert.equal(font.value, 'mono');
+ assert.equal(api.getMarkdown(), 'Before **bold** after.'); assert.equal(changes.length, 0);
  env.close();
 });
