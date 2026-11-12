@@ -4,6 +4,8 @@ NoteOut uses the MIT-licensed t-shoot Markdown Live Preview Editor, built on Cod
 
 The `?` button in the note header lists the fixed shortcuts. Ctrl/Cmd+S saves the note and commits an active table cell first. Bold, italic and inline-code commands place edge whitespace outside the Markdown markers, including when editing a table cell.
 
+When editing a quotation, lines beginning with `>` continue the quotation. Unmarked prose remains an ordinary paragraph: if typing, pasting or deleting a separator would make it a lazy quote continuation, the editor keeps a blank line in the Markdown source. Backspace moves the caret onto that separator and then back to the preceding line, without absorbing the ordinary paragraph. Existing notes and AI edit proposals are not rewritten on load.
+
 Use `$...$` for inline mathematics and `$$...$$` for display mathematics. KaTeX supports rectangular commutative diagrams:
 
 ```latex

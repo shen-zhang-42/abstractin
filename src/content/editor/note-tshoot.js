@@ -15,6 +15,7 @@ import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { search, searchKeymap } from '@codemirror/search';
 import { noteFormulas } from './note-formulas.js';
 import { noteDiagrams } from './note-diagrams.js';
+import { noteQuoteBoundaries } from './note-quote-boundaries.js';
 import '../../../vendor/tshoot/media/webview-editor-theme.css';
 import '../../../vendor/tshoot/media/webview-ui.css';
 import { markdownShortcuts } from './markdown-shortcuts.js';
@@ -77,7 +78,7 @@ export function createTshootNote(config) {
   if (update.docChanged) config.onChange(update.state.doc.toString(), range.anchor, range.head, true);
  };
  const extensions = [
-  markdown({ extensions: tableGFM }), closeBrackets(),
+  markdown({ extensions: tableGFM }), closeBrackets(), noteQuoteBoundaries,
   livePreviewPlugin, blockDecorationsField, headingSpaceInputHandler, backtickInputHandler, headingFoldExtension, codeScrollExtension,
   tableHistoryRequest.of(type => { flush(); (type === 'undo' ? undo : redo)(view); }),
   createLinkClickHandler(href => { if (/^https?:\/\//i.test(href)) window.open(href, '_blank', 'noopener'); }),

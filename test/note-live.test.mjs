@@ -70,3 +70,45 @@ test('note formatting inside a table targets its cell and keeps edge spaces outs
  api.flush(); assert.match(api.getMarkdown(), /\| \*\*Word\*\* here \|/);
  env.close();
 });
+
+test('backward deletion keeps an ordinary paragraph outside a preceding quotation', async () => {
+ const source = '> Quoted text\n\nOrdinary paragraph';
+ const env = await setup(source), { api } = env;
+ const from = source.indexOf('Ordinary');
+ api.view.dispatch({ changes: { from: from - 1, to: from, insert: '' }, selection: { anchor: from - 1 }, userEvent: 'delete.backward' });
+ assert.equal(api.getMarkdown(), source);
+ assert.equal(api.view.state.selection.main.head, from - 1, 'caret moves to the separator instead of getting stuck');
+ api.view.dispatch({ changes: { from: from - 2, to: from - 1, insert: '' }, selection: { anchor: from - 2 }, userEvent: 'delete.backward' });
+ assert.equal(api.getMarkdown(), source);
+ assert.equal(api.view.state.selection.main.head, from - 2, 'a further backward deletion reaches the end of the quotation');
+ env.close();
+});
+
+test('typing or pasting unmarked prose after a quotation saves an explicit paragraph boundary', async () => {
+ const env = await setup('> Quote\n'), { api } = env;
+ api.view.dispatch({ changes: { from: api.view.state.doc.length, insert: 'Ordinary **paragraph**' }, userEvent: 'input.paste' });
+ assert.equal(api.getMarkdown(), '> Quote\n\nOrdinary **paragraph**');
+ env.close();
+});
+
+test('quote boundaries preserve explicit quoted lines and literal fenced code', async () => {
+ const env = await setup('> First\n'), { api } = env;
+ api.view.dispatch({ changes: { from: api.view.state.doc.length, insert: '> Second' }, userEvent: 'input' });
+ assert.equal(api.getMarkdown(), '> First\n> Second');
+ api.sync('```text\n> Literal\n\nOrdinary\n```', false, '');
+ const from = api.getMarkdown().indexOf('Ordinary');
+ api.view.dispatch({ changes: { from: from - 1, to: from, insert: '' }, userEvent: 'delete.backward' });
+ assert.equal(api.getMarkdown(), '```text\n> Literal\nOrdinary\n```');
+ env.close();
+});
+
+test('loading, AI replacements and external sync do not rewrite pre-existing lazy quotation source', async () => {
+ const source = '> Quote\nUnmarked continuation';
+ const env = await setup(source), { api } = env;
+ assert.equal(api.getMarkdown(), source);
+ api.sync('Original', false, ''); api.select(0, 8);
+ const snapshot = api.getSelectionSnapshot();
+ assert.equal(api.replaceMarkdownRange(source, 0, 8, snapshot.sourceSelection), true);
+ assert.equal(api.getMarkdown(), source);
+ env.close();
+});
