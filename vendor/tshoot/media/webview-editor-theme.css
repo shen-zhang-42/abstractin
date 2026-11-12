@@ -1,0 +1,1522 @@
+html, body {
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	background: var(--vscode-editor-background);
+	color: var(--vscode-editor-foreground);
+}
+
+#mlp-root {
+	height: 100%;
+}
+
+.cm-editor {
+	height: 100%;
+	/* Clips the floating search/replace panel (see the `.cm-panel.cm-search`
+	   rule below) to the editor's own box. Without this, the panel — now
+	   absolutely positioned outside the normal document flow — could extend
+	   past `.cm-editor`'s edge at narrower widths and grow the *page's* own
+	   scrollable area, producing an extra scrollbar alongside `.cm-scroller`'s
+	   own. `.cm-scroller` still handles all real content scrolling on its own,
+	   so clipping here doesn't affect normal document scrolling. */
+	overflow: hidden;
+	/* Append Japanese fallbacks so CJK glyphs render with a proper font when the
+	   editor font lacks them. */
+	font-family: "Yu Gothic UI", Meiryo, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+	font-size: var(--vscode-editor-font-size, 14px);
+}
+
+/* CodeMirror paints a blue focus ring around the whole editor; suppress it. */
+.cm-editor.cm-focused {
+	outline: none;
+}
+
+.cm-scroller {
+	overflow: auto;
+	font-family: inherit;
+	line-height: 1.7;
+}
+
+/* Fill the editor with responsive gutters: up to 120px on wide screens,
+   three times the former 40px gutter, and down to 16px in narrow splits. */
+.cm-editor .cm-content {
+	font-family: "Yu Gothic UI", Meiryo, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: none;
+	margin-inline: auto;
+	padding: 1.5rem clamp(1rem, 6.25vw, 7.5rem) 40vh;
+	/* Prefer the theme's dedicated cursor color; fall back to the editor's own
+	   foreground (guaranteed to contrast with --vscode-editor-background,
+	   unlike a hardcoded gray which can vanish against a light theme) rather
+	   than a fixed color that only looks right in one of light/dark. */
+	caret-color: var(--vscode-editorCursor-foreground, var(--vscode-editor-foreground, #528bff));
+	/* `.cm-content` is a flex item of `.cm-scroller`, so its default automatic
+	   minimum width equals its widest child's intrinsic content width (CSS
+	   Flexbox § automatic minimum size) — a single wide block (e.g. a large
+	   Mermaid diagram) would otherwise stretch the *whole* content column, drag-
+	   scrolling every other line sideways with it. `min-width: 0` lets it shrink
+	   to the scroller's actual width instead, so only the oversized block's own
+	   `overflow-x: auto` (see `.mlp-mermaid`) scrolls — not the whole document. */
+	min-width: 0;
+}
+
+/* Use 15px prose by default while respecting a larger editor font setting.
+   The repeated `.cm-content` class raises specificity to (0,3,0) so it outranks
+   a user CSS theme's `body { font-size: … }` (which the adapter maps to
+   `.cm-editor .cm-content`, only (0,2,0)). That kept a theme's hardcoded px size
+   — e.g. github.css's 16px — from overriding the editor's configured size.
+   Headings, inline code, etc. size themselves in `em`, so they scale off this
+   base and stay proportional to whatever the user set in VS Code. */
+.cm-editor .cm-content.cm-content {
+	font-size: max(15px, var(--vscode-editor-font-size, 14px));
+}
+
+/* Readable selection highlight for both native and CM-drawn selections. */
+.cm-selectionBackground {
+	/* This layer sits above glyphs. Themes may supply an opaque color, so
+	   cap its alpha while retaining the theme hue and weaker transparency.
+	   color-mix is the safe fallback for older VS Code Chromium versions. */
+	background: color-mix(in srgb, var(--vscode-editor-selectionBackground, rgba(120, 160, 255, 0.35)) 35%, transparent) !important;
+	background: rgb(from var(--vscode-editor-selectionBackground, rgba(120, 160, 255, 0.35)) r g b / min(alpha, 0.35)) !important;
+}
+.cm-content ::selection {
+	background: var(--vscode-editor-selectionBackground, rgba(120, 160, 255, 0.35));
+}
+/* `drawSelection()` paints the highlight *behind* line content by default
+   (`selectionLayer`'s `above: false` in @codemirror/view sets it to
+   z-index -1, versus the cursor layer's own `above: true`). An ordinary
+   `.cm-line` has no background, so nothing is drawn there and the layer
+   underneath shows through — but a rendered block's own line background (the
+   fenced-code box below, a blockquote's tint) is normal, non-positioned
+   content, which always paints *after* a negative z-index layer regardless of
+   its own opacity. Under a theme whose `--vscode-textCodeBlock-background` or
+   `--vscode-textBlockQuote-background` is close to opaque — common for dark
+   themes — that fully hid a drag-selection made across code or quoted text:
+   the caret still showed (the cursor layer already floats above), but no
+   highlight did. Raising the selection layer to a positive z-index, same as
+   the cursor layer, fixes it for every line uniformly; the highlight's own
+   capped alpha keeps text legible even when the theme supplies an opaque
+   selection color. Kept below
+   the code block's floating controls (`.mlp-copy-code-host`, z-index 2) so a
+   selection sweeping under them doesn't cover the buttons themselves. */
+.cm-layer.cm-selectionLayer {
+	z-index: 1 !important;
+}
+
+/* ── Headings ──────────────────────────────────────────────────────────────
+   Applied as line decorations so the size, weight and (for h1/h2) the rule
+   span the full column width rather than just the text. */
+.cm-line.mlp-line-h1,
+.cm-line.mlp-line-h2,
+.cm-line.mlp-line-h3,
+.cm-line.mlp-line-h4,
+.cm-line.mlp-line-h5,
+.cm-line.mlp-line-h6 {
+	font-weight: 700;
+	line-height: 1.3;
+	/* Explicit foreground so headings stay legible on any VS Code theme. A user
+	   CSS theme's `h1 { color }` has equal specificity and comes later, so it
+	   still overrides this. */
+	color: var(--vscode-editor-foreground);
+}
+/* NOTE: never use vertical `margin` on a `.cm-line` — nor on a block widget's
+   root element (see `.mlp-block` below). CodeMirror measures every such box
+   with getBoundingClientRect (border-box), which excludes margin, so a margin
+   creates vertical space its height map never accounts for — and clicks /
+   arrow-key motion then map to the wrong line by the accumulated margin.
+   Express all heading spacing as padding (part of the measured box) instead.
+   The former `margin-bottom` gap is relocated to `padding-top` (breathing room
+   above the heading), which reads just as well and stays measurable. */
+.cm-line.mlp-line-h1 {
+	font-size: 1.8em;
+	padding-top: 0.8em;
+	padding-bottom: 0.65em;
+}
+.cm-line.mlp-line-h2 {
+	font-size: 1.35em;
+	padding-top: 1em;
+	padding-bottom: 0.45em;
+	border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.25));
+}
+.cm-line.mlp-line-h3 { font-size: 1.2em; padding-top: 0.8em; padding-bottom: 0.4em; }
+.cm-line.mlp-line-h4 { font-size: 1.15em; }
+.cm-line.mlp-line-h5 { font-size: 1.05em; }
+.cm-line.mlp-line-h6 { font-size: 1em; opacity: 0.85; }
+
+.mlp-heading-fold-host {
+	display: inline-block;
+	position: relative;
+	width: 0;
+	height: 1em;
+	vertical-align: -0.1em;
+}
+.mlp-heading-fold-toggle {
+	position: absolute;
+	right: 2px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+}
+.mlp-heading-fold-chevron {
+	display: block;
+	width: 12px;
+	height: 12px;
+	stroke-width: 2;
+	flex: none;
+}
+.cm-line:hover .mlp-heading-fold-toggle {
+	opacity: 0.8;
+}
+.mlp-heading-fold-toggle[aria-expanded="true"] .mlp-heading-fold-chevron {
+	transform: rotate(90deg);
+}
+.mlp-heading-fold-toggle,
+.mlp-heading-fold-placeholder {
+	border: 0;
+	border-radius: 3px;
+	background: transparent;
+	color: var(--vscode-editor-foreground);
+	cursor: pointer;
+}
+.mlp-heading-fold-placeholder {
+	margin-inline-start: 0.3em;
+	padding: 0 0.25em;
+	font: inherit;
+	line-height: 1;
+}
+.mlp-heading-fold-toggle:hover,
+.mlp-heading-fold-toggle:focus-visible,
+.mlp-heading-fold-placeholder:hover {
+	background: var(--mlp-ui-hover);
+	opacity: 1;
+}
+.mlp-heading-fold-toggle:focus-visible,
+.mlp-heading-fold-placeholder:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* ── Inline emphasis ─────────────────────────────────────────────────────── */
+.mlp-strong { font-weight: 700; }
+.mlp-em { font-style: italic; }
+.mlp-strikethrough { text-decoration: line-through; opacity: 0.7; }
+
+.mlp-inline-code {
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 0.92em;
+	background: rgba(127, 127, 127, 0.16);
+	border-radius: 4px;
+	padding: 0.05em 0.35em;
+}
+
+/* ── Fenced code blocks ──────────────────────────────────────────────────────
+   Each code line carries a line decoration. Line decorations sit on the
+   `.cm-line` block, so (unlike a mark) their padding and background never leak
+   onto the inline syntax-token spans, and per-line backgrounds abut into one
+   continuous block. */
+.cm-line.mlp-line-code {
+	background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.09));
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: var(--vscode-editor-font-size, 14px);
+	line-height: 1.6;
+	padding-left: 1.1em;
+	padding-right: 1.1em;
+	/* Positioning root for the copy button, which is absolutely placed against
+	   the first content line's right edge. */
+	position: relative;
+}
+/* Markdown themes apply pre's overflow to every editor line. The block-wide
+   scrollbar below owns horizontal scrolling instead; rows never draw a bar. */
+.cm-line.mlp-line-code:not(.mlp-code-toolbar-line) {
+	white-space: pre !important;
+	overflow: hidden !important;
+}
+.mlp-code-scrollable-row::after {
+	content: '';
+	position: absolute;
+	left: calc(var(--mlp-code-scroll-width) - 1px);
+	top: 0;
+	width: 1px;
+	height: 1px;
+	pointer-events: none;
+}
+.cm-line.mlp-code-scrollable-row.mlp-line-code-last {
+	border-bottom-left-radius: 0 !important;
+	border-bottom-right-radius: 0 !important;
+}
+.mlp-code-fence-hidden:has(+ .mlp-code-scrollbar[data-overflow="true"]) {
+	height: 0;
+	line-height: 0;
+	overflow: clip;
+}
+.mlp-code-scrollbar {
+	display: none;
+	overflow-x: scroll;
+	overflow-y: hidden;
+	height: 14px;
+	background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.09));
+	border-radius: 0 0 var(--mlp-ui-block-radius) var(--mlp-ui-block-radius);
+}
+.mlp-code-scrollbar::-webkit-scrollbar { height: 10px; }
+.mlp-code-scrollbar::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background, rgba(127, 127, 127, 0.4));
+	border: 2px solid transparent;
+	border-radius: 6px;
+	background-clip: padding-box;
+}
+.mlp-code-scrollbar::-webkit-scrollbar-thumb:hover {
+	background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(127, 127, 127, 0.6));
+}
+.mlp-code-scrollbar[data-overflow="true"] { display: block; }
+.mlp-code-scrollbar-width { height: 1px; }
+/* Diff fences color the supplied lines; no comparison is performed. */
+.cm-line.mlp-line-code.mlp-diff-added {
+	color: var(--vscode-gitDecoration-addedResourceForeground, #22863a);
+	background: var(--vscode-diffEditor-insertedLineBackground, rgba(46, 160, 67, 0.18));
+}
+.cm-line.mlp-line-code.mlp-diff-removed {
+	color: var(--vscode-gitDecoration-deletedResourceForeground, #cb2431);
+	background: var(--vscode-diffEditor-removedLineBackground, rgba(248, 81, 73, 0.18));
+}
+.cm-line.mlp-line-code.mlp-diff-hunk {
+	color: var(--vscode-textLink-foreground, #0969da);
+	background: rgba(56, 139, 253, 0.12);
+}
+.cm-line.mlp-line-code.mlp-diff-header {
+	font-weight: bold;
+}
+.cm-line.mlp-line-code-first {
+	border-top-left-radius: var(--mlp-ui-block-radius) !important;
+	border-top-right-radius: var(--mlp-ui-block-radius) !important;
+	padding-top: 0.3em;
+}
+.cm-line.mlp-code-toolbar-line {
+	position: relative;
+	background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.09));
+	border-radius: var(--mlp-ui-block-radius) var(--mlp-ui-block-radius) 0 0 !important;
+	height: 28px;
+	/* This hidden-fence line contains only the absolutely positioned toolbar.
+	   A full-height text strut plus a theme's border overflowed it by 1px. */
+	line-height: 1 !important;
+	overflow: clip !important;
+	box-sizing: border-box;
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
+}
+.cm-line.mlp-line-code.mlp-line-code-after-toolbar {
+	border-top-left-radius: 0 !important;
+	border-top-right-radius: 0 !important;
+	/* Adapted CSS themes put pre's top padding on the first code line. The
+	   separate toolbar already provides the top inset, so keep that padding
+	   from inflating the first diff row after user styles are loaded. */
+	padding-top: 0 !important;
+	border-top-width: 0 !important;
+}
+.cm-line.mlp-code-fence-hidden {
+	height: 6px;
+	line-height: 6px;
+	padding: 0;
+}
+.cm-line.mlp-line-code-last {
+	border-bottom-left-radius: var(--mlp-ui-block-radius) !important;
+	border-bottom-right-radius: var(--mlp-ui-block-radius) !important;
+	padding-bottom: 0.5em;
+}
+/* A read-only header over the hidden opening fence. Cover its full width so
+   clicks on the label and on blank space cannot land in the Markdown source. */
+.cm-line.mlp-code-toolbar-line > .mlp-copy-code-host {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 100%;
+	box-sizing: border-box;
+	padding: 2px 8px;
+	padding-left: inherit;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	user-select: none;
+	cursor: default;
+}
+.mlp-code-language {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 12px;
+	line-height: 1;
+	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
+}
+.mlp-code-toolbar-actions {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 4px;
+}
+.mlp-copy-code-btn {
+	/* Positioning belongs to `.mlp-copy-code-host`, which places the whole group.
+	   Matches `.mlp-code-mode-btn` exactly — same height, padding, face and size —
+	   so the two controls read as one family rather than two unrelated widgets. */
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 11px;
+	cursor: pointer;
+	/* Always present, only dimmed — the same treatment every block control gets,
+	   so one rule covers them all: visible enough to find without hunting, quiet
+	   enough to ignore while reading. Hover-only was tried and dropped: a code
+	   block is a run of sibling `.cm-line`s with nothing wrapping it, so no
+	   selector can say "this block is hovered" without also matching every other
+	   code block in the document. */
+	opacity: 0.55;
+	transition: opacity 0.12s ease, background-color 0.12s ease;
+	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
+	border-radius: 4px;
+	/* The button is chrome, not part of the code: a drag that selects the block
+	   must not pick its label up along with the text. */
+	user-select: none;
+	-webkit-user-select: none;
+}
+.cm-line.mlp-line-code:hover .mlp-copy-code-btn,
+.mlp-copy-code-btn:hover,
+.mlp-copy-code-btn:focus-visible {
+	opacity: 1;
+}
+.mlp-copy-code-btn:hover {
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-button-secondaryBackground, rgba(110, 110, 110, 0.4));
+}
+.mlp-copy-code-btn:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: 1px;
+}
+/* Confirmation states, held briefly after a click. */
+.mlp-copy-code-btn.mlp-copy-code-btn-done {
+	opacity: 1;
+	color: var(--vscode-testing-iconPassed, #4ec9b0);
+	border-color: var(--vscode-testing-iconPassed, #4ec9b0);
+}
+.mlp-copy-code-btn.mlp-copy-code-btn-failed {
+	opacity: 1;
+	color: var(--vscode-errorForeground, #f14c4c);
+	border-color: var(--vscode-errorForeground, #f14c4c);
+}
+
+/* ── Blockquotes ─────────────────────────────────────────────────────────── */
+.cm-line.mlp-line-quote {
+	background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.05));
+	border-left: 3px solid var(--vscode-textBlockQuote-border, rgba(127, 127, 127, 0.5));
+	padding-left: 1em;
+	color: var(--vscode-descriptionForeground, inherit);
+}
+
+/* ── Lists ───────────────────────────────────────────────────────────────── */
+/* Muted, matching the ordered-list marker below rather than link blue — a
+   marker glyph isn't a link and shouldn't visually imply one. */
+.mlp-bullet {
+	color: var(--vscode-descriptionForeground, #888);
+	font-weight: 700;
+}
+.mlp-list-mark {
+	color: var(--vscode-descriptionForeground, #888);
+}
+.cm-line.mlp-line-list {
+	padding-top: 0.15em;
+	padding-bottom: 0.15em;
+}
+
+.mlp-checkbox {
+	display: inline-block;
+	width: 1.2em;
+	height: 1.2em;
+	box-sizing: border-box;
+	vertical-align: -0.26em;
+	/* A plain border on a transparent box reads as a stray thin outline at
+	   normal editor font sizes, easy to miss when scanning a list. Real VS
+	   Code's own checkbox control fills the box (`--vscode-checkbox-background`)
+	   in addition to bordering it, which gives it enough visual weight to read
+	   as a checkbox at a glance; match that here instead of leaving it hollow. */
+	background: var(--vscode-checkbox-background, rgba(127, 127, 127, 0.2));
+	border: 1.5px solid var(--vscode-checkbox-border, #8a8a8a);
+	border-radius: 3px;
+	cursor: pointer;
+	position: relative;
+}
+.mlp-checkbox-checked {
+	background: var(--vscode-textLink-foreground, #4a9eff);
+	border-color: var(--vscode-textLink-foreground, #4a9eff);
+}
+.mlp-checkbox-checked::after {
+	content: '';
+	position: absolute;
+	left: 0.34em;
+	top: 0.08em;
+	width: 0.29em;
+	height: 0.6em;
+	border: solid #fff;
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+}
+
+/* ── Rules, links, images ────────────────────────────────────────────────── */
+.mlp-hr {
+	display: inline-block;
+	width: 100%;
+	border-top: 2px solid rgba(127, 127, 127, 0.4);
+	line-height: 0;
+	color: transparent;
+	vertical-align: middle;
+}
+
+.mlp-link {
+	color: var(--vscode-textLink-foreground, #3794ff);
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+.mlp-image {
+	max-width: 100%;
+	border-radius: 4px;
+	margin: 0.3em 0;
+}
+
+/* `drawSelection()` (enabled for multiple cursors) hides the browser's own
+   caret and draws its own `.cm-cursor` element, whose library default is a
+   hardcoded `1.2px solid black`. CodeMirror only overrides that to a light
+   color under its own `&dark` theme class, which this editor never sets — it
+   follows VS Code's theme through `--vscode-*` variables instead — so on a dark
+   theme the caret was black on a dark background. Point it at the same variable
+   `caret-color` already uses, so it matches whichever theme is active. */
+.cm-cursor,
+.cm-dropCursor {
+	border-left-color: var(--vscode-editorCursor-foreground, var(--vscode-editor-foreground, #528bff)) !important;
+}
+
+/* ── Block widgets ───────────────────────────────────────────────────────
+   Spacing wrapper around every block widget (rendered table, Mermaid diagram,
+   frontmatter table/error). The gap lives here as `padding` rather than as
+   `margin` on the widget itself, because CodeMirror measures a block widget's
+   height with getBoundingClientRect — a border box that excludes margin. A
+   margin here would be layout space the height map never sees, and since the
+   shortfall accumulates over every widget in the document, positions below
+   drift further and further out: clicks land on the wrong line and scrolling
+   jumps. See src/webview-editor/blockWidgetWrap.ts. */
+.mlp-block {
+	padding: 0.5em 0;
+}
+/* Tables already have a source-control strip above them. Avoid stacking the
+   general block padding on top of that strip and the Markdown's blank line. */
+.mlp-block:has(> .mlp-table-wrap) {
+	padding-top: 0;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+.mlp-table-raw {
+	font-family: var(--vscode-editor-font-family, monospace);
+}
+/* A table, or frontmatter (see the ── Frontmatter ── section further down for
+   its *rendered* styling), switched to raw source via its own `</>` button
+   (see `isBlockRevealed` in cmUtils.ts) gets the same tinted-box treatment a
+   fenced code block already has — one continuous line background rather than
+   a mark's own text-width tint, so every "図" block's raw form reads as "this
+   is source" alike, whichever one it is. Grouped with the table rule here,
+   not down in that section, since the two are one shared rule. */
+.cm-line.mlp-line-table-raw,
+.cm-line.mlp-line-frontmatter-raw {
+	background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.09));
+	padding-left: 1.1em;
+	padding-right: 1.1em;
+	/* Positioning root for the "back to rendered view" button on the first line. */
+	position: relative;
+}
+.cm-line.mlp-line-table-raw-first,
+.cm-line.mlp-line-frontmatter-raw-first {
+	border-top-left-radius: var(--mlp-ui-block-radius);
+	border-top-right-radius: var(--mlp-ui-block-radius);
+	padding-top: 0.5em;
+}
+.cm-line.mlp-line-table-raw-last,
+.cm-line.mlp-line-frontmatter-raw-last {
+	border-bottom-left-radius: var(--mlp-ui-block-radius);
+	border-bottom-right-radius: var(--mlp-ui-block-radius);
+	padding-bottom: 0.5em;
+}
+/* "Back to rendered view" button (`createRenderModeButton` in
+   codeModeButton.ts), shared by every "図" block's raw-source view — a table
+   (TableRenderButtonWidget), a diagram fence (DiagramRenderButtonWidget), and
+   frontmatter (FrontmatterRenderButtonWidget). Floated over the raw block's
+   first line — the same placement and zero-width host trick as
+   `.mlp-copy-code-host` on a fenced code block. */
+.mlp-render-mode-host {
+	position: absolute;
+	top: 2px;
+	right: 4px;
+	z-index: 2;
+}
+.mlp-render-mode-btn {
+	/* Same family as `.mlp-code-mode-btn` / `.mlp-copy-code-btn` — height,
+	   padding, face and size — so every block control reads as one set. */
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 12px;
+	cursor: pointer;
+	/* Always present, only dimmed: unlike the "add row"/"add column" controls,
+	   this is the only route back to the rendered view once there is no
+	   rendered widget left to click — same reasoning as the `</>` button's own
+	   always-visible treatment. */
+	opacity: 0.55;
+	transition: opacity 0.12s ease, background-color 0.12s ease;
+	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
+	border-radius: 4px;
+}
+.mlp-render-mode-btn:hover {
+	opacity: 1;
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-button-secondaryBackground, rgba(110, 110, 110, 0.4));
+}
+.mlp-render-mode-btn:focus-visible {
+	opacity: 1;
+	outline: 1px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: 1px;
+}
+/* Positioning root for the code-mode button, which is absolutely placed over
+   the table's top-right corner. It carries no spacing of its own: that stays on
+   the outer `.mlp-block`, the box CodeMirror measures — see blockWidgetWrap.ts. */
+.mlp-table-wrap {
+	position: relative;
+	/* Separate the toolbar and table into rows so the column control can use
+	   the table's row as its positioning area, even when toolbar sizes change. */
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: auto auto;
+	/* Room below the table for the "add row" control. `.mlp-block`'s own half-em
+	   is not enough for a control large enough to show a `+`, and padding here
+	   (rather than margin) keeps the space inside the box CodeMirror measures —
+	   see blockWidgetWrap.ts. Without it the control sat on the table's last rule
+	   and reached down onto the following line. */
+	padding-bottom: 18px;
+	/* Room on the right for the "add column" bar, which sits outside the table's
+	   own box. Without it the bar overhangs the editor's content column and can
+	   be clipped or force a horizontal scrollbar. */
+	padding-right: 18px;
+	margin-right: -18px;
+}
+/* Strip above the table holding its controls. Right-aligned so the button lines
+   up with the table's own right edge rather than floating loose. */
+.mlp-table-toolbar {
+	position: relative;
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 4px;
+	height: 21px;
+}
+/* Reuse part of an existing blank line, while leaving enough room when a
+   table follows text directly. The full button target stays above the cells. */
+.cm-line:has(> br:only-child) + .mlp-block .mlp-table-toolbar {
+	height: 16px;
+}
+.mlp-table-toolbar > .mlp-code-mode-btn {
+	position: absolute;
+	right: 0;
+	bottom: 1px;
+}
+/* Positioned box that puts a code-mode button in a block's top-right corner
+   (see withCodeModeButton in codeModeButton.ts). Used by the blocks that have
+   no toolbar of their own — frontmatter — where the button is an overlay
+   rather than a strip in the flow. */
+.mlp-code-mode-host {
+	position: relative;
+}
+.mlp-code-mode-host > .mlp-code-mode-btn {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	z-index: 1;
+}
+/* Switches a rendered block back to its raw Markdown (codeModeButton.ts). */
+.mlp-code-mode-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
+	/* The `</>` glyph is code, so it is set in the editor's own monospace face. */
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 11px;
+	cursor: pointer;
+	transition: opacity 0.12s ease, background-color 0.12s ease;
+	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
+	border-radius: 4px;
+}
+/* Dimmed at rest. Tables opt into hover-only below; diagram/source controls
+   remain discoverable without first moving the pointer over the block. */
+.mlp-code-mode-btn {
+	opacity: 0.55;
+}
+/* Table source controls are requested on hover; keep keyboard access visible. */
+.mlp-table-wrap .mlp-code-mode-btn {
+	opacity: 0;
+}
+.mlp-table-wrap:hover .mlp-code-mode-btn,
+.mlp-code-mode-host:hover .mlp-code-mode-btn,
+.mlp-code-mode-host:focus-within .mlp-code-mode-btn,
+.mlp-mermaid-wrap:hover .mlp-code-mode-btn,
+.mlp-mermaid-wrap:focus-within .mlp-code-mode-btn,
+.mlp-code-mode-btn:hover {
+	opacity: 1;
+}
+.mlp-code-mode-btn:hover {
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-button-secondaryBackground, rgba(110, 110, 110, 0.4));
+}
+/* Keyboard focus must stay visible even before the pointer arrives. */
+.mlp-code-mode-btn:focus-visible {
+	opacity: 1;
+	outline: 1px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: 1px;
+}
+/* "Add a row" / "add a column" controls, on the edge each one grows.
+   Positioned against `.mlp-table-wrap`, and revealed only while the table is
+   hovered or being edited. These are conveniences, and two
+   more permanent `+` marks around every table would be noise while reading. */
+.mlp-table-add-btn {
+	position: absolute;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	line-height: 1;
+	font-family: var(--vscode-editor-font-family, monospace);
+	/* Small enough to sit in the gap around the table, large enough to read as a
+	   `+`. A tinted bar was tried first and read as a scrollbar; the glyph says
+	   what the control does without needing the tooltip. */
+	font-size: 11px;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+	/* A faint wash, so the `+` reads clearly against it — a denser fill competed
+	   with the glyph and left the bar looking like a scrollbar. The bar only has
+	   to show how far the target extends; the `+` carries the meaning. */
+	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
+	background: rgba(127, 127, 127, 0.12);
+	border: none;
+	border-radius: 3px;
+	user-select: none;
+	-webkit-user-select: none;
+}
+/* Placed just *outside* the table's border, in the gap `.mlp-block` already
+   leaves around it (0.5em top and bottom), rather than straddling the border.
+   Overlapping it hid the last row's rule and the first column's, and the bottom
+   bar reached past the block into the line below — so the control sat on top of
+   whatever followed the table. Sizes here are chosen to fit that gap: 10px of
+   bar plus 2px of clearance is under the 8px half-em on a 16px root, and the
+   `right`/`bottom` insets keep the two bars from meeting at the corner. */
+.mlp-table-add-row {
+	/* Spans the table's width: the shape says "a whole row", and the target is
+	   easy to hit anywhere along the bottom edge rather than only at its middle.
+	   Inset on the right so it does not run into the column control's corner. */
+	left: 0;
+	right: 16px;
+	bottom: 1px;
+	height: 13px;
+}
+.mlp-table-add-col {
+	/* Span only the table, leaving the source toolbar above it clear. */
+	grid-row: 2 / 3;
+	top: 0;
+	bottom: 0;
+	right: 1px;
+	width: 13px;
+}
+/* Quiet while the table is merely hovered, so the two marks do not compete with
+   its content; full strength once the pointer is on one. */
+.mlp-table-wrap:hover .mlp-table-add-btn,
+.mlp-table-wrap:focus-within .mlp-table-add-btn {
+	opacity: 0.55;
+}
+.mlp-table-add-btn:hover,
+.mlp-table-add-btn:focus-visible {
+	opacity: 1;
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: rgba(127, 127, 127, 0.28);
+}
+.mlp-table-add-btn:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: 1px;
+}
+table.mlp-table {
+	/* 14px with the default 15px prose size; scale with larger user settings. */
+	font-size: calc(1em * 14 / 15);
+	border-collapse: separate;
+	border-spacing: 0;
+	border: 1px solid rgba(127, 127, 127, 0.35);
+	border-radius: var(--mlp-ui-block-radius);
+	width: 100%;
+	/* A belt-and-braces cap. The real guard against a frozen table overflowing is
+	   that `freezeColumnWidths` pins columns as percentages rather than pixels
+	   (livePreviewPlugin.ts) — under `table-layout: fixed`, per-column pixel
+	   widths beat this `max-width` and the table overflows regardless. */
+	max-width: 100%;
+	/* Spacing belongs to the `.mlp-block` wrapper — a `border-collapse` table
+	   can't carry it itself (CSS ignores `padding` on one), and a margin here
+	   would fall outside the box CodeMirror measures. */
+	margin: 0;
+}
+/* A click selects a rendered cell. Enter or another click starts editing.
+   Dragging still selects the rendered text for copying. */
+table.mlp-table th, table.mlp-table td {
+	border: 0;
+	border-right: 1px solid rgba(127, 127, 127, 0.35);
+	border-bottom: 1px solid rgba(127, 127, 127, 0.35);
+	padding: 5px 11px;
+	text-align: left;
+	cursor: text;
+	user-select: text;
+	-webkit-user-select: text;
+	/* Reserve the height one line of the *editing* font occupies, so a cell does
+	   not grow the moment it is clicked. A rendered cell is set in the body font
+	   and an edited one in the editor's monospace face; where those differ in
+	   line height — as they do once a CJK fallback is in play — every click
+	   nudged the row taller and the table shifted under the pointer. Matching the
+	   two here means the row is already the size it will need. */
+	line-height: 1.45;
+	/* Reserve the height an *edited* cell needs, so clicking one cannot make its
+	   row grow. An edited cell wraps (`white-space: pre-wrap`) and is set in the
+	   editor's monospace face, both of which can ask for more height than the
+	   rendered text did — measured at 29.8px idle against 34.2px editing, so the
+	   row jumped and the table shifted under the pointer on every click. */
+	/* On a table cell `height` acts as a minimum — the cell still grows for text
+	   that wraps to a second line — so this reserves the space without capping it. */
+	height: 34px;
+	box-sizing: border-box;
+	vertical-align: middle;
+}
+table.mlp-table tr > :last-child { border-right: 0; }
+table.mlp-table tr:last-child > * { border-bottom: 0; }
+table.mlp-table tr:first-child > :first-child { border-top-left-radius: 5px; }
+table.mlp-table tr:first-child > :last-child { border-top-right-radius: 5px; }
+table.mlp-table tr:last-child > :first-child { border-bottom-left-radius: 5px; }
+table.mlp-table tr:last-child > :last-child { border-bottom-right-radius: 5px; }
+/* The cell being edited shows its raw Markdown. The outline marks it the way a
+   spreadsheet marks its active cell; `outline` rather than `border` so it costs
+   no layout and the columns don't shift as editing moves between cells.
+
+   The wrapping rules matter as much as the highlight: the raw source is far
+   longer than the text it renders to (`t` vs `**[t](https://example.com)**`),
+   and `freezeColumnWidths` in livePreviewPlugin.ts pins the column so it cannot
+   widen to fit. `pre-wrap` lets the source wrap inside that fixed width — the
+   row grows taller instead of the table growing wider — and `overflow-wrap`
+   breaks a long unbroken run (a URL) that has no space to wrap at, which would
+   otherwise spill past the cell's edge. */
+table.mlp-table .mlp-table-cell-selected {
+	outline: 1px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: -1px;
+	background-color: var(--vscode-list-inactiveSelectionBackground, rgba(127, 127, 127, 0.12));
+}
+table.mlp-table th.mlp-table-cell-editing, table.mlp-table td.mlp-table-cell-editing {
+	outline: 2px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: -2px;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	word-break: break-word;
+	/* The same stack the editor itself uses (see the `.cm-content` rule near the
+	   top), CJK fallbacks included. Naming only the monospace face dropped those
+	   fallbacks, so a cell holding Japanese switched font — and line height —
+	   the instant it was clicked. */
+	font-family: inherit;
+}
+table.mlp-table th {
+	background: rgba(127, 127, 127, 0.12);
+	font-weight: 600;
+}
+/* A cell owns a small editor, using the body's inline preview without its gutters. */
+table.mlp-table .mlp-cell-editor {
+	height: auto;
+	font: inherit;
+	overflow: visible;
+	background: transparent;
+}
+table.mlp-table .mlp-cell-editor .cm-scroller {
+	overflow: visible;
+	font: inherit;
+}
+table.mlp-table .mlp-cell-editor .cm-content.cm-content {
+	padding: 0;
+	min-height: 1em;
+	font: inherit;
+	text-align: inherit;
+}
+table.mlp-table .mlp-cell-editor .cm-line {
+	padding: 0;
+}
+.mlp-table-wrap.mlp-table-in-list {
+	margin-inline-start: 1.5em;
+}
+.mlp-table-in-list::before {
+	content: attr(data-mlp-list-mark);
+	position: absolute;
+	inset-inline-start: -1.5em;
+	top: 1.6em;
+}
+.mlp-table-wrap.mlp-table-in-quote {
+	border-inline-start: 3px solid var(--vscode-textBlockQuote-border, #666);
+	padding-inline-start: 1em;
+}
+/* Keep header rules aligned with the body and frame, even when a Markdown
+   theme brightens them with a selector such as `body.vscode-dark th`. */
+table.mlp-table th.mlp-table-cell {
+	border-color: rgba(127, 127, 127, 0.35);
+}
+/* An image inside a cell sits on the text baseline of a single line, so the
+   vertical margin `.mlp-image` carries for a standalone block image would just
+   inflate the row. */
+table.mlp-table img.mlp-table-image {
+	margin: 0;
+	vertical-align: middle;
+}
+
+/* ── Frontmatter ─────────────────────────────────────────────────────────
+   Fixed app-chrome styling, like table.mlp-table above — not part of the
+   swappable CSS theme system (cssAdapter.ts), matching how VS Code's own
+   built-in preview keeps its `table.frontmatter` outside a user's
+   markdown.styles theme too. */
+.mlp-frontmatter-details {
+	font-size: 0.85em;
+	border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.25));
+	padding: 0.5em 0 0.75em;
+}
+.mlp-frontmatter-details summary {
+	cursor: pointer;
+	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
+	padding-right: 3em;
+}
+table.mlp-frontmatter {
+	border-collapse: collapse;
+	width: 100%;
+	margin: 0; /* spacing lives on the `.mlp-block` wrapper — see above */
+}
+table.mlp-frontmatter th, table.mlp-frontmatter td {
+	border: 1px solid rgba(127, 127, 127, 0.35);
+	padding: 5px 11px;
+	text-align: left;
+	vertical-align: top;
+}
+table.mlp-frontmatter th {
+	background: rgba(127, 127, 127, 0.12);
+	font-weight: 600;
+	white-space: nowrap;
+}
+table.mlp-frontmatter td pre {
+	margin: 0;
+	font-family: var(--vscode-editor-font-family, monospace);
+	white-space: pre-wrap;
+}
+
+.mlp-frontmatter-error {
+	margin: 0; /* spacing lives on the `.mlp-block` wrapper */
+	padding: 8px 13px;
+	border-left: 4px solid var(--vscode-editorError-foreground, #f48771);
+	background: var(--vscode-inputValidation-errorBackground, rgba(244, 135, 113, 0.1));
+	color: var(--vscode-editorError-foreground, #f48771);
+}
+.mlp-frontmatter-error pre {
+	margin: 6px 0 0;
+	white-space: pre-wrap;
+	color: inherit;
+	background: transparent;
+}
+
+/* ── Mermaid ──────────────────────────────────────────────────────────────
+   `.mlp-mermaid-wrap` is the block-level box in the document flow and the
+   positioning root for the toolbar overlay. `.mlp-mermaid` inside it is the
+   diagram viewport, in one of two display modes toggled by mermaidWidget.ts
+   via the `.mlp-mermaid-native` class:
+   - Default ("fit"): matches an ordinary Markdown preview (GitHub, VS Code's
+     built-in preview) — the diagram shrinks to the available width via plain
+     CSS, no scrollbar, no pan/zoom.
+   - "native" (opt-in via the toolbar toggle): the diagram renders at its real
+     size, with a horizontal scrollbar (`overflow-x: auto`) plus drag-to-pan
+     and Ctrl/⌘+wheel zoom on top via a CSS transform on `.mlp-mermaid-canvas`,
+     for diagrams too dense to read once shrunk.
+   `max-width: 100%` keeps an oversized diagram from growing past this box in
+   native mode (see also the `.cm-content { min-width: 0 }` fix, without which
+   this box's own content could still stretch its ancestor). The toolbar lives
+   outside `.mlp-mermaid` (a sibling under the wrap, not a descendant)
+   specifically so scrolling the diagram (native mode) can never carry it out
+   of view along with the content. */
+.mlp-mermaid-wrap {
+	position: relative;
+	background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
+	border-radius: var(--mlp-ui-block-radius);
+	/* Both header and diagram participate in the measured block height. */
+	margin: 0;
+}
+.mlp-mermaid {
+	max-width: 100%;
+	border-radius: var(--mlp-ui-block-radius);
+	background: transparent;
+}
+.mlp-mermaid.mlp-mermaid-native {
+	overflow-x: auto;
+	overflow-y: hidden;
+	max-height: 70vh;
+	cursor: grab;
+	/* Keep panning gestures from scrolling the page/editor instead. */
+	touch-action: none;
+}
+.mlp-mermaid.mlp-mermaid-grabbing {
+	cursor: grabbing;
+}
+.mlp-mermaid-canvas {
+	transform-origin: 0 0;
+	/* The rendered SVG must not intercept the drag; the container handles it. */
+	user-select: none;
+}
+.mlp-mermaid:not(.mlp-mermaid-native) .mlp-mermaid-canvas {
+	display: block;
+}
+.mlp-mermaid.mlp-mermaid-native .mlp-mermaid-canvas {
+	display: inline-block;
+}
+.mlp-mermaid-canvas svg {
+	display: block;
+	max-width: none; /* native mode: allow zooming beyond the container width */
+}
+.mlp-mermaid:not(.mlp-mermaid-native) .mlp-mermaid-canvas svg {
+	/* Fit mode: shrink an oversized diagram down to the column width, like a
+	   normal preview. `max-width` alone (no `width`) only ever shrinks — a
+	   small diagram (e.g. a single node) keeps its natural size instead of
+	   being stretched up to fill the full column, which would blow it up to
+	   an oversized, illegibly-large box. A diagram narrower than the column
+	   is centered (`margin: 0 auto`), matching how GitHub/VS Code's own
+	   preview centers a small image or diagram instead of pinning it to the
+	   left edge.
+	*/
+	max-width: 100%;
+	height: auto;
+	margin: 0 auto;
+}
+
+/* A dedicated header keeps controls clear of diagram shapes. It stays outside
+   the pan/zoom viewport, so panning never moves the controls. */
+.mlp-mermaid-toolbar {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	box-sizing: border-box;
+	padding: 3px 8px;
+	min-height: 24px;
+	gap: 4px;
+	z-index: 1;
+}
+/* Match the code-mode control: quiet at rest, clear on hover or keyboard focus.
+   Controls that only apply in native mode still follow the widget's display
+   mode; this changes pointer visibility, not which actions are available. */
+.mlp-mermaid-btn {
+	opacity: 0.55;
+	transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+.mlp-mermaid-wrap:hover .mlp-mermaid-btn,
+.mlp-mermaid-wrap:focus-within .mlp-mermaid-btn,
+.mlp-mermaid-btn:focus-visible {
+	opacity: 1;
+}
+.mlp-mermaid-btn {
+	line-height: 1;
+	font-size: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-button-secondaryBackground, rgba(90, 90, 90, 0.85));
+	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
+	border-radius: 4px;
+	padding: 0;
+}
+.mlp-mermaid-btn:hover {
+	background: var(--vscode-button-secondaryHoverBackground, rgba(110, 110, 110, 0.95));
+}
+/* draw.io diagrams reuse every `.mlp-mermaid-*` rule above — the two are the
+   same kind of block (a fence that became a picture) and behave identically, so
+   splitting the styling would only let them drift apart. What is specific to
+   draw.io is the page indicator in the toolbar, shown only for a file that has
+   more than one page.
+
+   The page indicator uses the same dimmed-at-rest treatment as its buttons. */
+.mlp-drawio-page-label {
+	opacity: 0.55;
+	transition: opacity 0.12s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 30px;
+	height: 20px;
+	box-sizing: border-box;
+	padding: 0 4px;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	border-radius: 4px;
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-button-secondaryBackground, rgba(90, 90, 90, 0.85));
+	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
+}
+.mlp-drawio-wrap:hover .mlp-drawio-page-label,
+.mlp-drawio-wrap:focus-within .mlp-drawio-page-label {
+	opacity: 1;
+}
+
+/* The rendered diagram is a plain <svg>; in "fit" mode it shrinks to the
+   available width the same way Mermaid's does. `height: auto` keeps the aspect
+   ratio, which the viewBox alone does not guarantee once a width is imposed. */
+.mlp-drawio-wrap .mlp-mermaid:not(.mlp-mermaid-native) .mlp-mermaid-canvas svg {
+	max-width: 100%;
+	height: auto;
+}
+
+.mlp-mermaid-error {
+	color: var(--vscode-errorForeground, #f14c4c);
+	font-family: var(--vscode-editor-font-family, monospace);
+	white-space: pre-wrap;
+	padding: 0.5em;
+}
+
+/* Keep the original hit area; only the centered SVG is reduced in size. */
+.mlp-code-mode-btn,
+.mlp-render-mode-btn,
+.mlp-copy-code-btn,
+.mlp-mermaid-btn {
+	box-sizing: border-box;
+	width: 28px;
+	height: 20px;
+	padding: 0;
+	flex: 0 0 auto;
+}
+.mlp-code-mode-btn > svg,
+.mlp-render-mode-btn > svg,
+.mlp-copy-code-btn > svg,
+.mlp-mermaid-btn > svg {
+	display: block;
+	width: 13px;
+	height: 13px;
+	flex: 0 0 auto;
+	margin: 0;
+}
+/* The open code brackets need a little more size than the denser
+   overlapping copy sheets to appear equally prominent. */
+.mlp-code-mode-btn > svg {
+	width: 14px;
+	height: 14px;
+	stroke-width: 1.45;
+}
+.mlp-code-toolbar-line:is(:hover, :focus-within) .mlp-code-mode-btn,
+.mlp-code-toolbar-line:is(:hover, :focus-within) .mlp-copy-code-btn {
+	opacity: 1;
+}
+
+/* Existing block controls use the same material as the navigation panels. */
+.mlp-code-mode-btn,
+.mlp-render-mode-btn,
+.mlp-copy-code-btn,
+.mlp-mermaid-btn,
+.mlp-drawio-page-label {
+	color: var(--mlp-ui-control-ink);
+	background: var(--mlp-ui-glass);
+	border-color: var(--mlp-ui-edge);
+	border-top-color: var(--mlp-ui-rim);
+	border-left-color: var(--mlp-ui-side-rim);
+	border-radius: 6px;
+	box-shadow: var(--mlp-ui-control-shadow);
+	backdrop-filter: var(--mlp-ui-blur);
+	-webkit-backdrop-filter: var(--mlp-ui-blur);
+}
+.mlp-code-mode-btn:hover,
+.mlp-render-mode-btn:hover,
+.mlp-copy-code-btn:hover,
+.mlp-mermaid-btn:hover {
+	color: var(--mlp-ui-control-ink);
+	background: var(--mlp-ui-hover);
+}
+.mlp-mermaid-btn:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, #007fd4);
+	outline-offset: 1px;
+}
+
+/* ── Search / replace panel (@codemirror/search) ─────────────────────────────
+   The library's default look is a plain gray bar, full width, that pushes the
+   document down — restyled here to float top-right and overlay the content
+   instead, like VS Code's own Find/Replace widget, using `--vscode-*` theme
+   variables so it matches whichever color theme is active.
+
+   `!important` throughout: @codemirror/search injects its own baseTheme rules
+   (e.g. `.cm-panel.cm-search { position: relative; padding: … }`) at the same
+   class-based specificity as the selectors below, and does so at *runtime*
+   (only once the search extension actually mounts) — later than this
+   stylesheet's own `<link>`, so on tied specificity its rules win the
+   cascade. Same reason `.cm-selectionBackground` above needs `!important`
+   against CodeMirror's own dynamically-injected styles.
+
+   `.cm-editor`'s own wrapper element is already `position: relative` (set
+   inline by CodeMirror when constructed with a `parent`), so the panel here
+   anchors to the editor pane itself — and, since `.cm-panels-top` sits
+   *outside* the scrolling `.cm-scroller`, it stays pinned in place regardless
+   of how far the document is scrolled, matching VS Code's behavior. */
+.cm-panels.cm-panels-top {
+	position: static !important;
+	background: transparent !important;
+	border-bottom: none !important;
+}
+.cm-panel.cm-search,
+.cm-panels-top .cm-dialog {
+	position: absolute !important;
+	top: 10px !important;
+	right: 20px !important; /* clears the scrollbar */
+	left: auto !important;
+	z-index: 301 !important;
+	box-sizing: border-box !important;
+	/* A fixed width rather than one that follows the contents: sized to the find
+	   row, it would otherwise grow when replace opens, because that row's two
+	   buttons are wider than the find row's controls. The widget staying exactly
+	   the same width as it expands downward is what VS Code does, and it stops
+	   the panel jumping sideways under the pointer as the chevron is clicked.
+
+	   In `em` rather than pixels so it tracks the editor's font size: at a fixed
+	   420px a zoomed-in panel could not fit its own find row, and the controls
+	   wrapped wherever they happened to run out of space. */
+	width: 38em !important;
+	max-width: calc(100% - 40px) !important;
+	/* Symmetric horizontal insets: 28px each side clears the chevron on the left
+	   and the close button on the right, each of which is 4px in and 20px wide. */
+	padding: 4px 28px !important;
+	background: var(--mlp-ui-glass) !important;
+	color: var(--mlp-ui-ink) !important;
+	border: 1px solid var(--mlp-ui-edge) !important;
+	border-top-color: var(--mlp-ui-rim) !important;
+	border-left-color: var(--mlp-ui-side-rim) !important;
+	border-radius: 16px !important;
+	box-shadow: var(--mlp-ui-shadow) !important;
+	backdrop-filter: var(--mlp-ui-blur);
+	-webkit-backdrop-filter: var(--mlp-ui-blur);
+	font-family: var(--vscode-font-family, system-ui, sans-serif);
+	font-size: 12px !important;
+	line-height: normal !important;
+}
+
+/* The library emits the panel as one flat run of controls with a `<br>`
+   separating the find row from the replace row. Flex with wrapping rebuilds VS
+   Code's shape: everything flows on one line, and the `<br>` — given full width
+   — forces the replace controls onto a second line.
+
+   Wrapping alone could not be trusted to break in that one place: a row short
+   of width breaks wherever it runs out, which put the find toggles onto the
+   replace line when the editor was zoomed in. `groupSearchRows` moves each half
+   into a `.mlp-search-row` of its own, so the split is structural — the panel
+   stacks two rows, and each row lays its own controls out. */
+.cm-panel.cm-search {
+	display: flex !important;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 4px;
+}
+/* Replace may wrap within its own row on narrow panes. Find keeps a single
+   line, using compact navigation buttons and a field that can shrink. */
+.cm-search .mlp-search-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+}
+/* Keep find compact; only the optional replace row may wrap. */
+.cm-search .mlp-search-row-find {
+	flex-wrap: nowrap;
+	gap: 3px;
+}
+/* Nothing but the text fields may shrink, so a cramped row squeezes its field
+   rather than dropping a button out of line. */
+.cm-search .cm-button,
+.cm-search label {
+	flex: 0 0 auto !important;
+}
+/* Find is the common case, so the replace row stays out of the way until the
+   chevron asks for it. */
+.cm-search:not(.mlp-search-replace-open) .mlp-search-row-replace {
+	display: none;
+}
+
+/* Chevron that reveals the replace row. Positioned in the padding gutter so it
+   sits centered against the whole widget, as VS Code's does, rather than
+   participating in the flex flow.
+
+   Sized as a square and centered with a transform rather than stretched between
+   `top` and `bottom`: spanning the full height made its hover highlight a tall
+   strip down the side of the widget, which grew taller still when replace
+   opened. */
+.mlp-search-toggle {
+	position: absolute;
+	left: 4px;
+	/* Anchored to both edges and centered by its own flex box, rather than placed
+	   at `top: 50%` with a transform. A percentage offset resolves against the
+	   containing block's *padding* box, which here is not vertically symmetric —
+	   the panel's padding and its rows' heights differ — so 50% was not the
+	   visual middle. Anchoring to both edges sidesteps that arithmetic. */
+	top: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	/* Same width as the glyph square inside it, so the button adds no dead space
+	   on either side: the highlight starts exactly at the 4px offset, matching
+	   the close button's inset on the right. */
+	width: 20px;
+	padding: 0;
+	color: var(--vscode-icon-foreground, inherit);
+	background: none;
+	border: none;
+	cursor: pointer;
+}
+/* The hover target is the glyph's own square, not the full-height button, so
+   the highlight reads as a square button rather than a tall strip down the
+   side of the widget. */
+.mlp-search-toggle svg {
+	display: block;
+	box-sizing: border-box;
+	width: 20px;
+	height: 20px;
+	padding: 2px;
+	border-radius: 6px;
+}
+.mlp-search-toggle:hover svg {
+	background: var(--mlp-ui-hover);
+}
+.mlp-search-toggle:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, #007fd4);
+	outline-offset: -1px;
+	border-radius: 6px;
+}
+/* Rotates the glyph rather than the button, leaving the button's position and
+   hover box untouched. */
+.cm-search.mlp-search-replace-open .mlp-search-toggle svg {
+	transform: rotate(90deg);
+}
+
+.cm-search .cm-textfield,
+.cm-dialog .cm-textfield {
+	font: inherit !important;
+	width: 150px !important;
+	box-sizing: border-box !important;
+	height: 28px !important;
+	margin: 0 !important;
+	padding: 4px 9px !important;
+	color: var(--vscode-input-foreground, inherit) !important;
+	background: var(--mlp-ui-input-glass) !important;
+	border: 1px solid var(--vscode-input-border, var(--mlp-ui-line)) !important;
+	border-radius: 9px !important;
+	box-shadow: var(--mlp-ui-input-shadow);
+	outline: none !important;
+	vertical-align: middle !important;
+}
+/* In the panel the field takes whatever space its row's buttons leave. Both
+   fields flex the same way, so find and replace stay aligned with each other
+   even though the buttons beside them differ in width. Scoped to `.cm-search`
+   because `.cm-dialog` (go-to-line) is not a flex container and would just
+   collapse to its content width. */
+.cm-search .cm-textfield {
+	flex: 1 1 0 !important;
+	/* Wide enough to stay usable. The field shrinks first, and only once it is at
+	   this floor do the controls beside it wrap onto a second line of the same
+	   row — which is the better trade at that point, since a field narrower than
+	   this shows too little of the query to be worth keeping on one line. */
+	min-width: 8em !important;
+	width: auto !important;
+}
+.cm-search .mlp-search-row-find .cm-textfield {
+	min-width: 0 !important;
+}
+
+.cm-search .cm-textfield:focus,
+.cm-dialog .cm-textfield:focus {
+	border-color: var(--vscode-focusBorder, #007fd4) !important;
+	outline: 1px solid var(--vscode-focusBorder, #007fd4) !important;
+	outline-offset: -1px !important;
+}
+
+.cm-search .cm-button {
+	font: inherit !important;
+	font-size: 11px !important;
+	line-height: 1 !important;
+	box-sizing: border-box;
+	height: 28px;
+	vertical-align: middle !important;
+	margin: 0 !important;
+	padding: 6px 8px !important;
+	color: var(--mlp-ui-ink) !important;
+	background: var(--mlp-ui-hover) !important;
+	background-image: none !important;
+	border: 1px solid var(--vscode-button-border, transparent) !important;
+	border-radius: 7px !important;
+	cursor: pointer;
+}
+.cm-search .cm-button:hover {
+	background: color-mix(in srgb, var(--mlp-ui-ink) 16%, transparent) !important;
+}
+.cm-search .cm-button.mlp-search-navigation {
+	width: 22px;
+	height: 22px;
+	padding: 0 !important;
+	font-size: 16px !important;
+	line-height: 1 !important;
+	background: transparent !important;
+	color: var(--mlp-ui-soft) !important;
+}
+.cm-search .cm-button.mlp-search-navigation:hover {
+	background: var(--mlp-ui-hover) !important;
+	color: var(--mlp-ui-ink) !important;
+}
+.cm-search .cm-button:active {
+	background-image: none !important;
+}
+.cm-search .cm-button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, #007fd4) !important;
+	outline-offset: -1px !important;
+}
+
+/* VS Code shows the case/regexp/whole-word toggles as small pressed-look icon
+   buttons; approximated here as compact chip-style labels (no codicon glyphs
+   available in this context), highlighting via `:has()` when their checkbox
+   is checked. */
+/* Square icon buttons, like VS Code's — the checkbox itself is hidden and the
+   label's own pressed styling carries the state. */
+.cm-search label {
+	display: inline-flex !important;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	/* Sized to the glyph rather than fixed square: `Aa` and `│ab│` are different
+	   widths, and clipping either to the same box is what made them unreadable. */
+	min-width: 22px;
+	height: 22px;
+	margin: 0 !important;
+	padding: 0 4px !important;
+	white-space: nowrap !important;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	color: var(--mlp-ui-soft);
+	cursor: pointer;
+	user-select: none;
+}
+/* The glyph carries the toggle's meaning, so it is sized for reading rather
+   than tucked away: the panel's own 12px is too small for `Aa` to be legible
+   against a button that size. */
+.cm-search label .mlp-search-glyph {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1;
+	letter-spacing: 0.02em;
+	pointer-events: none;
+}
+/* The checkbox stays in the DOM (the panel reads it on commit) but is taken out
+   of view; the label is the control now. */
+.cm-search label input[type='checkbox'] {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+	pointer-events: none;
+	margin: 0 !important;
+}
+.cm-search label:focus-within {
+	outline: 1px solid var(--vscode-focusBorder, #007fd4);
+	outline-offset: -1px;
+}
+.cm-search label:hover {
+	background: var(--mlp-ui-hover);
+}
+.cm-search label:has(input:checked) {
+	background: var(--vscode-inputOption-activeBackground, var(--mlp-ui-selected));
+	border-color: var(--vscode-inputOption-activeBorder, var(--mlp-ui-accent));
+	color: var(--vscode-inputOption-activeForeground, var(--mlp-ui-ink));
+}
+.cm-search button[name='close'] {
+	position: absolute !important;
+	/* Anchored to both edges and centered by its own flex box, for the same
+	   reason as the chevron: `top: 50%` resolves against a padding box that is
+	   not vertically symmetric here. Stays put as the panel grows when replace
+	   opens. */
+	top: 0 !important;
+	bottom: 0 !important;
+	right: 4px !important;
+	display: flex !important;
+	align-items: center;
+	justify-content: center;
+	padding: 0 !important;
+	width: 20px !important;
+	font-size: 14px !important;
+	line-height: 1 !important;
+	color: var(--vscode-icon-foreground, inherit) !important;
+	background: transparent !important;
+	border: none !important;
+	cursor: pointer;
+}
+/* The `×` is drawn into a square of its own, so hovering highlights a button
+   rather than the full-height strip the element now spans. */
+.cm-search button[name='close']::before {
+	content: '×';
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 20px;
+	height: 20px;
+	border-radius: 6px;
+}
+.cm-search button[name='close'] {
+	font-size: 0 !important; /* hides the library's own text node */
+}
+.cm-search button[name='close']::before {
+	font-size: 14px;
+}
+.cm-search button[name='close']:hover::before {
+	background: var(--mlp-ui-hover);
+}
+.cm-search button[name='close']:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, #007fd4);
+	outline-offset: -2px;
+	border-radius: 6px;
+}
+
+/* Match highlight colors — VS Code's own find-match colors instead of the
+   library's hardcoded yellow/cyan. */
+.cm-searchMatch {
+	background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)) !important;
+}
+.cm-searchMatch-selected {
+	background: var(--vscode-editor-findMatchBackground, rgba(255, 165, 0, 0.5)) !important;
+}

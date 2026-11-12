@@ -7,6 +7,7 @@ async function setup(text) {
  const dom = new JSDOM('<!doctype html><div id="editor"></div>', { runScripts: 'outside-only', pretendToBeVisual: true });
  const { window } = dom;
  window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+ window.HTMLCanvasElement.prototype.getContext = () => null;
  window.Range.prototype.getClientRects = () => [];
  window.Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
  const changes = [];
@@ -44,12 +45,28 @@ test('Live Markdown AI edits target exact source occurrences and reject stale pr
 
 test('Live Markdown flush commits table cells and read-only state disables cell editing and commands', async () => {
  const env = await setup('| A | B |\n| --- | --- |\n| x | y |'), { api, window } = env;
- const cell = window.document.querySelector('td'); cell.tabIndex = 0; cell.focus(); cell.textContent = 'Changed'; api.flush();
+ const cell = window.document.querySelector('td');
+ for (const type of ['mousedown', 'mouseup']) cell.dispatchEvent(new window.MouseEvent(type, { bubbles: true, button: 0 }));
+ const cellView = api.view.constructor.findFromDOM(window.document.querySelector('.mlp-cell-editor'));
+ assert.ok(cellView, 'table opens its native cell editor');
+ cellView.dispatch({ changes: { from: 0, to: cellView.state.doc.length, insert: 'Changed' } }); api.flush();
  assert.match(api.getMarkdown(), /Changed/);
  api.sync(api.getMarkdown(), true, '');
  assert.equal(window.document.querySelectorAll('[contenteditable="true"]').length, 0);
  api.sync('External while read-only', true, '');
  assert.equal(api.view.state.readOnly, true);
  assert.equal(api.formatMarkdown('bold'), false);
+ env.close();
+});
+
+test('note formatting inside a table targets its cell and keeps edge spaces outside bold markers', async () => {
+ const env = await setup('| A | B |\n| --- | --- |\n| Word here | y |'), { api, window } = env;
+ const cell = window.document.querySelector('td');
+ for (const type of ['mousedown', 'mouseup']) cell.dispatchEvent(new window.MouseEvent(type, { bubbles: true, button: 0, clientX: -1, clientY: -1 }));
+ const cellView = api.view.constructor.findFromDOM(window.document.querySelector('.mlp-cell-editor'));
+ cellView.dispatch({ selection: { anchor: 0, head: 5 } });
+ cellView.contentDOM.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'b', ctrlKey: true, bubbles: true, cancelable: true }));
+ assert.equal(cellView.state.doc.toString(), '**Word** here');
+ api.flush(); assert.match(api.getMarkdown(), /\| \*\*Word\*\* here \|/);
  env.close();
 });

@@ -14,7 +14,8 @@ for (const name of components) {
 writeFileSync(new URL("../src/content/editor/CODEMIRROR-LICENSES.txt", import.meta.url), licenses);
 writeFileSync(new URL("../src/content/editor/dependencies.json", import.meta.url), JSON.stringify(versions, null, "\t") + "\n");
 const results = await Promise.all(['composer', 'note'].map(name => build({ entryPoints: [fileURLToPath(new URL(`../src/content/editor/${name}-entry.js`, import.meta.url))], outfile: fileURLToPath(new URL(`../src/content/editor/${name}.bundle.js`, import.meta.url)), bundle: true, format: "iife", target: "firefox115", supported: { 'template-literal': false }, loader: { '.woff': 'file', '.woff2': 'file', '.ttf': 'file' }, assetNames: 'fonts/[name]-[hash]', minify: true, legalComments: "eof", metafile: true })));
-writeFileSync(new URL('../src/content/editor/note.html', import.meta.url), readFileSync(new URL('../src/content/editor/note-live.html', import.meta.url), 'utf8'));
+writeFileSync(new URL('../src/content/editor/note.html', import.meta.url), readFileSync(new URL('../src/content/editor/note-tshoot.html', import.meta.url), 'utf8'));
+cpSync(new URL('../vendor/tshoot/LICENSE', import.meta.url), new URL('../src/content/editor/TSHOOT-LICENSE', import.meta.url));
 const vendor = new URL('../src/content/editor/vditor/', import.meta.url), upstream = new URL('../node_modules/vditor/', import.meta.url);
 mkdirSync(new URL('dist/', vendor), { recursive: true });
 for (const asset of ['js', 'css', 'images', 'index.css']) cpSync(new URL('dist/' + asset, upstream), new URL('dist/' + asset, vendor), { recursive: true });
@@ -28,7 +29,7 @@ const embeddedLicenses = ['highlight.js', 'lowlight', 'devlop'].map(name => `nod
 for (const input of new Set([...results.flatMap(result => Object.keys(result.metafile.inputs)), ...embeddedLicenses])) {
  if (!input.includes('node_modules/')) continue;
  let dir = dirname(resolve(project, input));
- while (!existsSync(join(dir, 'package.json')) && dirname(dir) !== dir) dir = dirname(dir);
+ while ((!existsSync(join(dir, 'package.json')) || !JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).name) && dirname(dir) !== dir) dir = dirname(dir);
  const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
  if ((components.includes(pkg.name) && versions[pkg.name] === pkg.version) || packages.has(pkg.name + '@' + pkg.version)) continue;
  const license = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'license', 'license.md'].map(name => join(dir, name)).find(path => existsSync(path));

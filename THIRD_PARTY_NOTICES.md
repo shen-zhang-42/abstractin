@@ -9,6 +9,8 @@ AbstractIn bundles the following third-party files. Each licence ships next to t
 | CodeMirror 6 and dependencies | Locked versions in `src/content/editor/dependencies.json` | MIT | `src/content/editor/composer.bundle.js` | `src/content/editor/CODEMIRROR-LICENSES.txt` |
 | Live Markdown, KaTeX and bundled dependencies | Locked versions in `package-lock.json` | MIT / BSD-3-Clause; individual notices retained | `src/content/editor/note.bundle.js`, `src/content/editor/note.bundle.css`, `src/content/editor/fonts/` | `src/content/editor/RICH-EDITOR-LICENSES.txt` |
 | Vditor (retained resources; not loaded by NoteOut) | Locked version in `package-lock.json` | MIT | `src/content/editor/vditor/` | `src/content/editor/vditor/LICENSE` |
+| t-shoot Markdown Live Preview Editor | Commit recorded in `vendor/tshoot/SOURCE.json` | MIT | Vendored editor source and `note.bundle.js` / CSS | `src/content/editor/TSHOOT-LICENSE` |
+| Obsidian TikZJax | 0.5.2, source commit recorded next to the engine | MIT; bundled TeX component licenses retained | `src/content/editor/tikzjax/tikzjax.js` | `src/content/editor/tikzjax/LICENSE.md` |
 | KaTeX | 0.16.22 | MIT | `src/content/lib/katex.min.js` | `src/content/lib/KATEX-LICENSE` |
 | Latin Modern Math | — | GUST Font License | `src/content/lib/latinmodern-math.otf` | `src/content/lib/LATINMODERN-MATH-LICENSE.txt` |
 | Phosphor Icons (Duotone) | 2.1.1 | MIT | `src/content/icons/*.svg` except `mascot-*.svg`, `app-marmoset.svg` and `lucide-*.svg` | `src/content/icons/PHOSPHOR-LICENSE` |

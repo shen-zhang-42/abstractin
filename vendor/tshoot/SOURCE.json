@@ -1,0 +1,7 @@
+{
+ "repository": "https://github.com/t-shoot/md-live-preview-editor",
+ "commit": "986ff2a26230d28137184fba8816fda91fc82fad",
+ "license": "MIT",
+ "scope": "Webview editor and shared source; no AWS shape data",
+ "integration": "NoteOut supplies persistence, application shortcuts, KaTeX and TikZJax. VS Code main.ts is retained for provenance but not loaded."
+}

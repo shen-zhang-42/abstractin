@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>TikZJax renderer</title>
+<script>
+let submitted = false;
+const fail = message => parent.postMessage({ type: 'tikz-result', error: message }, '*');
+window.addEventListener('error', event => fail(event.message || 'TikZJax script could not be loaded.'));
+window.addEventListener('unhandledrejection', event => fail(event.reason?.message || String(event.reason)));
+document.addEventListener('tikzjax-load-finished', event => {
+ parent.postMessage({ type: 'tikz-result', svg: event.target.outerHTML }, '*');
+});
+window.addEventListener('message', event => {
+ if (event.source !== parent || event.data?.type !== 'render-tikz' || submitted) return;
+ submitted = true;
+ const script = document.createElement('script'); script.type = 'text/tikz';
+ script.textContent = '\\usepackage{tikz-cd}\n\\begin{document}\n' + event.data.source + '\n\\end{document}';
+ document.body.append(script);
+});
+parent.postMessage({ type: 'tikz-ready' }, '*');
+document.addEventListener('DOMContentLoaded', () => {
+ new MutationObserver(() => {
+  if (document.querySelector('img[src*="invalid.site"]')) fail('TikZJax could not compile this diagram. Check its LaTeX source.');
+ }).observe(document.body, { childList: true, subtree: true });
+});
+</script><script defer src="tikzjax/tikzjax.js" onerror="fail('TikZJax engine could not be loaded.')"></script></head><body></body></html>

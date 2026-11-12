@@ -1,0 +1,7 @@
+{
+ "repository": "https://github.com/artisticat1/obsidian-tikzjax",
+ "commit": "1d1f0844bd918e09e7eac081f86a70ba28635301",
+ "version": "0.5.2",
+ "license": "MIT; bundled TeX distribution retains its upstream component licenses",
+ "scope": "Unmodified self-contained tikzjax.js; loaded only in disposable diagram compiler frames"
+}
