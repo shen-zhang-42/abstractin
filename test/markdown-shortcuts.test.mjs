@@ -215,13 +215,19 @@ test('caret immediately after bold text reveals source before its closing stars'
  }
 });
 
-test('moving to either outer star boundary renders immediately and does not reopen on keyup',async()=>{
+test('opening-star boundary renders immediately while closing-star boundary stays editable',async()=>{
  for(const side of ['left','right']){
   const env=await editor({text:'Before **bold** after.'});env.instance.view.focus();env.instance.editor.commands.setTextSelection(12);await Promise.resolve();
   const block=env.instance.view.dom.querySelector('.note-inline-source'),source=EditorView.findFromDOM(block.querySelector('.cm-editor'));
   source.dispatch({selection:{anchor:side==='left'?1:7}});await Promise.resolve();
   assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),block,'caret between the stars keeps editing');
   source.dispatch({selection:{anchor:side==='left'?0:8}});await Promise.resolve();await Promise.resolve();
+  if(side==='right'){
+   assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),block,'after the closing stars stays editable');
+   source.dispatch({changes:{from:8,insert:' more'},selection:{anchor:13}});await Promise.resolve();
+   assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),block,'typing after closing stars keeps editing');
+   assert.equal(env.text(),'Before **bold** more after.');env.close();continue;
+  }
   assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null,'outer boundary renders without another key');
   env.instance.view.dom.dispatchEvent(new env.window.KeyboardEvent('keyup',{key:side==='left'?'ArrowLeft':'ArrowRight',bubbles:true}));await Promise.resolve();
   assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null,'the exit position stays rendered');

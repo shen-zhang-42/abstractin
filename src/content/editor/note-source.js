@@ -120,7 +120,9 @@ export function noteSource(config) {
    EditorView.updateListener.of(update=>{
     if(session.ready && update.selectionSet && !update.docChanged && active===session){
      const range=update.state.selection.main;
-     const direction=range.empty && range.head===0 ? -1 : range.empty && range.head===update.state.doc.length ? 1 : 0;
+     // Reaching the closing delimiter keeps editing; only crossing before the
+     // opening delimiter immediately restores rendering.
+     const direction=range.empty && range.head===0 ? -1 : 0;
      if(direction)queueMicrotask(()=>{
       if(active!==session)return;
       const current=session.view.state.selection.main;
