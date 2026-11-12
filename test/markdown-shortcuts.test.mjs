@@ -175,3 +175,30 @@ test('outside mouse clicks render the old source and switch directly to the clic
  const plain=env.instance.view.dom.querySelector('p');for(const type of ['mousedown','mouseup','click'])plain.dispatchEvent(new env.window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:10,clientY:20}));
  await Promise.resolve();assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null);assert.equal(env.instance.view.dom.querySelector('em').textContent,'italic');env.close();
 });
+
+test('clicking inside expanded source moves its caret and supports Shift selection without changing Markdown',async()=>{
+ const env=await editor({text:'Before **bold** after.'});
+ env.instance.view.focus();env.instance.editor.commands.setTextSelection(10);await Promise.resolve();
+ const block=env.instance.view.dom.querySelector('.note-inline-source'),source=EditorView.findFromDOM(block.querySelector('.cm-editor'));
+ const click=(position,options={})=>{
+  source.posAtCoords=()=>position;
+  for(const type of ['mousedown','mouseup','click'])source.contentDOM.dispatchEvent(new env.window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:40,clientY:10,detail:1,...options}));
+ };
+ click(2);assert.equal(source.state.selection.main.head,2);
+ click(5);assert.equal(source.state.selection.main.head,5);
+ click(3,{shiftKey:true});assert.equal(source.state.selection.main.anchor,5);assert.equal(source.state.selection.main.head,3);
+ assert.equal(env.text(),'Before **bold** after.');assert.equal(env.changes(),0);
+ click(3);source.dispatch({changes:{from:source.state.selection.main.head,insert:'X'}});
+ assert.match(env.text(),/\*\*bXold\*\*/);assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),block);env.close();
+});
+
+test('source caret placement preserves native drag and multi-click selections',async()=>{
+ const env=await editor({text:'**bold words**'});env.instance.view.focus();env.instance.editor.commands.setTextSelection(2);await Promise.resolve();
+ const block=env.instance.view.dom.querySelector('.note-inline-source'),source=EditorView.findFromDOM(block.querySelector('.cm-editor'));
+ source.posAtCoords=()=>1;
+ const mouse=(type,x,detail=1)=>source.contentDOM.dispatchEvent(new env.window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:x,clientY:10,detail}));
+ mouse('mousedown',10);source.dispatch({selection:{anchor:2,head:8}});mouse('mouseup',80);mouse('click',80);
+ assert.equal(source.state.selection.main.from,2);assert.equal(source.state.selection.main.to,8);
+ mouse('mousedown',10,2);source.dispatch({selection:{anchor:2,head:6}});mouse('mouseup',10,2);mouse('click',10,2);
+ assert.equal(source.state.selection.main.from,2);assert.equal(source.state.selection.main.to,6);assert.equal(env.changes(),0);env.close();
+});

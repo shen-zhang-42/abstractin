@@ -10,7 +10,7 @@ import { markdownShortcuts } from './markdown-shortcuts.js';
 // The source editor is transient; only actual edits change saved Markdown.
 export function noteSource(config) {
  const key = new PluginKey('noteSource');
- let editor, active = null, serial = 0, queued = false, destroyed = false, paused = false, lastSelection = null, pendingClick = null;
+ let editor, active = null, serial = 0, queued = false, destroyed = false, paused = false, lastSelection = null, pendingClick = null, sourceClick = null;
  const selection = () => {
   if(!active)return lastSelection;
   const {from,to}=active.view.state.selection.main;
@@ -126,10 +126,14 @@ export function noteSource(config) {
    if(editor.state.selection.empty) open(editor.state.selection.from); else clear();
   });
  };
- const finish = () => { paused=true; pendingClick=null; clear(true); };
+ const finish = () => { paused=true; pendingClick=null; sourceClick=null; clear(true); };
  const pointerDown = event => {
-  pendingClick=null;
-  if(!active || event.button!==0 || active.dom.contains(event.target))return;
+  pendingClick=null;sourceClick=null;
+  if(!active || event.button!==0)return;
+  if(active.dom.contains(event.target)){
+   sourceClick={session:active,x:event.clientX,y:event.clientY,anchor:active.view.state.selection.main.anchor};
+   return;
+  }
   const inside=editor.view.dom.contains(event.target);
   const control=event.target.closest?.('button,input,textarea,select,summary');
   const hit=inside&&!control ? editor.view.posAtCoords({left:event.clientX,top:event.clientY}) : null;
@@ -140,6 +144,18 @@ export function noteSource(config) {
   clear(!inside);
  };
  const pointerClick = event => {
+  const source=sourceClick;sourceClick=null;
+  if(source && active===source.session && active.dom.contains(event.target)){
+   // Explicitly place the nested editor's caret. The outer contenteditable=false
+   // widget can otherwise interfere with native selection in the host browser.
+   // Leave drags and multi-click word/line selection to CodeMirror.
+   if(event.button!==0 || event.detail>1 || Math.hypot(event.clientX-source.x,event.clientY-source.y)>4)return;
+   const view=active.view, pos=view.posAtCoords({x:event.clientX,y:event.clientY},false);
+   if(pos===null)return;
+   event.preventDefault();event.stopPropagation();
+   view.dispatch({selection:{anchor:event.shiftKey?source.anchor:pos,head:pos}});view.focus();
+   return;
+  }
   const target=pendingClick;pendingClick=null;
   if(!target)return;
   paused=false;
