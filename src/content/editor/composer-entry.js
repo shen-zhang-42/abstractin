@@ -2,14 +2,13 @@ import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateFiel
 import { Decoration, EditorView, WidgetType, keymap, placeholder } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { latexSourceBlocks, latexHighlightRanges } from "./latex-highlights.js";
-import { createRichNote } from "./note-rich.js";
 
 // This module runs in an HTML iframe, rather than Zotero's chrome document.
-// Discussion inputs use CodeMirror; notes use the visual Markdown editor.
+// Discussion inputs deliberately load only CodeMirror. NoteOut has its own entry.
 window.AbstractInComposer = {
 	create(config) {
-		if (config.note) return createRichNote(config);
 		const enabled = new Compartment(), hint = new Compartment();
+		let currentDisabled = !!config.disabled, currentHint = config.placeholder || "";
 		const focusChanged = StateEffect.define();
 		let syncing = false, destroyed = false;
 		class MathWidget extends WidgetType {
@@ -131,12 +130,15 @@ window.AbstractInComposer = {
 				if (destroyed) return;
 				syncing = true;
 				try {
-					const effects = [enabled.reconfigure([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)]), hint.reconfigure(placeholder(label || ""))];
+					const effects = [];
+					if (currentDisabled !== !!disabled) { currentDisabled = !!disabled; effects.push(enabled.reconfigure([EditorState.readOnly.of(currentDisabled), EditorView.editable.of(!currentDisabled)])); }
+					if (currentHint !== (label || "")) { currentHint = label || ""; effects.push(hint.reconfigure(placeholder(currentHint))); }
 					if (text !== view.state.doc.toString()) {
 						// A recalled/new draft starts a new history, just as assigning textarea.value does.
 						view.setState(EditorState.create({ doc: text, selection: { anchor: text.length }, extensions }));
+						effects.push(enabled.reconfigure([EditorState.readOnly.of(currentDisabled), EditorView.editable.of(!currentDisabled)]), hint.reconfigure(placeholder(currentHint)));
 					}
-					view.dispatch({ effects: [...effects, focusChanged.of(view.hasFocus)], annotations: Transaction.addToHistory.of(false) });
+					if (effects.length) view.dispatch({ effects, annotations: Transaction.addToHistory.of(false) });
 				} finally { syncing = false; }
 			},
 			focus() { view.focus(); },

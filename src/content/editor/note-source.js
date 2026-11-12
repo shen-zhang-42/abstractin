@@ -10,7 +10,7 @@ import { markdownShortcuts } from './markdown-shortcuts.js';
 // The source editor is transient; only actual edits change saved Markdown.
 export function noteSource(config) {
  const key = new PluginKey('noteSource');
- let editor, active = null, serial = 0, queued = false, destroyed = false, paused = false, lastSelection = null;
+ let editor, active = null, serial = 0, queued = false, destroyed = false, paused = false, lastSelection = null, pendingClick = null;
  const selection = () => {
   if(!active)return lastSelection;
   const {from,to}=active.view.state.selection.main;
@@ -126,6 +126,29 @@ export function noteSource(config) {
    if(editor.state.selection.empty) open(editor.state.selection.from); else clear();
   });
  };
+ const finish = () => { paused=true; pendingClick=null; clear(true); };
+ const pointerDown = event => {
+  pendingClick=null;
+  if(!active || event.button!==0 || active.dom.contains(event.target))return;
+  const inside=editor.view.dom.contains(event.target);
+  const control=event.target.closest?.('button,input,textarea,select,summary');
+  const hit=inside&&!control ? editor.view.posAtCoords({left:event.clientX,top:event.clientY}) : null;
+  // Capture the logical target before collapsing source changes line geometry.
+  // Pause the focus/selection callbacks until the native click has completed.
+  paused=true;
+  if(hit)pendingClick={pos:hit.pos,x:event.clientX,y:event.clientY};
+  clear(!inside);
+ };
+ const pointerClick = event => {
+  const target=pendingClick;pendingClick=null;
+  if(!target)return;
+  paused=false;
+  if(event.shiftKey||Math.hypot(event.clientX-target.x,event.clientY-target.y)>4)return;
+  event.preventDefault();event.stopPropagation();
+  const pos=Math.max(0,Math.min(target.pos,editor.state.doc.content.size));
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(pos))));
+  editor.view.focus();open(pos);
+ };
  const extension = Extension.create({name:'noteSource',
   onCreate(){editor=this.editor;},
   addProseMirrorPlugins(){editor=this.editor;return [new Plugin({key,
@@ -137,16 +160,18 @@ export function noteSource(config) {
      state.doc.nodesBetween(active.from,active.to,(node,pos)=>{if(pos>=active.from && pos+node.nodeSize<=active.to && (!active.inline||node.isAtom&&!node.isText)){decorations.push(Decoration.node(pos,pos+node.nodeSize,{class:'note-source-hidden'}));return false;}});
      return DecorationSet.create(state.doc,decorations);
     },
-    handleDOMEvents:{focus:schedule,mouseup(){paused=false;schedule();},keyup(_view,event){if(event.key!=='Escape')paused=false;schedule();}},
+    handleDOMEvents:{focus:schedule,mouseup(){if(!pendingClick){paused=false;schedule();}},keyup(_view,event){if(event.key!=='Escape')paused=false;schedule();}},
    },
-   view(){return {update(view,previous){
+   view(){
+    document.addEventListener('mousedown',pointerDown,true);document.addEventListener('click',pointerClick,true);window.addEventListener('blur',finish);
+    return {update(view,previous){
     if(!active && previous.doc!==view.state.doc)lastSelection=null;
     if(active && !active.dom.contains(document.activeElement) && previous.doc!==view.state.doc) queueMicrotask(()=>{if(!destroyed)clear();});
     if(!previous.selection.eq(view.state.selection)){lastSelection=null;schedule();}
-   },destroy(){destroyed=true;active?.view.destroy();active=null;}};},
+   },destroy(){destroyed=true;document.removeEventListener('mousedown',pointerDown,true);document.removeEventListener('click',pointerClick,true);window.removeEventListener('blur',finish);active?.view.destroy();active=null;}};},
   })];},
  });
- return {extension,open,clear,format,selection,isActive:()=>!!active,
+ return {extension,open,clear,finish,format,selection,measure:()=>active?.view.requestMeasure(),isActive:()=>!!active,
   markdown(){
    if(!active)return undefined;
    const marker='ABSTRACTINRAWSOURCE'+active.id+'PLACEHOLDER';

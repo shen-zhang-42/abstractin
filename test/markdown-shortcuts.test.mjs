@@ -9,7 +9,7 @@ async function editor({note=true,disabled=false,text='word'}={}) {
  const dom=new JSDOM('<!doctype html><html><body><div id="editor"></div></body></html>',{runScripts:'outside-only',pretendToBeVisual:true});
  const {window}=dom;window.ResizeObserver=class{observe(){}disconnect(){}};
  window.Range.prototype.getClientRects=()=>[]; window.Range.prototype.getBoundingClientRect=()=>({top:0,left:0,right:0,bottom:0,width:0,height:0});
- await window.eval(await readFile(new URL('../src/content/editor/composer.bundle.js',import.meta.url),'utf8'));
+ await window.eval(await readFile(new URL('../src/content/editor/'+(note?'note':'composer')+'.bundle.js',import.meta.url),'utf8'));
  let changes=0;const updates=[];
  const instance=window.AbstractInComposer.create({note,disabled,text,tokens:()=>[],renderMath(){},onKey:()=>false,onPaste:()=>false,onDrop:()=>false,
   onChange:(text,_from,_to,changed)=>{if(changed){changes++;updates.push(text);}},onHeight(){},onError:error=>{throw error;}});
@@ -110,4 +110,31 @@ test('cursor entry reveals only the active inline construct and restores renderi
 test('external source updates refresh the rendered document without emitting edits',async()=>{
  const env=await editor();env.instance.sync('## Revised\n\n**new**',false,'');assert.equal(env.instance.view.dom.querySelector('h2').textContent,'Revised');
  assert.equal(env.instance.view.dom.querySelector('strong').textContent,'new');assert.equal(env.text(),'## Revised\n\n**new**');assert.equal(env.changes(),0);env.close();
+});
+
+test('unchanged discussion refreshes do not dispatch editor transactions',async()=>{
+ const env=await editor({note:false});const state=env.instance.view.state;
+ for(let i=0;i<100;i++)env.instance.sync('word',false,'');
+ assert.equal(env.instance.view.state,state,'a no-op refresh must preserve the actual editor state');
+ env.instance.sync('word',true,'Read only');assert.equal(env.instance.view.contentDOM.getAttribute('contenteditable'),'false');
+ env.instance.sync('New draft',true,'Read only');assert.equal(env.text(),'New draft');assert.equal(env.instance.view.contentDOM.getAttribute('contenteditable'),'false');
+ env.instance.sync('New draft',false,'Write');assert.equal(env.instance.view.contentDOM.getAttribute('contenteditable'),'true');env.close();
+});
+
+test('outside mouse clicks render the old source and switch directly to the clicked construct',async()=>{
+ const env=await editor({text:'Before **bold** then *italic* after.'});let bold,italic;
+ env.instance.editor.state.doc.descendants((node,pos)=>{if(node.isText&&node.text==='bold')bold=pos+1;if(node.isText&&node.text==='italic')italic=pos+1;});
+ env.instance.view.focus();env.instance.editor.commands.setTextSelection(bold);await Promise.resolve();
+ let source=env.instance.view.dom.querySelector('.note-inline-source');assert.ok(source);
+ const cm=EditorView.findFromDOM(source.querySelector('.cm-editor'));cm.dispatch({changes:{from:0,to:cm.state.doc.length,insert:'**edited**'}});
+ env.instance.editor.state.doc.descendants((node,pos)=>{if(node.isText&&node.text==='italic')italic=pos+1;});
+ env.instance.view.posAtCoords=()=>({pos:italic,inside:0});
+ const target=env.instance.view.dom.querySelector('em');
+ for(const type of ['mousedown','mouseup','click'])target.dispatchEvent(new env.window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:100,clientY:20}));
+ await Promise.resolve();source=env.instance.view.dom.querySelector('.note-inline-source');assert.ok(source);
+ assert.equal(EditorView.findFromDOM(source.querySelector('.cm-editor')).state.doc.toString(),'*italic*');assert.equal(env.instance.view.dom.querySelector('strong').textContent,'edited');
+ assert.match(env.text(),/\*\*edited\*\*/);
+ env.instance.view.posAtCoords=()=>({pos:3,inside:0});
+ const plain=env.instance.view.dom.querySelector('p');for(const type of ['mousedown','mouseup','click'])plain.dispatchEvent(new env.window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:10,clientY:20}));
+ await Promise.resolve();assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null);assert.equal(env.instance.view.dom.querySelector('em').textContent,'italic');env.close();
 });

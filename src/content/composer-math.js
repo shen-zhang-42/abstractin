@@ -42,12 +42,23 @@ Object.assign(AbstractIn, {
 		const sync = () => {
 			if (!editor || updating) return;
 			editor.sync(input.value, input.disabled, input.placeholder);
-			frame.tabIndex = input.disabled ? -1 : 0;
+			const tabIndex = input.disabled ? -1 : 0;
+			if (frame.tabIndex !== tabIndex) frame.tabIndex = tabIndex;
 			const computed = win.getComputedStyle(input);
 			const style = frame.contentDocument.documentElement.style;
-			for (const [target, source] of [["--editor-text", "--abstractin-text"], ["--editor-faint", "--abstractin-faint"], ["--editor-hover", "--abstractin-hover"]])
-				style.setProperty(target, computed.getPropertyValue(source));
-			frame.contentDocument.body.style.font = computed.font;
+			for (const [target, source] of [["--editor-text", "--abstractin-text"], ["--editor-faint", "--abstractin-faint"], ["--editor-hover", "--abstractin-hover"]]) {
+				const value = computed.getPropertyValue(source);
+				if (style.getPropertyValue(target) !== value) style.setProperty(target, value);
+			}
+			// Gecko can return an empty computed font shorthand when its longhands
+			// cannot be serialized together. Copy the actual display properties.
+			const bodyStyle = frame.contentDocument.body.style;
+			let fontChanged = false;
+			for (const property of ["fontFamily", "fontSize", "fontWeight", "fontStyle", "fontStretch", "lineHeight"]) {
+				const value = computed[property];
+				if (value && bodyStyle[property] !== value) { bodyStyle[property] = value; fontChanged = true; }
+			}
+			if (fontChanged) editor.measure();
 		};
 		const restore = () => {
 			input.hidden = false;
@@ -128,12 +139,15 @@ Object.assign(AbstractIn, {
 		frame.addEventListener("error", fail);
 		const observer = new win.MutationObserver(() => { try { sync(); } catch (error) { fail(error); } });
 		observer.observe(input, { attributes: true, attributeFilter: ["disabled", "placeholder"] });
-		frame.src = (this.resourceURI || this.rootURI || "") + "content/editor/composer.html";
+		const leaveSource = event => { if (options.note && event.target !== frame && !frame.contains(event.target)) editor?.finishSourceEditing?.(); };
+		if (options.note) doc.addEventListener("mousedown", leaveSource, true);
+		frame.src = (this.resourceURI || this.rootURI || "") + "content/editor/" + (options.note ? "note.html" : "composer.html");
 		input.after(frame);
 		// Chrome documents can load a local frame synchronously during insertion.
 		if (frame.contentWindow?.AbstractInComposer) loaded();
 		return () => {
 			disposed = true;
+			if (options.note) doc.removeEventListener("mousedown", leaveSource, true);
 			observer.disconnect();
 			frame.removeEventListener("load", loaded, true);
 			frame.removeEventListener("error", fail);

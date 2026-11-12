@@ -12,11 +12,37 @@ function composer(text = "", disabled = false) {
 	const dispose = env.plugin.installMathComposer(input);
 	return { ...env, input, preview: input.parentElement.querySelector(".abstractin-math-preview"), nativeFocus, nativeSelection, dispose };
 }
+
+test("ordinary discussion frames never load the rich NoteOut entry", () => {
+	const env = composer();
+	assert.match(env.document.querySelector("iframe").src, /\/editor\/composer\.html$/);
+	env.dispose();
+	const input = env.document.createElement("textarea"); env.document.body.append(input);
+	const dispose = env.plugin.installMathComposer(input, { note: true });
+	assert.match(env.document.querySelector("iframe").src, /\/editor\/note\.html$/);
+	dispose(); env.window.close();
+});
 const key = (env, key, options = {}) => {
 	const event = new env.window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options });
 	env.input.dispatchEvent(event);
 	return event;
 };
+
+test("font longhands refresh the live iframe even when Gecko cannot serialize a font shorthand", () => {
+	const env = loadPlugin(), input = env.document.createElement("textarea");env.document.body.append(input);
+	input.style.fontFamily = "Georgia, serif";
+	const original = env.window.getComputedStyle.bind(env.window);
+	env.window.getComputedStyle = node => node === input ? {font:"",fontFamily:input.style.fontFamily,fontSize:"15px",fontWeight:"400",fontStyle:"normal",fontStretch:"normal",lineHeight:"27px",getPropertyValue:()=>""} : original(node);
+	let measured=0,finished=0;
+	const dispose=env.plugin.installMathComposer(input,{note:true}), frame=env.document.querySelector("iframe");
+	frame.contentWindow.AbstractInComposer={create:()=>({sync(){},select(){},measure(){measured++;},finishSourceEditing(){finished++;},destroy(){}})};
+	frame.dispatchEvent(new env.window.Event("load"));
+	assert.equal(frame.contentDocument.body.style.fontFamily,"Georgia, serif");
+	input.style.fontFamily="Arial, sans-serif";input._refreshMathPreview();
+	assert.equal(frame.contentDocument.body.style.fontFamily,"Arial, sans-serif");assert.ok(measured>=2);
+	const button=env.document.createElement("button");env.document.body.append(button);button.dispatchEvent(new env.window.MouseEvent("mousedown",{bubbles:true,button:0}));assert.equal(finished,1);
+	dispose();button.dispatchEvent(new env.window.MouseEvent("mousedown",{bubbles:true,button:0}));assert.equal(finished,1);env.window.close();
+});
 
 test("composer recognizes inline and multiline math without treating escaped or unfinished delimiters as formulas", () => {
 	const { plugin } = loadPlugin();

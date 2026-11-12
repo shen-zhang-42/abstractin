@@ -90,6 +90,7 @@ export function createRichNote(config) {
  // Keep the originally loaded Markdown byte-for-byte until an actual edit.
  return {
   markdownShortcuts, formatMarkdown: format, getMarkdown: () => source, getSelectionSnapshot: selectionSnapshot,
+  finishSourceEditing: () => reveal.finish(),
   replaceMarkdownRange(markdown, from, to, sourceSelection) {
    if (!editor.isEditable || from < 0 || to > editor.state.doc.content.size) return false;
    reveal.clear();
@@ -109,7 +110,8 @@ export function createRichNote(config) {
    try {
     if (editor.isEditable === !!disabled) { reveal.clear(); editor.setEditable(!disabled, false); }
     if (markdown !== source) { reveal.clear(); source = markdown; editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false }); }
-    editor.view.dom.setAttribute('data-placeholder', placeholder || 'Write a note…');
+    const hint = placeholder || 'Write a note…';
+    if (editor.view.dom.getAttribute('data-placeholder') !== hint) editor.view.dom.setAttribute('data-placeholder', hint);
    } finally { syncing = false; }
   },
   focus() { editor.commands.focus(); },
@@ -117,6 +119,6 @@ export function createRichNote(config) {
    const max = Math.max(1, editor.state.doc.content.size - 1);
    editor.commands.setTextSelection({ from: Math.max(1, Math.min(max, anchor)), to: Math.max(1, Math.min(max, head)) });
   },
-  measure() {}, destroy() { dialog?.remove(); editor.destroy(); }, view: editor.view, editor,
+  measure() { reveal.measure(); }, destroy() { dialog?.remove(); editor.destroy(); }, view: editor.view, editor,
  };
 }

@@ -13,9 +13,11 @@ for (const name of components) {
 }
 writeFileSync(new URL("../src/content/editor/CODEMIRROR-LICENSES.txt", import.meta.url), licenses);
 writeFileSync(new URL("../src/content/editor/dependencies.json", import.meta.url), JSON.stringify(versions, null, "\t") + "\n");
-const result = await build({ entryPoints: [fileURLToPath(new URL("../src/content/editor/composer-entry.js", import.meta.url))], outfile: fileURLToPath(new URL("../src/content/editor/composer.bundle.js", import.meta.url)), bundle: true, format: "iife", target: "firefox115", supported: { 'template-literal': false }, minify: true, legalComments: "eof", metafile: true });
+const results = await Promise.all(['composer', 'note'].map(name => build({ entryPoints: [fileURLToPath(new URL(`../src/content/editor/${name}-entry.js`, import.meta.url))], outfile: fileURLToPath(new URL(`../src/content/editor/${name}.bundle.js`, import.meta.url)), bundle: true, format: "iife", target: "firefox115", supported: { 'template-literal': false }, minify: true, legalComments: "eof", metafile: true })));
+writeFileSync(new URL('../src/content/editor/note.html', import.meta.url), readFileSync(new URL('../src/content/editor/composer.html', import.meta.url), 'utf8').replace('<title>Message editor</title>', '<title>Note editor</title>').replace('src="composer.bundle.js"', 'src="note.bundle.js"'));
+if (Object.keys(results[0].metafile.inputs).some(path => /node_modules\/(?:@tiptap|prosemirror-|katex|marked)/.test(path))) throw new Error('Rich note dependencies leaked into the discussion bundle');
 const packages = new Map(), project = fileURLToPath(new URL("../", import.meta.url));
-for (const input of Object.keys(result.metafile.inputs)) {
+for (const input of new Set(results.flatMap(result => Object.keys(result.metafile.inputs)))) {
  if (!input.includes('node_modules/')) continue;
  let dir = dirname(resolve(project, input));
  while (!existsSync(join(dir, 'package.json')) && dirname(dir) !== dir) dir = dirname(dir);
@@ -30,4 +32,4 @@ const richVersions = {};
 for (const [name, {pkg, license}] of [...packages].sort(([a],[b]) => a.localeCompare(b))) { richVersions[name] = pkg.license; richLicenses += name + '\n' + readFileSync(license, 'utf8') + '\n\n'; }
 writeFileSync(new URL('../src/content/editor/RICH-EDITOR-LICENSES.txt', import.meta.url), richLicenses);
 writeFileSync(new URL('../src/content/editor/rich-dependencies.json', import.meta.url), JSON.stringify(richVersions, null, '\t') + '\n');
-console.log('Bundled CodeMirror discussion input and visual Markdown note editor');
+console.log('Built separate discussion and NoteOut editors; discussion has no rich-note dependencies');
