@@ -1,5 +1,6 @@
 var AbstractIn;
 var chromeHandle;
+var noteResourcePackage;
 
 function log(msg) {
 	Zotero.debug("[abstractin] " + msg);
@@ -21,6 +22,11 @@ async function startup({ id, version, rootURI }) {
 		["content", resourcePackage, "./"],
 	]);
 	let resourceURI = "chrome://" + resourcePackage + "/content/";
+	// Vditor must run with a content principal. In chrome documents Gecko strips
+	// native toolbar buttons from innerHTML before the editor can initialize.
+	const resources = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
+	resources.setSubstitutionWithFlags(resourcePackage, Services.io.newURI(rootURI), resources.ALLOW_CONTENT_ACCESS);
+	noteResourcePackage = resourcePackage;
 	Services.scriptloader.loadSubScript(resourceURI + "content/abstractin.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/composer-math.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/icon-assets.js");
@@ -44,6 +50,8 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(resourceURI + "content/note-storage.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/note-editor.js");
 	AbstractIn.init({ id, version, rootURI, resourceURI });
+	AbstractIn.noteEditorURI = "resource://" + resourcePackage + "/";
+	AbstractIn.noteEditorBridge = Components.utils;
 	// Load the bundled renderer immediately, before any answer needs it.
 	AbstractIn.getKatex();
 	// The settings pane runs in the Settings window and reaches the plugin through Zotero.
@@ -73,6 +81,8 @@ async function shutdown() {
 	if (!AbstractIn) {
 		chromeHandle?.destruct();
 		chromeHandle = null;
+		if (noteResourcePackage) Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution(noteResourcePackage, null);
+		noteResourcePackage = null;
 		return;
 	}
 	AbstractIn.unregisterReaderHooks();
@@ -87,6 +97,8 @@ async function shutdown() {
 	AbstractIn = undefined;
 	chromeHandle?.destruct();
 	chromeHandle = null;
+	if (noteResourcePackage) Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler).setSubstitution(noteResourcePackage, null);
+	noteResourcePackage = null;
 }
 
 function uninstall() {

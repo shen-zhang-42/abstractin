@@ -28,6 +28,23 @@ const key = (env, key, options = {}) => {
 	return event;
 };
 
+test('NoteOut uses a content resource URI and clones callbacks and AI edit snapshots across its bridge',()=>{
+ const env=loadPlugin(),input=env.document.createElement('textarea');env.document.body.append(input);
+ const clones=[];let received,createdConfig;
+ env.plugin.noteEditorURI='resource://abstractin-note-test/';
+ env.plugin.noteEditorBridge={cloneInto(value,target,options){clones.push({value,options});return {...value};},waiveXrays:value=>value};
+ const dispose=env.plugin.installMathComposer(input,{note:true}),frame=env.document.querySelector('iframe');
+ const child={AbstractInComposer:{create(config){createdConfig=config;return {sync(){},select(){},measure(){},destroy(){},replaceMarkdownRange(text,from,to,snapshot){received=snapshot;config.onChange(text,from,to,true);return true;}};}}};
+ Object.defineProperty(frame.contentWindow,'wrappedJSObject',{value:child});
+ Object.defineProperty(frame,'contentDocument',{value:env.document});
+ frame.dispatchEvent(new env.window.Event('load'));
+ assert.equal(frame.src,'resource://abstractin-note-test/content/editor/note.html');assert.equal(input.hidden,true);
+ assert.equal(clones[0].options.cloneFunctions,true);assert.equal(typeof createdConfig.onKey,'function');
+ const snapshot={baseMarkdown:'old',normalizedMarkdown:'old'};
+ assert.equal(input._composerEditor.replaceMarkdownRange('new',0,3,snapshot),true);
+ assert.notEqual(received,snapshot);assert.equal(received.baseMarkdown,'old');assert.equal(input.value,'new');dispose();env.window.close();
+});
+
 test("font longhands refresh the live iframe even when Gecko cannot serialize a font shorthand", () => {
 	const env = loadPlugin(), input = env.document.createElement("textarea");env.document.body.append(input);
 	input.style.fontFamily = "Georgia, serif";

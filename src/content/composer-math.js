@@ -76,7 +76,7 @@ Object.assign(AbstractIn, {
 			restore();
 			disposeNative = this.installNativeMathComposer(input);
 			if (focused && !input.disabled) nativeFocus.call(input);
-			Zotero.debug("AbstractIn CodeMirror fallback: " + error);
+			Zotero.debug("AbstractIn " + (options.note ? "NoteOut" : "CodeMirror") + " fallback: " + error);
 		};
 		const forward = (type, original, property) => {
 			if (input.disabled) return true;
@@ -91,11 +91,13 @@ Object.assign(AbstractIn, {
 			if (disposed || failed || editor || initializing) return;
 			initializing = true;
 			try {
-				const factory = frame.contentWindow.AbstractInComposer;
+				const child = frame.contentWindow.wrappedJSObject || frame.contentWindow;
+				const bridge = options.note && this.noteEditorURI ? this.noteEditorBridge : null;
+				const factory = child.AbstractInComposer;
 				if (!factory) throw new Error("Editor bundle did not load");
 				const focused = doc.activeElement === input;
 				const start = input.selectionStart, end = input.selectionEnd, direction = input.selectionDirection;
-				const created = factory.create({
+				const config = {
 					note: !!options.note,
 					maxHeight: options.note ? 600 : 180, minHeight: options.note ? 300 : 40, label: options.note ? "Markdown note" : "Message",
 					text: input.value, disabled: input.disabled, placeholder: input.placeholder,
@@ -115,8 +117,20 @@ Object.assign(AbstractIn, {
 					onDrop: event => event.dataTransfer?.files.length ? forward("drop", event, "dataTransfer") : false,
 					onHeight: height => { if (!options.note) frame.style.height = height + "px"; },
 					onError: error => win.setTimeout(() => fail(error), 0),
-				});
+				};
+				const created = factory.create(bridge ? bridge.cloneInto(config, child, { cloneFunctions: true }) : config);
 				editor = created?.then ? await created : created;
+				if (bridge) {
+					const nativeEditor = bridge.waiveXrays(editor);
+					// Only an AI edit snapshot crosses back into the content realm as an
+					// object; normal editor operations use strings, numbers and callbacks.
+					editor = {};
+					for (const name of ["sync", "select", "focus", "measure", "flush", "getMarkdown", "destroy"]) {
+						if (typeof nativeEditor[name] === "function") editor[name] = (...args) => nativeEditor[name](...args);
+					}
+					editor.getSelectionSnapshot = () => JSON.parse(JSON.stringify(nativeEditor.getSelectionSnapshot()));
+					editor.replaceMarkdownRange = (markdown, from, to, snapshot) => nativeEditor.replaceMarkdownRange(markdown, from, to, bridge.cloneInto(snapshot, child));
+				}
 				if (disposed || failed) { editor?.destroy(); editor = null; return; }
 				editor.select(direction === "backward" ? end : start, direction === "backward" ? start : end);
 				disposeNative(); disposeNative = null;
@@ -143,7 +157,7 @@ Object.assign(AbstractIn, {
 		frame.addEventListener("error", fail);
 		const observer = new win.MutationObserver(() => { try { sync(); } catch (error) { fail(error); } });
 		observer.observe(input, { attributes: true, attributeFilter: ["disabled", "placeholder"] });
-		frame.src = (this.resourceURI || this.rootURI || "") + "content/editor/" + (options.note ? "note.html" : "composer.html");
+		frame.src = (options.note && this.noteEditorURI || this.resourceURI || this.rootURI || "") + "content/editor/" + (options.note ? "note.html" : "composer.html");
 		input.after(frame);
 		// Chrome documents can load a local frame synchronously during insertion.
 		if (frame.contentWindow?.AbstractInComposer) loaded();

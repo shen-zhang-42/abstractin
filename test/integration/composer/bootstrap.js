@@ -15,6 +15,8 @@ async function run() {
   const scope = { Zotero, Cc, Ci, check, waitFor };
   Services.scriptloader.loadSubScript("file://" + repo + "/test/integration/tester/composer.js", scope);
   await scope.testComposer(Zotero.getMainWindow(), plugin);
+  Services.scriptloader.loadSubScript("file://" + repo + "/test/integration/tester/note-editor.js", scope);
+  await scope.testNoteEditor(Zotero.getMainWindow(), plugin);
  } catch (error) { results.errors.push(String(error) + "\n" + error.stack); }
  await IOUtils.writeUTF8(PathUtils.join(out, "results.json"), JSON.stringify(results, null, 2));
  Zotero.Utilities.Internal.quit();
