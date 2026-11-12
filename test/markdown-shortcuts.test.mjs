@@ -26,6 +26,43 @@ test('notes render Markdown directly and retain the original source until an act
  assert.equal(env.text(),source);assert.equal(env.changes(),0);env.instance.sync(source,false,'');assert.equal(env.text(),source);env.close();
 });
 
+test('ordinary indented paragraphs retain their formatting after saving and reopening',async()=>{
+ for(const indent of ['\t','    ',' \t']){
+  const env=await editor();
+  env.instance.editor.commands.setContent({type:'doc',content:[
+   {type:'paragraph',content:[{type:'text',text:indent},{type:'text',text:'important',marks:[{type:'bold'}]},{type:'text',text:' explanation'}]},
+   {type:'paragraph',content:[{type:'text',text:'Following paragraph'}]},
+  ]});
+  const saved=env.text();assert.doesNotMatch(saved,/```/);
+  const reopened=await editor({text:saved});assert.equal(reopened.instance.view.dom.querySelector('pre'),null,'normal indentation must not become code');
+  assert.equal(reopened.instance.view.dom.querySelector('strong')?.textContent,'important');
+  assert.equal(reopened.instance.editor.state.doc.firstChild.textContent,indent+'important explanation');
+  reopened.close();env.close();
+ }
+});
+
+test('repeated saves preserve intentional code and nested lists alongside ordinary indented prose',async()=>{
+ let env=await editor();env.instance.editor.commands.setContent({type:'doc',content:[
+  {type:'paragraph',content:[{type:'text',text:'\t'},{type:'text',text:'Important',marks:[{type:'bold'}]}]},
+  {type:'codeBlock',attrs:{language:'r'},content:[{type:'text',text:'    x <- 1\n\ty <- 2'}]},
+  {type:'bulletList',content:[{type:'listItem',content:[{type:'paragraph',content:[{type:'text',text:'Parent'}]},{type:'bulletList',content:[{type:'listItem',content:[{type:'paragraph',content:[{type:'text',text:'Child'}]}]}]}]}]},
+  {type:'paragraph',content:[{type:'text',text:'End'}]},
+ ]});
+ for(let i=0;i<3;i++){
+  const saved=env.text();env.close();env=await editor({text:saved});
+  assert.equal(env.instance.view.dom.querySelectorAll('pre').length,1);assert.equal(env.instance.view.dom.querySelector('pre').textContent,'    x <- 1\n\ty <- 2');
+  assert.equal(env.instance.view.dom.querySelector('strong').textContent,'Important');assert.ok(env.instance.view.dom.querySelector('li li'));
+  env.instance.editor.commands.setTextSelection(env.instance.editor.state.doc.content.size-1);env.instance.editor.commands.insertContent('!');
+ }
+ assert.equal((env.text().match(/```/g)||[]).length,2);env.close();
+});
+
+test('blockquote emphasis keeps bold text and mathematics rendered without code fences',async()=>{
+ const env=await editor({text:'> **Important** and *explanation*.\n>\n> $x^2$'});
+ assert.ok(env.instance.view.dom.querySelector('blockquote strong'));assert.ok(env.instance.view.dom.querySelector('blockquote em'));assert.ok(env.instance.view.dom.querySelector('blockquote math'));
+ assert.equal(env.instance.view.dom.querySelector('pre'),null);env.close();
+});
+
 test('Ctrl+B and Ctrl+I produce visible marks, Markdown output and separate undo steps',async()=>{
  const env=await editor();env.key('b');assert.equal(env.text(),'**word**');assert.equal(env.instance.view.dom.querySelector('strong').textContent,'word');
  env.key('i');assert.match(env.text(),/\*{3}word\*{3}/);assert.ok(env.instance.view.dom.querySelector('strong em,em strong'));

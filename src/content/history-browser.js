@@ -207,6 +207,7 @@
     this.appendError(view, "Wait for the current answer or stop it before opening discussions."); return;
    }
    this.closeMenu(root);
+   this.rememberChatPosition(view);
    const browser = { dir: view.ctx.dir, scrollTop: view.logEl.scrollTop };
    view.historyBrowser = browser; root.dataset.historyBrowser = "true";
    root.querySelector(".abstractin-history")?.setAttribute("aria-expanded", "true");

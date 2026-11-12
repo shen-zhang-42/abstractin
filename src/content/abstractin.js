@@ -1242,9 +1242,19 @@ AbstractIn = {
 			log.scrollTo({ top: log.scrollHeight, behavior: "smooth" });
 		});
 		jump.hidden = true;
-		log.addEventListener("scroll", () => this.updateJump(root));
+		let positionTimer;
+		const savePosition = () => { win.clearTimeout(positionTimer); this.rememberChatPosition(this._views.get(root)); };
+		log.addEventListener("scroll", () => {
+			this.updateJump(root);
+			win.clearTimeout(positionTimer);
+			positionTimer = win.setTimeout(savePosition, 250);
+		});
+		cleanup.push(savePosition);
 		// Refit formulas and tables when the pane is resized or the maths font arrives.
 		let win = doc.defaultView;
+		win.addEventListener("pagehide", savePosition);
+		win.addEventListener("unload", savePosition);
+		cleanup.push(() => { win.removeEventListener("pagehide", savePosition); win.removeEventListener("unload", savePosition); });
 		if (doc.fonts && doc.fonts.addEventListener) {
 			let refit = () => log.isConnected && this.fitWideContent(log);
 			doc.fonts.addEventListener("loadingdone", refit);
@@ -1609,7 +1619,38 @@ AbstractIn = {
 	},
 
 	scrollToEnd(logEl) {
+		if (logEl._replayingHistory) return;
 		logEl.scrollTop = logEl.scrollHeight;
+	},
+
+	rememberChatPosition(view) {
+		if (!view?._chatPositionDir || view.logEl._replayingHistory || !view.logEl.clientHeight) return;
+		if (!view.historyBrowser && view.logEl.querySelector(".abstractin-history-browser")) return;
+		const log = view.logEl;
+		const top = view.historyBrowser?.scrollTop ?? log.scrollTop;
+		const position = { top };
+		if (!view.historyBrowser) {
+			const messages = [...log.children].filter(node => node.matches(".abstractin-user, .abstractin-turn"));
+			const edge = log.getBoundingClientRect().top;
+			const index = messages.findIndex(node => node.getBoundingClientRect().bottom > edge);
+			if (index >= 0) {
+				position.index = index;
+				position.offset = messages[index].getBoundingClientRect().top - edge;
+			}
+		}
+		this.setPref("chatPosition." + encodeURIComponent(view._chatPositionDir), JSON.stringify(position));
+	},
+
+	restoreChatPosition(view) {
+		if (!view?._chatPositionDir || !view.logEl) return;
+		const log = view.logEl;
+		const position = this.getJSONPref("chatPosition." + encodeURIComponent(view.ctx.dir), null);
+		log.scrollTop = Number.isFinite(position?.top) ? Math.max(0, position.top) : log.scrollHeight;
+		if (Number.isInteger(position?.index) && Number.isFinite(position.offset) && log.clientHeight) {
+			const message = [...log.children].filter(node => node.matches(".abstractin-user, .abstractin-turn"))[position.index];
+			if (message) log.scrollTop += message.getBoundingClientRect().top - log.getBoundingClientRect().top - position.offset;
+		}
+		this.updateJump(view.root);
 	},
 
 	updateJump(root) {
@@ -2185,6 +2226,15 @@ AbstractIn = {
 	},
 
 	renderMessages(view, history) {
+		this.rememberChatPosition(view);
+		view.logEl._replayingHistory = true;
+		try { this.renderChatMessages(view, history); }
+		finally { view.logEl._replayingHistory = false; }
+		view._chatPositionDir = view.ctx.dir;
+		this.restoreChatPosition(view);
+	},
+
+	renderChatMessages(view, history) {
 		this.restorePaperGuide(view, history);
 		view.logEl.textContent = "";
 		view.backStack = [];
@@ -2434,6 +2484,7 @@ AbstractIn = {
 		// A setup started while context/history was loading belongs to the live view.
 		let live = this._views.get(root);
 		if (live?.readingSetup && [live.ctx.paperItem?.id, live.ctx.attachmentItem?.id].includes(item.id)) return;
+		this.rememberChatPosition(this._views.get(root));
 		this._views.set(root, view);
 		this.updateReadingControls(view);
 		this.renderPaperChip(root, this.paperInfo(ctx));
@@ -5451,7 +5502,7 @@ AbstractIn = {
 			"\\[[^\\]]+\\]\\([^)\\s]+\\)",
 		].join("|"), "g");
 		let appendText = value => {
-			this.latexText(value).split("\n").forEach((line, i) => {
+			this.latexText(value.replace(/&#(32|9);/g, (_, code) => code === "32" ? " " : "\t")).split("\n").forEach((line, i) => {
 				if (i) parent.appendChild(this.el(doc, "br"));
 				parent.appendChild(doc.createTextNode(line));
 			});

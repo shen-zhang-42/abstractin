@@ -75,6 +75,18 @@ test('note window is independent of the document discussion and reopening focuse
  assert.equal(state.note, note);
 });
 
+test('encoded paragraph indentation displays as whitespace while real code remains literal', async () => {
+ const { p, note, parent, document, window } = await setup();
+ const source = '&#9;**Indented bold**\n\n&#32;&#32;&#32;&#32;Normal paragraph\n\n```text\n&#9;literal code\n```';
+ note.setNote(p.markdownNoteHTML(note, 'Indentation', source, parent, 2));
+ assert.equal(p.markdownNoteData(note).markdown, source);
+ const display = document.createElement('div'); display.innerHTML = note.getNote();
+ assert.equal(display.querySelector('strong').textContent, 'Indented bold');
+ assert.match(display.querySelector('code').textContent, /&#9;literal code/);
+ const prose = [...display.querySelectorAll('p')].map(node => node.textContent).join('\n');
+ assert.doesNotMatch(prose, /&#(?:9|32);/); window.close();
+});
+
 test('the visual note editor has a fixed header, one editing surface, and saves Markdown source', async () => {
  const { p, window, document, note, state } = await setup();
  let options; const install = p.installMathComposer; p.installMathComposer = function(input, config) { if (config?.note) options = config; return install.call(this, input, config); };

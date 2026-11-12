@@ -273,7 +273,10 @@ Object.assign(AbstractIn, {
 				// Selecting an unloaded PDF precedes its Reader instance. Hide the old
 				// attachment immediately and resume on the subsequent load event.
 				state.reader = null;
-				for (let entry of state.views.values()) entry.body.hidden = true;
+				for (let entry of state.views.values()) {
+					this.rememberChatPosition(this._views.get(entry.root));
+					entry.body.hidden = true;
+				}
 				if (!state.panel.querySelector(".abstractin-reader-loading")) state.panel.append(this.el(doc, "div", "abstractin-notice abstractin-reader-loading", "Loading selected PDF…"));
 				this.updateReaderPanelButtons(win);
 			}
@@ -319,7 +322,10 @@ Object.assign(AbstractIn, {
 			if (!this.readerPanelNodeAlive(existing.body) || !this.readerPanelNodeAlive(existing.root)) {
 				this.releaseReaderPanelView(state, cachedReader, existing);
 				if (cachedReader === reader) entry = null;
-			} else existing.body.hidden = true;
+			} else {
+				this.rememberChatPosition(this._views.get(existing.root));
+				existing.body.hidden = true;
+			}
 		}
 		if (!entry) {
 			let body = this.el(win.document, "div", "abstractin-reader-view");
@@ -341,7 +347,7 @@ Object.assign(AbstractIn, {
 		this.updateReaderPanelButtons(win);
 		this.fitWideContent(entry.root);
 		let view = this._views.get(entry.root);
-		if (view) { this.applyDraft(view); view.input.focus(); }
+		if (view) { this.restoreChatPosition(view); this.applyDraft(view); view.input.focus({ preventScroll: true }); }
 	},
 
 	closeReaderPanel(win, { restoreContext = true } = {}) {
@@ -352,6 +358,7 @@ Object.assign(AbstractIn, {
 	},
 
 	releaseReaderPanelView(state, reader, entry) {
+		this.cleanupReaderPanelResource(() => this.rememberChatPosition(this._views.get(entry.root)));
 		// Remove registrations before touching any potentially dead DOM wrapper.
 		state.views.delete(reader); this._views.delete(entry.root);
 		this.cleanupReaderPanelResource(() => entry.root.disposeUI?.());
@@ -404,6 +411,7 @@ Object.assign(AbstractIn, {
 
 	closeReaderPanelState(state, { restoreContext = true } = {}) {
 		if (!state.active) return;
+		for (const entry of state.views.values()) this.cleanupReaderPanelResource(() => this.rememberChatPosition(this._views.get(entry.root)));
 		state.active = false;
 		state.panel.hidden = true; state.splitter.hidden = true;
 		if (restoreContext && state.contextWasOpen && state.win.ZoteroContextPane) state.win.ZoteroContextPane.collapsed = false;

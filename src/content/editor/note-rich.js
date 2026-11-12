@@ -10,6 +10,7 @@ import { Slice } from '@tiptap/pm/model';
 import { closeHistory } from '@tiptap/pm/history';
 import { markdownShortcuts } from './markdown-shortcuts.js';
 import { noteSource } from './note-source.js';
+import { NoteParagraph } from './note-paragraph.js';
 
 // The rich document is transient. Only Markdown is sent to the parent/saved.
 export function createRichNote(config) {
@@ -76,7 +77,7 @@ export function createRichNote(config) {
  });
  editor = new Editor({
   element: root, editable: !config.disabled, injectCSS: false,
-  extensions: [StarterKit.configure({ link: { openOnClick: false, protocols: ['zotero'] }, underline: false, trailingNode: false }), Markdown.configure({ markedOptions: { gfm: true } }),
+  extensions: [StarterKit.configure({ link: { openOnClick: false, protocols: ['zotero'] }, underline: false, trailingNode: false, paragraph: false }), NoteParagraph, Markdown.configure({ markedOptions: { gfm: true } }),
    TableKit.configure({ table: { resizable: false } }), TaskList, TaskItem.configure({ nested: true }), Image.configure({ inline: true, allowBase64: true }),
    Mathematics.configure({ katexOptions: { output: 'mathml', throwOnError: false, trust: false }, inlineOptions: { onClick: editMath }, blockOptions: { onClick: editMath } }), shortcuts, reveal.extension],
   content: source, contentType: 'markdown',
