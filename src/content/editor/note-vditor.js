@@ -69,6 +69,32 @@ export async function createVditorNote(config, Vditor) {
   savedSelection = { from, to, markdown: normalized.slice(from, to), sourceSelection: { baseMarkdown: source, normalizedMarkdown: normalized } };
  };
  const selectionChanged = () => { if (!syncing && !destroyed) captureSelection(); };
+ // Windows word selection can include the following space. Trim only this
+ // double-click gesture; deliberate drag/keyboard selections stay untouched.
+ const selectWord = () => {
+  const selection = window.getSelection();
+  if (!selection.rangeCount || selection.isCollapsed) return;
+  const range = selection.getRangeAt(0);
+  if (!content.contains(range.startContainer) || !content.contains(range.endContainer)) return;
+  const text = range.toString(), trailing = text.match(/[ \t\u00a0]+$/);
+  if (!trailing || !text.slice(0, -trailing[0].length).trim() || /[\r\n]/.test(text)) return;
+  const nodes = [], walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+  let node, remaining = trailing[0].length;
+  while ((node = walker.nextNode())) if (range.intersectsNode(node)) nodes.push(node);
+  const trimmed = range.cloneRange();
+  for (let index = nodes.length - 1; index >= 0; index--) {
+   node = nodes[index];
+   const end = node === range.endContainer ? range.endOffset : node.length;
+   const start = node === range.startContainer ? range.startOffset : 0;
+   if (remaining <= end - start) { trimmed.setEnd(node, end - remaining); break; }
+   remaining -= end - start;
+  }
+  const backward = selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset;
+  if (backward && selection.setBaseAndExtent) selection.setBaseAndExtent(trimmed.endContainer, trimmed.endOffset, trimmed.startContainer, trimmed.startOffset);
+  else { selection.removeAllRanges(); selection.addRange(trimmed); }
+  selectionChanged();
+ };
+ content.addEventListener('dblclick', selectWord);
  document.addEventListener('selectionchange', selectionChanged);
  content.addEventListener('mouseup', selectionChanged);
  content.addEventListener('keyup', selectionChanged);
@@ -118,6 +144,7 @@ export async function createVditorNote(config, Vditor) {
   measure() {},
   destroy() {
    destroyed = true; document.removeEventListener('selectionchange', selectionChanged);
+   content.removeEventListener('dblclick', selectWord);
    content.removeEventListener('mouseup', selectionChanged); content.removeEventListener('keyup', selectionChanged); content.removeEventListener('blur', selectionChanged);
    root.removeEventListener('keydown', keydown, true); root.removeEventListener('paste', paste, true); root.removeEventListener('drop', drop, true);
    root.removeEventListener('input', input, true); root.removeEventListener('compositionend', input, true);

@@ -107,3 +107,23 @@ test('native input and explicit flush synchronize before Vditor undo debounce',a
  instance.vditor.setValue('Immediately saved');instance.flush();assert.match(changes.at(-1)[0],/Immediately saved/);
  instance.vditor.options.input(instance.vditor.getValue());assert.equal(changes.length,2,'debounced callback does not duplicate input');env.close();
 });
+
+test('double-click excludes trailing spaces without changing intentional selections or source', async () => {
+ const env = await setup('Streaming was disruptive.'), { instance, window, select, changes } = env;
+ select('Streaming ');
+ instance.view.dom.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true }));
+ assert.equal(window.getSelection().toString(), 'Streaming ', 'ordinary selection retains spaces');
+ instance.view.dom.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+ assert.equal(window.getSelection().toString(), 'Streaming');
+ assert.equal(instance.getSelectionSnapshot().markdown, 'Streaming');
+ assert.equal(instance.getMarkdown(), 'Streaming was disruptive.');
+ assert.equal(changes.length, 0);
+ // Range endpoints may be element boundaries and spaces may cross text nodes.
+ instance.view.dom.innerHTML = '<p><span>Streaming</span><span> </span>was disruptive.</p>';
+ const range = window.document.createRange(), paragraph = instance.view.dom.firstChild;
+ range.setStart(paragraph, 0); range.setEnd(paragraph, 2);
+ window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+ instance.view.dom.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+ assert.equal(window.getSelection().toString(), 'Streaming');
+ env.close();
+});
