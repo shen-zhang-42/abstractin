@@ -13,7 +13,7 @@ export async function createVditorNote(config, Vditor) {
  const ready = new Promise(resolve => { resolveReady = resolve; });
  const cdn = new URL('./vditor/', document.baseURI).href.replace(/\/$/, '');
  const editor = new Vditor(root, {
-  mode: 'ir', value: source, height: '100%', minHeight: 0, width: '100%',
+  mode: 'wysiwyg', value: source, height: '100%', minHeight: 0, width: '100%',
   cdn, lang: 'en_US', i18n: window.VditorI18n,
   cache: { enable: false }, resize: { enable: false }, counter: { enable: false },
   outline: { enable: false }, upload: { url: '' },
@@ -32,7 +32,7 @@ export async function createVditorNote(config, Vditor) {
  });
  await ready;
  rendered = editor.getValue();
- const content = root.querySelector('.vditor-ir .vditor-reset');
+ const content = root.querySelector('.vditor-wysiwyg .vditor-reset');
  content.setAttribute('aria-label', 'Markdown note');
  let disabled = !!config.disabled;
  if (disabled) editor.disabled();
@@ -60,7 +60,7 @@ export async function createVditorNote(config, Vditor) {
   const start = token + 'START', end = token + 'END';
   const tail = copy.cloneRange(); tail.collapse(false); tail.insertNode(document.createTextNode(end));
   copy.collapse(true); copy.insertNode(document.createTextNode(start));
-  const marked = editor.vditor.lute.VditorIRDOM2Md(clone.innerHTML).replace(/\u00a0/g, ' ');
+  const marked = editor.vditor.lute.VditorDOM2Md(clone.innerHTML).replace(/\u00a0/g, ' ');
   const from = marked.indexOf(start), stop = marked.indexOf(end);
   if (from < 0 || stop < from || marked.indexOf(start, from + start.length) >= 0 || marked.indexOf(end, stop + end.length) >= 0) { savedSelection = null; return; }
   const normalized = marked.slice(0, from) + marked.slice(from + start.length, stop) + marked.slice(stop + end.length);

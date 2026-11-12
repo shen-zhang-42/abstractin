@@ -15,13 +15,13 @@ async function setup(text = 'Original **note**', disabled = false) {
  class Vditor {
   constructor(root, options) {
    this.root = root; this.options = options; this.lute = window.Lute.New(); this.lute.SetInlineMath(true); this.lute.SetMark(true);
-   root.innerHTML = '<div class="vditor-ir"><pre class="vditor-reset" contenteditable="true"></pre></div>';
+   root.innerHTML = '<div class="vditor-wysiwyg"><pre class="vditor-reset" contenteditable="true"></pre></div>';
    this.content = root.querySelector('pre');
    this.vditor = { lute: this.lute, options: { toolbar: options.toolbar.map(name => ({ name, hotkey: hotkeys[name], tip: name })) } };
    this.setValue(options.value); queueMicrotask(options.after);
   }
-  setValue(value) { this.content.innerHTML = this.lute.Md2VditorIRDOM(value); }
-  getValue() { return this.lute.VditorIRDOM2Md(this.content.innerHTML).replace(/\u00a0/g, ' '); }
+  setValue(value) { this.content.innerHTML = this.lute.Md2VditorDOM(value); }
+  getValue() { return this.lute.VditorDOM2Md(this.content.innerHTML).replace(/\u00a0/g, ' '); }
   disabled() { this.content.contentEditable = 'false'; }
   enable() { this.content.contentEditable = 'true'; }
   focus() { this.content.focus(); }
@@ -42,10 +42,10 @@ async function setup(text = 'Original **note**', disabled = false) {
  return { window, instance, changes, keys, select, close() { instance.destroy(); window.close(); } };
 }
 
-test('Vditor runs native IR with local resources and preserves original Markdown on open', async () => {
+test('Vditor runs native WYSIWYG with local resources and preserves original Markdown on open', async () => {
  const original = '# Title\n\n| A | B |\n| --- | --- |\n| x | **y** |\n\n$x^2$\n\n```r\nx <- 1\n```\n';
  const env = await setup(original), { instance, changes } = env;
- assert.equal(instance.vditor.options.mode, 'ir'); assert.equal(instance.vditor.options.cache.enable, false);
+ assert.equal(instance.vditor.options.mode, 'wysiwyg'); assert.equal(instance.vditor.options.cache.enable, false);
  assert.equal(instance.vditor.options.cdn, 'https://example.test/editor/vditor');
  assert.ok(instance.view.dom.querySelector('table')); assert.ok(instance.view.dom.querySelector('strong'));
  assert.equal(instance.getMarkdown(), original); assert.equal(changes.length, 0);
