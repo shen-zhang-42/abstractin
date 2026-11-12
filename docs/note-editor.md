@@ -6,7 +6,7 @@ The font selector appears at the left of the editor formatting toolbar. Its `?` 
 
 The **Source** button beside **Save** manages the current note's source documents. Source names appear on separate compact rows; the remove button unlinks that source. The sidebar's **Source** button independently manages the editor's document filter. It shows the union of notes linked to those documents, listing a shared note only once. A shared note is available when any one of its linked documents is in the editor filter. Changing the editor filter does not relink an open note, and changing a note's source list does not change the editor filter. With no editor sources selected, the sidebar shows the library's notes. Source pickers support title search and adding documents selected in Zotero.
 
-When editing a quotation, lines beginning with `>` continue the quotation. Unmarked prose remains an ordinary paragraph: if typing, pasting or deleting a separator would make it a lazy quote continuation, the editor keeps a blank line in the Markdown source. Backspace moves the caret onto that separator and then back to the preceding line, without absorbing the ordinary paragraph. Existing notes and AI edit proposals are not rewritten on load.
+Quotations use the editor's default Markdown behavior. An unmarked line immediately after a quotation can continue that quotation; insert a blank line to start an ordinary paragraph. The editor does not add or protect quotation separators automatically.
 
 Use `$...$` for inline mathematics and `$$...$$` for display mathematics. KaTeX supports rectangular commutative diagrams:
 

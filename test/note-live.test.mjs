@@ -71,23 +71,20 @@ test('note formatting inside a table targets its cell and keeps edge spaces outs
  env.close();
 });
 
-test('backward deletion keeps an ordinary paragraph outside a preceding quotation', async () => {
+test('backward deletion uses default Markdown quotation continuation without restoring separators', async () => {
  const source = '> Quoted text\n\nOrdinary paragraph';
  const env = await setup(source), { api } = env;
  const from = source.indexOf('Ordinary');
  api.view.dispatch({ changes: { from: from - 1, to: from, insert: '' }, selection: { anchor: from - 1 }, userEvent: 'delete.backward' });
- assert.equal(api.getMarkdown(), source);
- assert.equal(api.view.state.selection.main.head, from - 1, 'caret moves to the separator instead of getting stuck');
- api.view.dispatch({ changes: { from: from - 2, to: from - 1, insert: '' }, selection: { anchor: from - 2 }, userEvent: 'delete.backward' });
- assert.equal(api.getMarkdown(), source);
- assert.equal(api.view.state.selection.main.head, from - 2, 'a further backward deletion reaches the end of the quotation');
+ assert.equal(api.getMarkdown(), '> Quoted text\nOrdinary paragraph');
+ assert.equal(api.view.state.selection.main.head, from - 1);
  env.close();
 });
 
-test('typing or pasting unmarked prose after a quotation saves an explicit paragraph boundary', async () => {
+test('pasting after a quotation keeps the default Markdown source unchanged', async () => {
  const env = await setup('> Quote\n'), { api } = env;
  api.view.dispatch({ changes: { from: api.view.state.doc.length, insert: 'Ordinary **paragraph**' }, userEvent: 'input.paste' });
- assert.equal(api.getMarkdown(), '> Quote\n\nOrdinary **paragraph**');
+ assert.equal(api.getMarkdown(), '> Quote\nOrdinary **paragraph**');
  env.close();
 });
 
@@ -115,14 +112,16 @@ test('loading, AI replacements and external sync do not rewrite pre-existing laz
 
 test('font selection and shortcut help live in the formatting toolbar and do not change Markdown', async () => {
  const env = await setup('Before **bold** after.'), { api, window, changes } = env;
- const toolbar = window.document.querySelector('.note-format-toolbar'), font = toolbar.querySelector('select');
- assert.equal(toolbar.firstElementChild, font); assert.equal(font.options.length, 7);
- font.value = 'georgia'; font.dispatchEvent(new window.Event('change', { bubbles: true }));
+ const toolbar = window.document.querySelector('.note-format-toolbar'), font = toolbar.querySelector('.note-font-button');
+ assert.equal(toolbar.firstElementChild, font.parentElement); assert.equal(toolbar.querySelector('select'), null);
+ font.click(); const fontMenu = toolbar.querySelector('.note-font-menu'); assert.equal(fontMenu.hidden, false);
+ assert.equal(fontMenu.children.length, 7); fontMenu.querySelector('[data-font=georgia]').click();
+ assert.equal(fontMenu.hidden, true); assert.equal(font.textContent, 'Georgia');
  assert.match(window.document.documentElement.style.getPropertyValue('--note-display-font'), /Georgia/);
  const help = toolbar.querySelector('.note-shortcuts-button'), panel = toolbar.querySelector('.note-shortcuts-panel');
  assert.equal(panel.hidden, true); help.click(); assert.equal(panel.hidden, false);
  assert.match(panel.textContent, /Ctrl\+B/); assert.match(panel.textContent, /Ctrl\+Alt\+1/);
- api.setFont('mono'); assert.equal(font.value, 'mono');
+ api.setFont('mono'); assert.equal(font.dataset.font, 'mono');
  assert.equal(api.getMarkdown(), 'Before **bold** after.'); assert.equal(changes.length, 0);
  env.close();
 });
