@@ -1,5 +1,4 @@
-import Vditor from 'vditor';
-import { createVditorNote } from './note-vditor.js';
+import { createLiveNote } from './note-live.js';
 
 // Loaded exclusively by NoteOut, never by ordinary literature discussions.
-window.AbstractInComposer = { create: config => createVditorNote(config, Vditor) };
+window.AbstractInComposer = { create: createLiveNote };

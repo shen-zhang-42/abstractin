@@ -1,31 +1,19 @@
 <!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="color-scheme" content="light dark">
-<title>Note editor</title>
-<link rel="stylesheet" href="vditor/dist/index.css">
+<html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>Note editor</title>
+<link rel="stylesheet" href="note.bundle.css">
 <style>
-html, body, #editor { height: 100%; margin: 0; overflow: hidden; }
-body { background: transparent; color: var(--editor-text, CanvasText); font: 13px/1.8 system-ui, sans-serif; }
-#editor.vditor { border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; --panel-background-color: Canvas; --panel-shadow: 0 3px 10px #0002; --textarea-text-color: var(--editor-text, CanvasText); --toolbar-background-color: transparent; --toolbar-icon-color: var(--editor-text, CanvasText); --toolbar-icon-hover-color: var(--editor-text, CanvasText); --toolbar-icon-hover-background-color: var(--editor-hover, #8882); --border-color: var(--editor-faint, #aaa); }
-#editor .vditor-toolbar { padding: 4px 2px; border-bottom: 1px solid var(--editor-faint, #aaa); background: transparent; }
-#editor .vditor-toolbar__item { padding: 0 4px; }
-#editor .vditor-content { min-height: 0; background: transparent; }
-#editor .vditor-wysiwyg { min-width: 0; background: transparent; }
-#editor .vditor-reset { box-sizing: border-box; padding: 14px 6px 60px 0 !important; color: inherit; background: transparent; font: inherit; overflow-wrap: anywhere; }
-#editor .vditor-reset table { display: table; width: 100%; }
-#editor .vditor-reset :is(td, th) { border-color: var(--editor-faint, #aaa); }
-#editor .vditor-reset tr { background: transparent; }
-#editor .vditor-reset tr:nth-child(2n), #editor .vditor-reset th { background: var(--editor-hover, #8881); }
-#editor .vditor-reset :is(code, pre), #editor .vditor-ir__marker { font-family: ui-monospace, Consolas, monospace; }
-#editor .vditor-reset blockquote { color: inherit; border-color: var(--editor-faint, #aaa); }
-#editor .vditor-reset a { color: inherit; }
-</style>
-<script defer id="vditorIconScript" src="vditor/dist/js/icons/ant.js"></script>
-<script defer id="vditorLuteScript" src="vditor/dist/js/lute/lute.min.js"></script>
-<script defer id="vditorI18nScripten_US" src="vditor/dist/js/i18n/en_US.js"></script>
-<script defer src="note.bundle.js"></script>
-</head>
-<body><div id="editor"></div></body>
-</html>
+html,body,#editor { height:100%; margin:0; overflow:hidden; }
+body { background:transparent; color:var(--editor-text,CanvasText); font:13px/1.8 system-ui,sans-serif; }
+#editor { display:flex; flex-direction:column; --md-heading:currentColor; --md-bold:currentColor; --md-italic:currentColor; --md-link:currentColor; --md-code-bg:var(--editor-hover,#8881); }
+#editor>.cm-editor { flex:1; min-height:0; }
+.note-format-toolbar { display:flex; align-items:center; gap:4px; padding:4px 2px; border-bottom:1px solid var(--editor-faint,#aaa); flex-wrap:wrap; }
+.note-format-toolbar button { font:inherit; color:inherit; background:transparent; border:0; border-radius:4px; padding:3px 8px; cursor:pointer; }
+.note-format-toolbar button:hover { background:var(--editor-hover,#8882); }
+.note-format-toolbar button[data-action=bold] { font-weight:700; }
+.note-format-toolbar button[data-action=italic] { font-style:italic; }
+.cm-table-editor table { width:100%; border-collapse:collapse; }
+.cm-table-editor :is(th,td) { border:1px solid var(--editor-faint,#aaa); padding:6px 10px; }
+.cm-table-toggle { color:inherit; background:var(--editor-hover,#8881); border:1px solid var(--editor-faint,#aaa); border-radius:4px; }
+.cm-table-editor th { background:var(--editor-hover,#8881); }
+.cm-content .cm-codeblock-container { background:var(--editor-hover,#8881); color:inherit; }
+</style><script defer src="note.bundle.js"></script></head><body><div id="editor"></div></body></html>

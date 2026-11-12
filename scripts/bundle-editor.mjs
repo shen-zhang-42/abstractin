@@ -13,17 +13,19 @@ for (const name of components) {
 }
 writeFileSync(new URL("../src/content/editor/CODEMIRROR-LICENSES.txt", import.meta.url), licenses);
 writeFileSync(new URL("../src/content/editor/dependencies.json", import.meta.url), JSON.stringify(versions, null, "\t") + "\n");
-const results = await Promise.all(['composer', 'note'].map(name => build({ entryPoints: [fileURLToPath(new URL(`../src/content/editor/${name}-entry.js`, import.meta.url))], outfile: fileURLToPath(new URL(`../src/content/editor/${name}.bundle.js`, import.meta.url)), bundle: true, format: "iife", target: "firefox115", supported: { 'template-literal': false }, minify: true, legalComments: "eof", metafile: true })));
-writeFileSync(new URL('../src/content/editor/note.html', import.meta.url), readFileSync(new URL('../src/content/editor/note-vditor.html', import.meta.url), 'utf8'));
+const results = await Promise.all(['composer', 'note'].map(name => build({ entryPoints: [fileURLToPath(new URL(`../src/content/editor/${name}-entry.js`, import.meta.url))], outfile: fileURLToPath(new URL(`../src/content/editor/${name}.bundle.js`, import.meta.url)), bundle: true, format: "iife", target: "firefox115", supported: { 'template-literal': false }, loader: { '.woff': 'file', '.woff2': 'file', '.ttf': 'file' }, assetNames: 'fonts/[name]-[hash]', minify: true, legalComments: "eof", metafile: true })));
+writeFileSync(new URL('../src/content/editor/note.html', import.meta.url), readFileSync(new URL('../src/content/editor/note-live.html', import.meta.url), 'utf8'));
 const vendor = new URL('../src/content/editor/vditor/', import.meta.url), upstream = new URL('../node_modules/vditor/', import.meta.url);
 mkdirSync(new URL('dist/', vendor), { recursive: true });
 for (const asset of ['js', 'css', 'images', 'index.css']) cpSync(new URL('dist/' + asset, upstream), new URL('dist/' + asset, vendor), { recursive: true });
 cpSync(new URL('LICENSE', upstream), new URL('LICENSE', vendor));
 writeFileSync(new URL('package.json', vendor), JSON.stringify({ name: 'vditor', version: JSON.parse(readFileSync(new URL('package.json', upstream))).version, license: 'MIT' }, null, 2) + '\n');
 if (Object.keys(results[0].metafile.inputs).some(path => /node_modules\/(?:vditor|@tiptap|prosemirror-|katex|marked)/.test(path))) throw new Error('Rich note dependencies leaked into the discussion bundle');
-if (Object.keys(results[1].metafile.inputs).some(path => /(?:note-source\.js|note-rich\.js|node_modules\/(?:@tiptap|prosemirror-))/.test(path))) throw new Error('Legacy custom editing leaked into the Vditor bundle');
+if (Object.keys(results[1].metafile.inputs).some(path => /(?:note-source\.js|note-rich\.js|node_modules\/(?:vditor|@tiptap|prosemirror-))/.test(path))) throw new Error('Legacy custom editing leaked into the Live Markdown bundle');
 const packages = new Map(), project = fileURLToPath(new URL("../", import.meta.url));
-for (const input of new Set(results.flatMap(result => Object.keys(result.metafile.inputs)))) {
+// The upstream Live Markdown distribution embeds these libraries internally.
+const embeddedLicenses = ['highlight.js', 'lowlight', 'devlop'].map(name => `node_modules/${name}/package.json`);
+for (const input of new Set([...results.flatMap(result => Object.keys(result.metafile.inputs)), ...embeddedLicenses])) {
  if (!input.includes('node_modules/')) continue;
  let dir = dirname(resolve(project, input));
  while (!existsSync(join(dir, 'package.json')) && dirname(dir) !== dir) dir = dirname(dir);
@@ -33,7 +35,7 @@ for (const input of new Set(results.flatMap(result => Object.keys(result.metafil
  if (!license) throw new Error('Missing bundled editor license: ' + pkg.name);
  packages.set(pkg.name + '@' + pkg.version, { pkg, license });
 }
-let richLicenses = 'Vditor and visual Markdown editor dependencies\n\n';
+let richLicenses = 'Live Markdown and visual Markdown editor dependencies\n\n';
 const richVersions = {};
 for (const [name, {pkg, license}] of [...packages].sort(([a],[b]) => a.localeCompare(b))) { richVersions[name] = pkg.license; richLicenses += name + '\n' + readFileSync(license, 'utf8') + '\n\n'; }
 writeFileSync(new URL('../src/content/editor/RICH-EDITOR-LICENSES.txt', import.meta.url), richLicenses);

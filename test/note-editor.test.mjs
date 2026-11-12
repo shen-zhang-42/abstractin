@@ -42,6 +42,9 @@ async function setup() {
 
 test('font menu uses separate rows and choosing a font changes display without editing Markdown', async () => {
  const {p,window,document,state}=await setup();await p.mountMarkdownNote(window,state);
+ assert.ok(document.querySelector('.abstractin-note-topline .abstractin-note-title'));
+ assert.ok(document.querySelector('.abstractin-note-file-actions .abstractin-note-save'));
+ assert.deepEqual([...document.querySelector('.abstractin-note-editor-head').children].map(node=>node.className), ['abstractin-note-topline','abstractin-note-documents','abstractin-note-toolbar']);
  const menu=document.querySelector('.abstractin-note-font-menu'),options=[...menu.querySelectorAll('[role=option]')];
  assert.equal(options.length,7);assert.equal(state.fontSelect.hidden,true);
  const source=state.input.value,revision=state.revision;menu.open=true;
@@ -440,9 +443,9 @@ test('the editor exposes an in-place shortcut reference from the actual binding 
  const { markdownShortcuts } = await import('../src/content/editor/markdown-shortcuts.js');
  const { p, window, document, state } = await setup(); await p.mountMarkdownNote(window, state);
  state.input._composerEditor = { markdownShortcuts };
- const help = document.querySelector('.abstractin-note-shortcuts'); assert.equal(help.querySelector('summary').textContent, 'Shortcuts');
+ const help = document.querySelector('.abstractin-note-shortcuts'); assert.equal(help.querySelector('summary').getAttribute('aria-label'), 'Keyboard shortcuts');
  help.open = true; help.dispatchEvent(new window.Event('toggle'));
- assert.match(help.textContent, /Ctrl\+B/); assert.match(help.textContent, /Ctrl\+Alt\+1/); assert.match(help.textContent, /Vditor's native shortcuts/);
+ assert.match(help.textContent, /Ctrl\+B/); assert.match(help.textContent, /Ctrl\+Alt\+1/); assert.match(help.textContent, /Markdown markers appear near the cursor/);
  assert.equal(help.querySelectorAll('tbody tr').length, markdownShortcuts.length + 3);
  assert.equal(state.input.value, p.markdownNoteData(state.note).markdown); state.dispose(); window.close();
 });

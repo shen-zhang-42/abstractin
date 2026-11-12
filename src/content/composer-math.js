@@ -101,7 +101,10 @@ Object.assign(AbstractIn, {
 					note: !!options.note,
 					maxHeight: options.note ? 600 : 180, minHeight: options.note ? 300 : 40, label: options.note ? "Markdown note" : "Message",
 					text: input.value, disabled: input.disabled, placeholder: input.placeholder,
-					tokens: text => this.composerMathTokens(text),
+					tokens: text => {
+						const tokens = this.composerMathTokens(text);
+						return bridge ? bridge.cloneInto(tokens, child) : tokens;
+					},
 					renderMath: (target, tex, display) => this.texToMathML(target, tex, display),
 					onChange: (text, anchor, head, changed) => {
 						updating = true;

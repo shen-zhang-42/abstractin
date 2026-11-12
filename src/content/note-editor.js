@@ -26,7 +26,7 @@
    const box = this.el(doc, "details", "abstractin-note-documents"), summary = this.el(doc, "summary"), list = this.el(doc, "div"), add = this.el(doc, "button", null, "Add selected Zotero documents");
    const status = this.el(doc, "p"); status.setAttribute("role", "status");
    const draw = () => {
-    summary.textContent = "Sources · " + (owner.documents?.length ? owner.documents.length + (owner.documents.length === 1 ? " document" : " documents") : "Independent note");
+    summary.textContent = "Sources · " + (owner.documents?.length === 1 ? owner.documents[0].title : owner.documents?.length ? owner.documents.length + " documents" : "Independent note");
     list.replaceChildren();
     for (const ref of owner.documents || []) {
      const row = this.el(doc, "div", "abstractin-note-document-ref"), remove = this.el(doc, "button", null, "×"); remove.setAttribute("aria-label", "Unlink " + ref.title);
@@ -399,12 +399,14 @@
    const append = this.el(doc, "button", null, "Append last answer"), toDiscussion = this.el(doc, "button", null, "Use in document discussion");
    toDiscussion.hidden = !state.sourceView || !!state.sourceView.ctx.noteWorkspace;
    chatToggle.hidden = !!state.home;
-   const more = this.el(doc, "details", "abstractin-note-more"), moreLabel = this.el(doc, "summary", null, "More ···"), moreActions = this.el(doc, "div", "abstractin-note-more-actions");
+   const more = this.el(doc, "details", "abstractin-note-more"), moreLabel = this.el(doc, "summary", null, "···"), moreActions = this.el(doc, "div", "abstractin-note-more-actions");
+   moreLabel.setAttribute("aria-label", "Note actions"); moreLabel.title = "Note actions";
    const trash = this.el(doc, "button", "abstractin-note-danger", "Move to Trash…"); trash.onclick = () => this.confirmTrashMarkdownNote(state);
    moreActions.append(chatToggle, append, toDiscussion, trash); more.append(moreLabel, moreActions);
    moreActions.addEventListener("click", event => { if (event.target.closest("button")) more.open = false; });
    toolbar.append(save, more, closeDraft);
-   const shortcuts = this.el(doc, "details", "abstractin-note-shortcuts"), shortcutsTitle = this.el(doc, "summary", null, "Shortcuts"), shortcutsBody = this.el(doc, "div", "abstractin-note-shortcuts-body");
+   const shortcuts = this.el(doc, "details", "abstractin-note-shortcuts"), shortcutsTitle = this.el(doc, "summary", null, "?"), shortcutsBody = this.el(doc, "div", "abstractin-note-shortcuts-body");
+   shortcutsTitle.setAttribute("aria-label", "Keyboard shortcuts"); shortcutsTitle.title = "Keyboard shortcuts";
    shortcuts.append(shortcutsTitle, shortcutsBody); toolbar.insertBefore(shortcuts, save);
    const input = this.el(doc, "textarea", "abstractin-note-source"); input.value = data.markdown; input.placeholder = "Write Markdown and LaTeX here…"; input.setAttribute("aria-label", "Markdown note");
    const fonts = { system: ['System', 'system-ui, sans-serif'], arial: ['Arial', 'Arial, sans-serif'], georgia: ['Georgia', 'Georgia, serif'], times: ['Times New Roman', '"Times New Roman", serif'], mono: ['Consolas', 'Consolas, ui-monospace, monospace'], yahei: ['Microsoft YaHei', '"Microsoft YaHei", sans-serif'], song: ['SimSun', 'SimSun, serif'] };
@@ -440,9 +442,10 @@
    };
    const editHost = this.el(doc, "div", "abstractin-note-edit-host"); editHost.append(input);
    const preview = this.el(doc, "div", "abstractin-note-preview"); preview.hidden = true;
-   const top = this.el(doc, "div", "abstractin-note-topline"); top.append(this.el(doc, "span", "abstractin-note-eyebrow", "NOTEOUT / NOTEBOOK"), status);
+   const top = this.el(doc, "div", "abstractin-note-topline"), actions = this.el(doc, "div", "abstractin-note-file-actions");
+   actions.append(status, save, more, closeDraft); top.append(title, actions);
    const header = this.el(doc, "header", "abstractin-note-editor-head"), notices = this.el(doc, "div", "abstractin-note-notices");
-   header.append(top, title, toolbar); notices.append(preview); editor.append(header, editHost, notices); host.append(editor);
+   header.append(top, toolbar); notices.append(preview); editor.append(header, editHost, notices); host.append(editor);
    Object.assign(state, { title, input, preview, status, editor, saveButton: save });
    this.updateNoteSaveButton(state);
    shortcuts.addEventListener("toggle", () => {
@@ -457,7 +460,7 @@
      const row = this.el(doc, "tr"), key = item.key.split("-").map(part => part === "Mod" ? Zotero.isMac ? "Cmd" : "Ctrl" : part === "Alt" && Zotero.isMac ? "Option" : part.length === 1 ? part.toUpperCase() : part).join("+");
      const cell = this.el(doc, "td"); cell.append(this.el(doc, "kbd", null, key)); row.append(this.el(doc, "td", null, item.label), cell); body.append(row);
     }
-    table.append(body); shortcutsBody.append(table, this.el(doc, "p", null, "Formatting uses Vditor's native shortcuts. Hover toolbar buttons for their shortcuts. Ctrl/Cmd+S saves the note."));
+    table.append(body); shortcutsBody.append(table, this.el(doc, "p", null, "Markdown markers appear near the cursor. Ctrl/Cmd+S saves the note. Table cells can be edited directly; MD shows table source."));
    });
    const report = e => { status.textContent = "Not saved: " + (e.message || e); closeDraft.hidden = false; this.logError("Markdown note", e); };
    closeDraft.onclick = async () => {
@@ -477,6 +480,7 @@
    };
    state.documents ||= data.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : []);
    const redrawDocuments = this.mountNoteDocuments(doc, header, state, change);
+   header.insertBefore(header.querySelector(".abstractin-note-documents"), toolbar);
    title.addEventListener("input", change); input.addEventListener("input", change);
    state.disposeEditor = this.installMathComposer(input, { note: true });
    save.onclick = () => flush().catch(report);
