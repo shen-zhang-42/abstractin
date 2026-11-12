@@ -10,7 +10,7 @@ import { markdownShortcuts } from './markdown-shortcuts.js';
 // The source editor is transient; only actual edits change saved Markdown.
 export function noteSource(config) {
  const key = new PluginKey('noteSource');
- let editor, active = null, serial = 0, queued = false, destroyed = false, paused = false, lastSelection = null, pendingClick = null, sourceClick = null;
+ let editor, active = null, serial = 0, queued = false, destroyed = false, paused = false, lastSelection = null, pendingClick = null, sourceClick = null, exitedAt = null;
  const selection = () => {
   if(!active)return lastSelection;
   const {from,to}=active.view.state.selection.main;
@@ -22,6 +22,13 @@ export function noteSource(config) {
   const previous = active; active = null;
   editor.view.dispatch(editor.state.tr.setMeta(key, true));
   previous.view.destroy();
+ };
+ const leaveSource = (session, direction) => {
+  if(active!==session)return;
+  const at=direction<0?session.from:session.to;
+  clear();
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(Math.min(at,editor.state.doc.content.size)),direction)));
+  exitedAt=editor.state.selection.from;editor.view.focus();schedule();
  };
  const format = action => {
   if (!active) return false;
@@ -49,7 +56,7 @@ export function noteSource(config) {
  const open = position => {
   if (destroyed || !editor.isEditable) return false;
   const doc = editor.state.doc, pos = Math.max(0,Math.min(position,doc.content.size)), resolved = doc.resolve(pos);
-  if (active && pos >= active.from && pos < active.to) return true;
+  if (active && pos >= active.from && pos <= active.to) return true;
   clear();
   lastSelection=null;
   let from, to, inline=false;
@@ -58,7 +65,14 @@ export function noteSource(config) {
   }else if(resolved.parent.inlineContent){
    const parent=resolved.parent, start=resolved.start();let at=0, children=[];
    parent.forEach(node=>{children.push({node,from:start+at,to:start+at+node.nodeSize});at+=node.nodeSize;});
-   const index=children.findIndex(child=>pos>=child.from&&pos<child.to), child=children[index];
+   let index=children.findIndex(child=>pos>=child.from&&pos<child.to);
+   // The caret immediately after a marked word still belongs to that construct,
+   // including the end of a paragraph where there is no following text node.
+   if(index<0 || !children[index].node.marks.length){
+    const previous=children.findIndex(child=>pos===child.to&&child.node.isText&&child.node.marks.length);
+    if(previous>=0)index=previous;
+   }
+   const child=children[index];
    if(!child)return false;
    if(child.node.isAtom&&!child.node.isText){from=child.from;to=child.to;}
    else if(child.node.marks.length){
@@ -94,8 +108,7 @@ export function noteSource(config) {
      const range=session.view.state.selection.main;
      const direction=range.empty && range.head===0 && ['ArrowLeft','ArrowUp'].includes(event.key) ? -1 : range.empty && range.head===session.view.state.doc.length && ['ArrowRight','ArrowDown'].includes(event.key) ? 1 : 0;
      if(direction){
-      event.preventDefault(); const at=Math.max(0,Math.min(editor.state.doc.content.size,direction<0?session.from-1:session.to));
-      clear(); editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(at),direction))); editor.view.focus(); schedule(); return true;
+      event.preventDefault();leaveSource(session,direction);return true;
      }
      if(session.inline && event.key==='Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey){
       event.preventDefault(); const at=session.to; clear();editor.commands.setTextSelection(at);editor.commands.splitBlock();editor.view.focus();return true;
@@ -105,6 +118,15 @@ export function noteSource(config) {
     focusout() { queueMicrotask(()=>{if(active===session && !session.dom.contains(document.activeElement)) clear(true);}); return false; },
    })),
    EditorView.updateListener.of(update=>{
+    if(session.ready && update.selectionSet && !update.docChanged && active===session){
+     const range=update.state.selection.main;
+     const direction=range.empty && range.head===0 ? -1 : range.empty && range.head===update.state.doc.length ? 1 : 0;
+     if(direction)queueMicrotask(()=>{
+      if(active!==session)return;
+      const current=session.view.state.selection.main;
+      if(current.empty && current.head===range.head)leaveSource(session,direction);
+     });
+    }
     if (!update.docChanged || active!==session) return;
     const parsed = editor.schema.nodeFromJSON(editor.markdown.parse(update.state.doc.toString()));
     const replacement = session.inline && parsed.childCount===1 && parsed.firstChild.type.name==='paragraph' ? parsed.firstChild.content : parsed.content.size ? parsed.content : editor.schema.nodes.paragraph.create();
@@ -117,17 +139,20 @@ export function noteSource(config) {
   editor.view.dispatch(editor.state.tr.setMeta(key,true));
   const text=doc.textBetween(from,to,'\n');
   const offset = Math.min(markdown.length,Math.max(0,markdown.indexOf(text))+Math.max(0,pos-from));
-  session.view.dispatch({selection:{anchor:offset}}); session.view.focus(); return true;
+  session.view.dispatch({selection:{anchor:offset}}); session.view.focus();session.ready=true; return true;
  };
  const schedule = () => {
   if (queued || destroyed) return;
   queued=true; queueMicrotask(()=>{
    queued=false; if(destroyed || paused || active?.dom.contains(document.activeElement) || !editor.view.hasFocus()) return;
+   if(exitedAt===editor.state.selection.from && editor.state.selection.empty)return;
+   exitedAt=null;
    if(editor.state.selection.empty) open(editor.state.selection.from); else clear();
   });
  };
  const finish = () => { paused=true; pendingClick=null; sourceClick=null; clear(true); };
  const pointerDown = event => {
+  exitedAt=null;
   pendingClick=null;sourceClick=null;
   if(!active || event.button!==0)return;
   if(active.dom.contains(event.target)){

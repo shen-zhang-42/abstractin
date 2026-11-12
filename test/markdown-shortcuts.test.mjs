@@ -202,3 +202,29 @@ test('source caret placement preserves native drag and multi-click selections',a
  mouse('mousedown',10,2);source.dispatch({selection:{anchor:2,head:6}});mouse('mouseup',10,2);mouse('click',10,2);
  assert.equal(source.state.selection.main.from,2);assert.equal(source.state.selection.main.to,6);assert.equal(env.changes(),0);env.close();
 });
+
+test('caret immediately after bold text reveals source before its closing stars',async()=>{
+ for(const text of ['Before **bold** after.','Before **bold**']){
+  const env=await editor({text});let end;
+  env.instance.editor.state.doc.descendants((node,pos)=>{if(node.isText&&node.text==='bold')end=pos+node.nodeSize;});
+  env.instance.view.focus();env.instance.editor.commands.setTextSelection(end);await Promise.resolve();
+  const block=env.instance.view.dom.querySelector('.note-inline-source');assert.ok(block,text);
+  const source=EditorView.findFromDOM(block.querySelector('.cm-editor'));
+  assert.equal(source.state.doc.toString(),'**bold**');assert.equal(source.state.selection.main.head,6);
+  assert.equal(env.changes(),0);env.close();
+ }
+});
+
+test('moving to either outer star boundary renders immediately and does not reopen on keyup',async()=>{
+ for(const side of ['left','right']){
+  const env=await editor({text:'Before **bold** after.'});env.instance.view.focus();env.instance.editor.commands.setTextSelection(12);await Promise.resolve();
+  const block=env.instance.view.dom.querySelector('.note-inline-source'),source=EditorView.findFromDOM(block.querySelector('.cm-editor'));
+  source.dispatch({selection:{anchor:side==='left'?1:7}});await Promise.resolve();
+  assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),block,'caret between the stars keeps editing');
+  source.dispatch({selection:{anchor:side==='left'?0:8}});await Promise.resolve();await Promise.resolve();
+  assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null,'outer boundary renders without another key');
+  env.instance.view.dom.dispatchEvent(new env.window.KeyboardEvent('keyup',{key:side==='left'?'ArrowLeft':'ArrowRight',bubbles:true}));await Promise.resolve();
+  assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null,'the exit position stays rendered');
+  assert.equal(env.text(),'Before **bold** after.');assert.equal(env.changes(),0);env.close();
+ }
+});
