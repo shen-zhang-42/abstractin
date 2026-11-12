@@ -52,6 +52,21 @@ test('font menu uses separate rows and choosing a font changes display without e
  state.dispose();window.close();
 });
 
+test('Save button tracks unsaved edits, successful saves, failures and newer edits during a save',async()=>{
+ const {p,window,state,note}=await setup();await p.mountMarkdownNote(window,state);
+ const edit=text=>{state.input.value=text;state.input.dispatchEvent(new window.Event('input',{bubbles:true}));};
+ assert.equal(state.saveButton.dataset.unsaved,'false');edit('Changed');assert.equal(state.saveButton.dataset.unsaved,'true');
+ await state.saveButton.onclick();assert.equal(state.saveButton.dataset.unsaved,'false');
+ let entered,release;const started=new Promise(resolve=>{entered=resolve;}),gate=new Promise(resolve=>{release=resolve;});
+ const save=note.saveTx.bind(note);note.saveTx=async()=>{entered();await gate;return save();};
+ edit('Saving snapshot');const pending=state.flush();await started;
+ edit('Newer input');release();await pending;assert.equal(state.saveButton.dataset.unsaved,'true');
+ note.saveTx=save;await state.flush();assert.equal(state.saveButton.dataset.unsaved,'false');
+ edit('Unsaved after failure');note.saveTx=async()=>{throw new Error('Save failed');};
+ await assert.rejects(state.flush(),/Save failed/);assert.equal(state.saveButton.dataset.unsaved,'true');
+ state.dispose();window.close();
+});
+
 test('Markdown source round-trips exactly and rendered native notes contain KaTeX without executing HTML', async () => {
  const { p, note, parent } = await setup();
  const source = '# My note\n\n$$x^2+1$$\n\n```r\nx <- 1\n```\n<script>alert(1)</script>';

@@ -66,10 +66,11 @@ export function noteSource(config) {
    const parent=resolved.parent, start=resolved.start();let at=0, children=[];
    parent.forEach(node=>{children.push({node,from:start+at,to:start+at+node.nodeSize});at+=node.nodeSize;});
    let index=children.findIndex(child=>pos>=child.from&&pos<child.to);
-   // The caret immediately after a marked word still belongs to that construct,
-   // including the end of a paragraph where there is no following text node.
-   if(index<0 || !children[index].node.marks.length){
-    const previous=children.findIndex(child=>pos===child.to&&child.node.isText&&child.node.marks.length);
+   // Apply the same trailing-boundary entry to marks and wrapped inline atoms
+   // (math/images), including paragraph ends without a following text node.
+   if(index<0 || (!children[index].node.marks.length && !['inlineMath','image'].includes(children[index].node.type.name))){
+    const previous=children.findIndex(child=>pos===child.to&&(
+     child.node.isText&&child.node.marks.length || ['inlineMath','image'].includes(child.node.type.name)));
     if(previous>=0)index=previous;
    }
    const child=children[index];
@@ -120,8 +121,8 @@ export function noteSource(config) {
    EditorView.updateListener.of(update=>{
     if(session.ready && update.selectionSet && !update.docChanged && active===session){
      const range=update.state.selection.main;
-     // Reaching the closing delimiter keeps editing; only crossing before the
-     // opening delimiter immediately restores rendering.
+     // Every wrapped construct uses the same asymmetric delimiter rule:
+     // keep editing at the closing end, render before the opening end.
      const direction=range.empty && range.head===0 ? -1 : 0;
      if(direction)queueMicrotask(()=>{
       if(active!==session)return;
@@ -139,8 +140,10 @@ export function noteSource(config) {
    }),
   ]})});
   editor.view.dispatch(editor.state.tr.setMeta(key,true));
-  const text=doc.textBetween(from,to,'\n');
-  const offset = Math.min(markdown.length,Math.max(0,markdown.indexOf(text))+Math.max(0,pos-from));
+  const node=slice.content.firstChild;
+  const text=doc.textBetween(from,to,'\n') || node?.attrs.latex || node?.attrs.alt || '';
+  const relative=pos===to ? text.length : node?.isAtom&&!node.isText ? 0 : Math.max(0,pos-from-(inline?0:1));
+  const offset = Math.min(markdown.length,Math.max(0,markdown.indexOf(text))+relative);
   session.view.dispatch({selection:{anchor:offset}}); session.view.focus();session.ready=true; return true;
  };
  const schedule = () => {

@@ -258,6 +258,9 @@
    });
    this._noteOutLinkQueue = run; return run;
   },
+  updateNoteSaveButton(state) {
+   if (state.saveButton) state.saveButton.dataset.unsaved = String(state.revision !== state.savedRevision);
+  },
   saveMarkdownNote(state) {
    const snapshot = { title: state.title.value || "Untitled note", markdown: state.input.value, documents: (state.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : [])).slice(), revision: state.revision, updatedAt: Date.now() };
    const task = state.saveQueue.catch(() => {}).then(async () => {
@@ -278,6 +281,7 @@
     state.baseHTML = state.note.getNote(); state.parent = parent;
     await this.syncNoteOutLinks(state.note, snapshot.documents, snapshot.title, state.linkedDocuments || []);
     state.linkedDocuments = snapshot.documents; state.savedRevision = snapshot.revision;
+    this.updateNoteSaveButton(state);
     if (state.win?.document && (!state.home || state.home.active === state)) state.win.document.title = (state.home ? "NoteOut — " : "AbstractIn — ") + snapshot.title;
     if (state.status?.isConnected) state.status.textContent = state.savedRevision === state.revision ? "Saved to Zotero" : "Unsaved changes…";
    });
@@ -388,7 +392,7 @@
    const toolbar = this.el(doc, "div", "abstractin-note-toolbar"), status = this.el(doc, "span", "abstractin-note-status", "Saved to Zotero");
    status.setAttribute("role", "status");
    const save = this.el(doc, "button", null, "Save"), chatToggle = this.el(doc, "button", null, "Discuss note");
-   save.className = "abstractin-note-primary abstractin-note-save";
+   save.className = "abstractin-note-save";
    const closeDraft = this.el(doc, "button", null, "Close keeping local draft"); closeDraft.hidden = true;
    const append = this.el(doc, "button", null, "Append last answer"), toDiscussion = this.el(doc, "button", null, "Use in document discussion");
    toDiscussion.hidden = !state.sourceView || !!state.sourceView.ctx.noteWorkspace;
@@ -437,7 +441,8 @@
    const top = this.el(doc, "div", "abstractin-note-topline"); top.append(this.el(doc, "span", "abstractin-note-eyebrow", "NOTEOUT / NOTEBOOK"), status);
    const header = this.el(doc, "header", "abstractin-note-editor-head"), notices = this.el(doc, "div", "abstractin-note-notices");
    header.append(top, title, toolbar); notices.append(preview); editor.append(header, editHost, notices); host.append(editor);
-   Object.assign(state, { title, input, preview, status, editor });
+   Object.assign(state, { title, input, preview, status, editor, saveButton: save });
+   this.updateNoteSaveButton(state);
    shortcuts.addEventListener("toggle", () => {
     if (!shortcuts.open) return;
     shortcutsBody.replaceChildren();
@@ -465,6 +470,7 @@
    state.flush = flush;
    const change = () => {
     state.revision++; status.textContent = "Unsaved changes…"; win.clearTimeout(state.timer);
+    this.updateNoteSaveButton(state);
     state.timer = win.setTimeout(() => { state.timer = null; this.saveMarkdownNote(state).catch(report); }, 800);
    };
    state.documents ||= data.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : []);

@@ -234,3 +234,42 @@ test('opening-star boundary renders immediately while closing-star boundary stay
   assert.equal(env.text(),'Before **bold** after.');assert.equal(env.changes(),0);env.close();
  }
 });
+
+test('all supported wrapped inline constructs share trailing entry and asymmetric exit',async()=>{
+ const cases=[
+  ['**bold**','bold','text'],['__bold__','bold','text'],['*italic*','italic','text'],['_italic_','italic','text'],
+  ['~~deleted~~','deleted','text'],['`code`','code','text'],['[label](https://example.org)','label','text'],
+  ['$x^2$','', 'inlineMath'],['![alt](https://example.org/a.png)','', 'image'],
+  ['**bold *italic* end**',' end','text'],
+ ];
+ for(const [markdown,text,type] of cases){
+  const original='Before '+markdown+' after.',env=await editor({text:original});let end;
+  env.instance.editor.state.doc.descendants((node,pos)=>{if(node.type.name===type && (type!=='text'||node.text===text))end=pos+node.nodeSize;});
+  assert.ok(end,markdown);env.instance.view.focus();env.instance.editor.commands.setTextSelection(end);await Promise.resolve();
+  const block=env.instance.view.dom.querySelector('.note-inline-source');assert.ok(block,markdown+' opens after rendered content');
+  const source=EditorView.findFromDOM(block.querySelector('.cm-editor'));
+  source.dispatch({selection:{anchor:source.state.doc.length}});await Promise.resolve();await Promise.resolve();
+  assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),block,markdown+' stays editable after closing delimiter');
+  source.dispatch({selection:{anchor:0}});await Promise.resolve();await Promise.resolve();
+  assert.equal(env.instance.view.dom.querySelector('.note-inline-source'),null,markdown+' renders before opening delimiter');
+  assert.equal(env.text(),original);assert.equal(env.changes(),0);env.close();
+ }
+});
+
+test('fenced code and block formulas share wrapped-source boundary behavior',async()=>{
+ for(const [markdown,type] of [['```r\nx <- 1\n```','codeBlock'],['$$\nx^2\n$$','blockMath']]){
+  const env=await editor({text:markdown+'\n\nAfter.'});let end;
+  env.instance.editor.state.doc.descendants((node,pos)=>{if(node.type.name===type)end=pos+node.nodeSize;});
+  assert.notEqual(end,undefined,markdown);
+  env.instance.view.focus();
+  if(type==='codeBlock')env.instance.editor.commands.setTextSelection(end-1);
+  else env.instance.view.dom.querySelector('[data-type="block-math"]').dispatchEvent(new env.window.MouseEvent('click',{bubbles:true,cancelable:true}));
+  await Promise.resolve();
+  const block=env.instance.view.dom.querySelector('.note-block-source');assert.ok(block,type);
+  const source=EditorView.findFromDOM(block.querySelector('.cm-editor'));
+  source.dispatch({selection:{anchor:source.state.doc.length}});await Promise.resolve();
+  assert.equal(env.instance.view.dom.querySelector('.note-block-source'),block);
+  source.dispatch({selection:{anchor:0}});await Promise.resolve();await Promise.resolve();
+  assert.equal(env.instance.view.dom.querySelector('.note-block-source'),null);assert.equal(env.changes(),0);env.close();
+ }
+});

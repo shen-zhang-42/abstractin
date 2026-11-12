@@ -40,6 +40,9 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 #abstractin-note-root button:disabled { opacity: .5; cursor: default; }
 #abstractin-note-root .abstractin-note-primary { background: var(--note-accent); border-color: var(--note-accent); color: var(--note-accent-text); font-weight: 600; }
 #abstractin-note-root .abstractin-note-primary:hover { filter: brightness(1.08); }
+#abstractin-note-root .abstractin-note-save { background: var(--note-soft); border-color: var(--note-line); color: var(--note-muted); font-weight: 600; }
+#abstractin-note-root .abstractin-note-save[data-unsaved="true"] { background: #202124; border-color: #202124; color: #fff; }
+#abstractin-note-root .abstractin-note-save:hover { filter: brightness(1.08); }
 .abstractin-note-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; flex: 0 0 calc((100% - 8px) * var(--note-editor-ratio, 58) / 100); min-width: min(260px, 40%); padding: 26px clamp(24px, 3vw, 48px) 0; overflow: hidden; background: var(--note-paper); }
 .abstractin-note-editor-head { flex: 0 0 auto; min-height: 0; overflow: visible; }
 .abstractin-note-editor-head .abstractin-note-documents[open] { max-height: 180px; overflow: auto; }
