@@ -30,6 +30,7 @@ function sidebar(prefs = {}, readerPanel = true) {
 	plugin._views.set(root, view);
 	return { ...env, root, view, sent, removed };
 }
+const openAgent = (root, key) => root.querySelector('.abstractin-menu-item[data-agent="' + key + '"]').click();
 const menuLabels = root => [...root.querySelectorAll(".abstractin-menu .abstractin-menu-label")].map(n => n.textContent);
 
 test("finishing a streamed reply preserves the latest reading position after history loading and notices", async () => {
@@ -81,11 +82,14 @@ test("reading model menu uses the Codex catalog and saves a custom model ID", ()
 	plugin._codexModels = [{ id: "gpt-6-sol", label: "GPT-6 Sol" }];
 	plugin._codexModelsLoadedAt = Date.now();
 	root.querySelector(".abstractin-model-btn").click();
+	assert.ok(!menuLabels(root).includes("GPT-6 Sol"), "models stay in the second level");
+	openAgent(root, "codex");
 	assert.ok(menuLabels(root).includes("GPT-6 Sol"));
 	const sol = [...root.querySelectorAll(".abstractin-menu-item")].find(n => n.textContent.includes("GPT-6 Sol"));
 	sol.click();
 	assert.equal(prefs[PREFIX + "codex.model"], "gpt-6-sol");
 	root.querySelector(".abstractin-model-btn").click();
+	openAgent(root, "codex");
 	[...root.querySelectorAll(".abstractin-menu-item")].find(n => n.textContent.includes("Choose another model")).click();
 	const input = root.querySelector(".abstractin-codex-model-input");
 	input.value = "account-model";
@@ -157,14 +161,20 @@ test("composer hint follows material type when reading context is restored", () 
 
 });
 
-test("model menu lists every assistant and switches backend and model together", () => {
+test("model menu lists configured agents first and their models in a second level", () => {
 	const { root, prefs, plugin } = sidebar();
 	plugin._agyModels = [{ id: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)" }];
 	plugin.setPref("agentValidation", JSON.stringify({ agy: { configKey: plugin.agentConfigKey("agy"), discussion: true } }));
 	root.querySelector(".abstractin-model-btn").click();
-	assert.deepEqual([...root.querySelectorAll(".abstractin-menu-section")].map(n => n.textContent),
-		["Claude Code", "OpenAI Codex", "Google Antigravity", "DeepSeek API"]);
-	assert.ok(root.querySelector(".abstractin-menu").textContent.includes("Not installed"), "missing CLI is explained");
+	assert.deepEqual([...root.querySelectorAll(".abstractin-menu-section")].map(n => n.textContent), ["Agents & APIs", "Configure"]);
+	const agents = [...root.querySelectorAll(".abstractin-menu-item[data-agent]")].map(n => n.dataset.agent);
+	assert.ok(agents.includes("agy") && !agents.includes("deepseek"), "only configured agents are listed");
+	for (const name of ["Claude Code", "OpenAI Codex", "Google Antigravity", "DeepSeek API"]) assert.ok(menuLabels(root).includes("Set up " + name + "…"));
+	openAgent(root, "agy");
+	assert.equal(root.querySelector(".abstractin-menu-back .abstractin-menu-label").textContent, "Google Antigravity");
+	root.querySelector(".abstractin-menu-back").click();
+	assert.ok(root.querySelector('.abstractin-menu-item[data-agent="agy"]'), "back returns to the agents");
+	openAgent(root, "agy");
 	const gemini = [...root.querySelectorAll(".abstractin-menu-item")].find(i => i.textContent.includes("Gemini 3.1 Pro"));
 	gemini.click();
 	assert.equal(prefs[PREFIX + "backend"], "agy");
@@ -1076,8 +1086,8 @@ test("reading menus expose unconfigured agents and selecting Claude opens guided
  view.ctx.reading = { type: "paper" };
  const original = plugin.readingAgent();
  plugin.openModelMenu(root, root.querySelector(".abstractin-model-btn"));
- assert.ok([...root.querySelectorAll(".abstractin-menu-section")].some(n => n.textContent === "Claude Code"));
- [...root.querySelectorAll(".abstractin-menu-item")].find(n => n.textContent.includes("Sonnet")).click();
+ assert.equal(root.querySelector('.abstractin-menu-item[data-agent="claude"]'), null);
+ [...root.querySelectorAll(".abstractin-menu-item")].find(n => n.textContent.includes("Set up Claude Code")).click();
  assert.ok(root.querySelector(".abstractin-agent-setup"));
  assert.equal(plugin.readingAgent(), original);
  assert.equal(root.querySelector(".abstractin-menu"), null);
@@ -1085,12 +1095,13 @@ test("reading menus expose unconfigured agents and selecting Claude opens guided
 });
 
 test('Claude menu refresh updates real catalog options and retains current selection', async () => {
- const { plugin, root, view } = sidebar(); view.ctx.reading = { type: 'paper' };
+ const { plugin, root, view } = sidebar(); view.ctx.reading = { type: 'paper' }; plugin.updateReadingControls(view);
  plugin.setPref('agentValidation', JSON.stringify({ claude: { configKey: plugin.agentConfigKey('claude'), discussion: true } }));
  plugin.selectReadingAgent('claude'); plugin.setPref('claude.model', 'sonnet'); plugin.getDataDir = () => '/tmp/catalog';
  plugin.findBinary = async () => '/bin/claude';
  let finish; plugin.queryClaudeModels = () => new Promise(resolve => { finish = resolve; });
  plugin.openModelMenu(root, root.querySelector('.abstractin-model-btn'));
+ openAgent(root, 'claude');
  [...root.querySelectorAll('.abstractin-menu-item')].find(n => n.textContent.includes('Refresh Claude models')).click();
  assert.match(root.querySelector('.abstractin-menu').textContent, /Loading Claude models/);
  await new Promise(resolve => setImmediate(resolve)); finish([{ value: 'opus', displayName: 'Local Opus' }]);

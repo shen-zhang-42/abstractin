@@ -92,20 +92,27 @@
      else if (id === "codex") link("Open Codex installation guide", "https://developers.openai.com/codex/cli/");
      else if (id === "gemini") link("Open Gemini CLI installation guide", "https://geminicli.com/docs/get-started/installation/");
      else note("Install " + agent.fullName + " using its provider’s instructions. For a custom agent, configure its local ACP or AbstractIn JSONL adapter in Settings first.");
-     const label = this.el(doc, "label", "abstractin-reading-field", "CLI search directory (optional)");
+     const label = this.el(doc, "label", "abstractin-reading-field", "CLI executable or search folder (optional)");
      const path = this.el(doc, "input", "abstractin-field"); path.type = "text";
      path.value = this.getPref("cliSearchDirectory." + id) || ""; path.placeholder = this.defaultCLISearchDirectory();
      path.addEventListener("input", () => { command = ""; detectedKey = ""; checkedKey = ""; next.disabled = true; });
      label.append(path); body.append(label);
-     note("Searches this directory and its subdirectories. Leave blank to start at " + this.defaultCLISearchDirectory() + ". The resolved executable is saved for subsequent requests.");
-     body.append(button("Choose directory…", async () => {
-      try { const { FilePicker } = ChromeUtils.importESModule("chrome://zotero/content/modules/filePicker.mjs"); const picker = new FilePicker(); picker.init(doc.defaultView, "Choose CLI search directory", picker.modeGetFolder); if (await picker.show() === picker.returnOK && !disposed) { path.value = picker.file; command = ""; detectedKey = ""; checkedKey = ""; next.disabled = true; } }
+     note("Enter the executable itself, or a folder to search with its subfolders. Leave blank to check common installation folders and then " + this.defaultCLISearchDirectory() + ". The resolved executable is saved for subsequent requests.");
+     // Folder or executable picker; both fill the same field.
+     const pick = folder => async () => {
+      try {
+       const { FilePicker } = ChromeUtils.importESModule("chrome://zotero/content/modules/filePicker.mjs"); const picker = new FilePicker();
+       picker.init(doc.defaultView, folder ? "Choose CLI search folder" : "Choose " + agent.fullName + " executable", folder ? picker.modeGetFolder : picker.modeOpen);
+       if (!folder && Zotero.isWin) picker.appendFilter("Programs", "*.exe; *.cmd; *.bat; *.ps1");
+       if (await picker.show() === picker.returnOK && !disposed) { path.value = picker.file; command = ""; detectedKey = ""; checkedKey = ""; next.disabled = true; }
+      }
       catch (error) { if (!disposed) status.textContent = error.message; }
-     }));
+     };
+     body.append(button("Choose executable…", pick(false)), button("Choose folder…", pick(true)));
      body.append(button("Find CLI", () => task(async () => {
       this.assertAgentIdle(id);
       const value = path.value.trim();
-      if (/[\r\n\0]/.test(value)) throw new Error("Enter a single search directory.");
+      if (/[\r\n\0]/.test(value)) throw new Error("Enter a single executable or search folder.");
       this.setPref("cliSearchDirectory." + id, value);
       command = ""; checkedKey = "";
       const found = await this.findBinary(id, { directory: value || this.defaultCLISearchDirectory(), onProgress: message => { if (!disposed) status.textContent = message; }, isCancelled: () => disposed });

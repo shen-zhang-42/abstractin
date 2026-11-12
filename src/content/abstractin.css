@@ -1390,6 +1390,20 @@
 .abstractin-history-menu .abstractin-menu-item {
 	min-height: 36px;
 }
+/* Model menu: agents open their models in place (narrow sidebars have no room for flyouts). */
+.abstractin-model-menu .abstractin-menu-next {
+	width: 12px;
+	height: 12px;
+	margin-inline-start: auto;
+	flex: none;
+	color: var(--abstractin-muted);
+}
+.abstractin-model-menu .abstractin-menu-back {
+	margin-bottom: 4px;
+	border-bottom: 1px solid var(--abstractin-line);
+	border-radius: 4px 4px 0 0;
+	font-weight: 600;
+}
 .abstractin-menu-note {
 	padding: 4px 8px 6px;
 	font-size: 0.85em;

@@ -1404,18 +1404,50 @@ AbstractIn = {
 
 	openModelMenu(root, anchor) {
 		let doc = root.ownerDocument;
+		let level = null;  // null shows agents and APIs; otherwise the key whose models are shown
+		let show = (key) => {
+			level = key;
+			menu.refresh();
+			(menu.querySelector('.abstractin-menu-item[aria-checked="true"]') || menu.querySelector(".abstractin-menu-item"))?.focus();
+		};
 		let menu = this.openMenu(root, anchor, (menu) => {
+			menu.classList.add("abstractin-model-menu");
 			let reading = this._views.get(root)?.ctx.reading;
 			let current = reading ? this.readingAgent() : this.getBackend();
-			for (let [key, backend] of Object.entries(this.BACKENDS)) {
-				let installed = root._installed ? root._installed[key] : undefined;
-				this.menuSection(doc, menu, backend.fullName);
-				this.menuItem(doc, menu, { label: "Set up " + backend.fullName + "…", desc: backend.api ? "API key, model and connection test" : "Local CLI, sign-in and connection test",
-					onSelect: () => this.openAgentSetup(root, key, { reading: !!reading }) });
-				if (installed === null) {
+
+			// ---- First level: configured agents and APIs, then setup for every agent and API
+			if (!this.BACKENDS[level]) {
+				level = null;
+				this.menuSection(doc, menu, "Agents & APIs");
+				for (let key of Object.keys(this.BACKENDS)) {
+					if (key !== current && (root._installed?.[key] === null || !this.agentReadyForDiscussion(key))) continue;
+					let item = this.menuItem(doc, menu, {
+						label: this.BACKENDS[key].fullName,
+						desc: this.modelLabel(key, this.getModel(key)) || "Default",
+						checked: key === current,
+						onSelect: () => show(key),
+					});
+					item.dataset.agent = key;
+					item.setAttribute("aria-haspopup", "menu");
+					item.firstChild.appendChild(this.svgIcon(doc, "chevronRight", "abstractin-menu-next"));
+				}
+				this.menuSection(doc, menu, "Configure");
+				for (let [key, backend] of Object.entries(this.BACKENDS)) {
+					this.menuItem(doc, menu, { label: "Set up " + backend.fullName + "…",
+						onSelect: () => this.openAgentSetup(root, key, { reading: !!reading }) });
+				}
+				return;
+			}
+
+			// ---- Second level: models of the chosen agent or API
+			{
+				let key = level, backend = this.BACKENDS[key];
+				this.menuItem(doc, menu, { label: backend.fullName, icon: "back", onSelect: () => show(null) })
+					.classList.add("abstractin-menu-back");
+				if (root._installed?.[key] === null) {
 					menu.appendChild(this.el(doc, "div", "abstractin-menu-note",
 						"Not installed. Choose Set up " + backend.fullName + " to install or locate its local CLI."));
-					continue;
+					return;
 				}
 				for (let model of this.getModels(key)) {
 					this.menuItem(doc, menu, {
@@ -1455,6 +1487,12 @@ AbstractIn = {
 					menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Sign-in not reachable from Zotero, so only the default model is listed. See Settings."));
 				}
 			}
+		});
+		// Right arrow opens an agent's models; left arrow returns to the agents.
+		menu?.addEventListener("keydown", (event) => {
+			let key = doc.activeElement?.dataset?.agent;
+			if (event.key === "ArrowRight" && level === null && key) { event.preventDefault(); show(key); }
+			else if (event.key === "ArrowLeft" && level !== null) { event.preventDefault(); show(null); }
 		});
 		if (menu && root._installed?.claude !== null && this.getAgentValidation("claude")?.discussion) {
 			let task = this.loadClaudeModels(); menu.refresh();

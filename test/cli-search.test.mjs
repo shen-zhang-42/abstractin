@@ -51,5 +51,29 @@ test('search reports cancellation, incomplete timeout and missing matches distin
  await assert.rejects(p.findBinary('gemini', { directory: 'D:\\tools', isCancelled: () => true }), /cancelled/);
  await assert.rejects(p.findBinary('gemini', { directory: 'D:\\tools', timeout: -1 }), /timed out before covering/);
  await assert.rejects(p.findBinary('gemini', { directory: 'D:\\tools' }), /readable subdirectories/);
- await assert.rejects(p.findBinary('gemini', { directory: 'relative' }), /absolute search directory/);
+ await assert.rejects(p.findBinary('gemini', { directory: 'relative' }), /absolute path/);
+});
+
+test('a chosen executable is used directly instead of being rejected as not a directory', async () => {
+ const { p, read } = fixture({ 'D:\\my tools\\claude.exe': {}, 'D:\\my tools\\claude.cmd': {}, 'D:\\bin\\gemini.cmd': {}, 'D:\\bin\\notes.txt': {} });
+ assert.equal(await p.findBinary('claude', { directory: '"D:\\my tools\\claude.exe"' }), 'D:\\my tools\\claude.exe');
+ assert.equal(await p.findBinary('gemini', { directory: 'D:\\bin\\gemini.cmd' }), 'D:\\bin\\gemini.cmd');
+ await assert.rejects(p.findBinary('claude', { directory: 'D:\\my tools\\claude.cmd' }), /native claude\.exe/);
+ await assert.rejects(p.findBinary('gemini', { directory: 'D:\\bin\\notes.txt' }), /Choose an executable/);
+ await assert.rejects(p.findBinary('gemini', { directory: 'D:\\missing.exe' }), /Cannot read/);
+ assert.deepEqual(read, []);
+});
+
+test('drive-wide search checks editor extensions before the drive and skips the Windows folder', async () => {
+ const home = 'C:\\Users\\test', ext = home + '\\.vscode\\extensions';
+ const { p, read } = fixture({
+  'C:\\': { isDir: true }, 'C:\\Windows': { isDir: true }, 'C:\\Windows\\gemini.exe': {}, [home]: { isDir: true },
+  'C:\\Users': { isDir: true }, [home + '\\.vscode']: { isDir: true }, [ext]: { isDir: true },
+  [ext + '\\google.gemini-1.0']: { isDir: true }, [ext + '\\google.gemini-1.0\\bin']: { isDir: true }, [ext + '\\google.gemini-1.0\\bin\\gemini.exe']: {},
+ }, { USERPROFILE: home, PATH: '' });
+ assert.equal(await p.findBinary('gemini', { directory: '' }), ext + '\\google.gemini-1.0\\bin\\gemini.exe');
+ assert.ok(!read.includes('C:\\'), 'the drive root is searched only after likely folders');
+ const drive = fixture({ 'C:\\': { isDir: true }, 'C:\\Windows': { isDir: true }, 'C:\\Windows\\gemini.exe': {} }, { PATH: '' });
+ await assert.rejects(drive.p.findBinary('gemini', { directory: 'C:\\' }), /Could not find/);
+ assert.ok(!drive.read.includes('C:\\Windows'));
 });
