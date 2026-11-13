@@ -2979,6 +2979,9 @@
 	aspect-ratio: 1;
 	pointer-events: none;
 }
+.abstractin-root[data-mascot="none"] .abstractin-reading-assistant,
+.abstractin-root[data-mascot="none"] .abstractin-mascot,
+.abstractin-library-welcome[data-mascot="none"] .abstractin-mascot { display:none!important; }
 .abstractin-root[data-mascot="marmoset"] .abstractin-discussion-companion {
 	flex-basis: 88px;
 	width: 88px;

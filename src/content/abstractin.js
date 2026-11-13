@@ -92,6 +92,7 @@ AbstractIn = {
 	BACKEND_ICONS: { claude: "sparkle", codex: "terminal", agy: "rocket", deepseek: "sparkle" },
 	// Study buddies share the app header and appear in the empty chat and reading bar.
 	MASCOTS: {
+		none: { label: "None", icon: "", header: "app" },
 		marmoset: { label: "Ohberto", icon: "mascot-marmoset", header: "app" },
 		wagtail: { label: "Waggy", icon: "mascot-wagtail", header: "app" },
 		puffin: { label: "Pippin", icon: "mascot-puffin", header: "app" },
@@ -566,7 +567,8 @@ AbstractIn = {
 	},
 
 	companionName(root = null) {
-		return this.MASCOTS[root?.dataset.mascot || this.getAppearance().mascot]?.label || this.MASCOTS.marmoset.label;
+		const mascot = root?.dataset.mascot || this.getAppearance().mascot;
+		return mascot === "none" ? "the assistant" : this.MASCOTS[mascot]?.label || this.MASCOTS.marmoset.label;
 	},
 
 	saveAppearance(appearance) {
@@ -624,10 +626,12 @@ AbstractIn = {
 				companion.replaceWith(this.svgIcon(root.ownerDocument, mascot.icon, companion.getAttribute("class")));
 			}
 		}
+		const assistantRow = root.querySelector(".abstractin-reading-assistant");
+		if (assistantRow) assistantRow.hidden = appearance.mascot === "none";
 		const invitation = root.querySelector(".abstractin-reading-invitation");
-		if (invitation) invitation.textContent = "Ask " + mascot.label + " a question…";
+		if (invitation) invitation.textContent = "Ask " + this.companionName(root) + " a question…";
 		const emptyTitle = root.querySelector(".abstractin-empty:not(.abstractin-reading-welcome) .abstractin-empty-title");
-		if (emptyTitle) emptyTitle.textContent = "Ask " + mascot.label + " about this passage";
+		if (emptyTitle) emptyTitle.textContent = "Ask " + this.companionName(root) + " about this passage";
 		delete root.dataset.bg;
 		for (let property of ["--abstractin-glass-pct", "--abstractin-glass-strong-pct", "--abstractin-blur", "--abstractin-glow-strength", "--abstractin-bg-veil", "--abstractin-bg-blur"]) {
 			root.style.removeProperty(property);
@@ -776,7 +780,13 @@ AbstractIn = {
 	},
 
 	refreshAllSidebars() {
-		for (let win of new Set([...Zotero.getMainWindows(), ...this._readerPanelWindows.keys()])) {
+		const windows = new Set([...(Zotero.getMainWindows?.() || [Zotero.getMainWindow()]), ...this._readerPanelWindows.keys()]);
+		for (const layout of this._readingLayouts?.values() || []) for (const group of layout.groups.values()) if (group.win && !group.win.closed) windows.add(group.win);
+		for (const state of this._markdownNoteWindows?.values() || []) {
+			if (state.win && !state.win.closed) windows.add(state.win);
+			const chatWindow = state.chatView?.doc.defaultView; if (chatWindow && !chatWindow.closed) windows.add(chatWindow);
+		}
+		for (let win of windows) {
 			for (let root of win.document.querySelectorAll(".abstractin-root")) {
 				this.refreshRoot(root);
 			}
@@ -917,6 +927,7 @@ AbstractIn = {
 		icon.dataset.icon = name;
 		icon.dataset.assetVersion = this.version || "dev";
 		icon.setAttribute("aria-hidden", "true");
+		if (!name) return icon;
 		if (name === "mascot-marmoset" && icon.classList.contains("abstractin-mascot")) {
 			let base = (this.resourceURI || this.rootURI || "") + "content/companions/";
 			let still = this.el(doc, "img", "abstractin-companion-still");
@@ -1326,6 +1337,7 @@ AbstractIn = {
 		let companion = this.el(doc, "div", "abstractin-discussion-companion");
 		companion.appendChild(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"));
 		let assistantRow = this.el(doc, "div", "abstractin-reading-assistant");
+		assistantRow.hidden = this.getAppearance().mascot === "none";
 		assistantRow.append(companion, this.el(doc, "span", "abstractin-reading-invitation", "Ask " + this.companionName(root) + " a question…"));
 		readingBar.prepend(assistantRow);
 		let statusBar = this.el(doc, "div", "abstractin-reading-statusbar");
@@ -3342,7 +3354,10 @@ AbstractIn = {
 	wizardStep(root, name) {
 		let doc = root.ownerDocument;
 		let step = this.el(doc, "div", "abstractin-wizard-step");
-		let hero = (icon, title) => step.append(this.svgIcon(doc, icon, "abstractin-wizard-hero" + (icon.startsWith("mascot-") ? " abstractin-mascot" : "")), this.el(doc, "div", "abstractin-wizard-title", title));
+		let hero = (icon, title) => {
+			if (icon) step.append(this.svgIcon(doc, icon, "abstractin-wizard-hero" + (icon.startsWith("mascot-") ? " abstractin-mascot" : "")));
+			step.append(this.el(doc, "div", "abstractin-wizard-title", title));
+		};
 		let section = (label, control) => {
 			let box = this.el(doc, "div", "abstractin-wizard-section");
 			box.append(this.el(doc, "div", "abstractin-wizard-section-label", label), control);

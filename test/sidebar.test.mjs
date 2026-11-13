@@ -770,7 +770,7 @@ test("icon-first: labels are hidden by default and every labelled button keeps a
 });
 
 test("reading companions load from preferences while legacy choices fall back to marmoset", () => {
-	for (const mascot of ["cat", "owl", "robot", "none", "dragon", "marmoset", "wagtail", "puffin"]) {
+	for (const mascot of ["cat", "owl", "robot", "dragon", "marmoset", "wagtail", "puffin"]) {
 		const { root, view, plugin } = sidebar({ [PREFIX + "appearance"]: JSON.stringify({ mascot }) });
 		plugin.renderMessages(view, []);
 		const expected = ["wagtail", "puffin"].includes(mascot) ? mascot : "marmoset";
@@ -779,8 +779,37 @@ test("reading companions load from preferences while legacy choices fall back to
 		assert.equal(root.querySelector(".abstractin-discussion-companion .abstractin-mascot").dataset.icon, "mascot-" + expected);
 		assert.equal(root.querySelector(".abstractin-header-icon").dataset.icon, "app");
 		assert.equal(root.querySelector(".abstractin-start-reading .abstractin-i").dataset.icon, "book");
-		assert.deepEqual(Object.keys(plugin.MASCOTS), ["marmoset", "wagtail", "puffin"]);
+		assert.deepEqual(Object.keys(plugin.MASCOTS), ["none", "marmoset", "wagtail", "puffin"]);
 	}
+});
+
+test('None companion is saved, removes all companion artwork and hides the entire assistant row', () => {
+	const {root,view,plugin}=sidebar({[PREFIX+'appearance']:JSON.stringify({mascot:'none'})});
+	plugin.renderMessages(view,[]);
+	assert.equal(plugin.getAppearance().mascot,'none');
+	assert.equal(root.querySelector('.abstractin-reading-assistant').hidden,true);
+	assert.equal(root.querySelectorAll('.abstractin-mascot img, .abstractin-mascot svg').length,0);
+	assert.doesNotMatch(view.input.placeholder,/None|Ohberto/);
+	plugin.saveAppearance({...plugin.getAppearance(),mascot:'puffin'});plugin.refreshRoot(root);
+	assert.equal(root.querySelector('.abstractin-reading-assistant').hidden,false);
+	assert.ok(root.querySelector('.abstractin-discussion-companion .abstractin-mascot[data-icon="mascot-puffin"] svg'));
+	plugin.saveAppearance({...plugin.getAppearance(),mascot:'none'});plugin.refreshRoot(root);
+	assert.equal(root.querySelector('.abstractin-reading-assistant').hidden,true);
+	assert.equal(root.querySelectorAll('.abstractin-mascot img, .abstractin-mascot svg').length,0);
+});
+
+test('companion picker offers None and preference refresh reaches floating discussion panels', () => {
+	const {root,document,plugin}=sidebar();
+	const frame=document.createElement('iframe');document.body.append(frame);
+	plugin.renderSkeleton(frame.contentDocument,frame.contentDocument.body);
+	const floating=frame.contentDocument.querySelector('.abstractin-root');
+	plugin._readingLayouts.set('floating-fixture',{groups:new Map([['float',{win:frame.contentWindow}]])});
+	const step=plugin.wizardStep(root,'companion');
+	const none=step.querySelector('button[data-value="none"]');assert.ok(none);none.click();
+	plugin.refreshAllSidebars();
+	assert.equal(floating.dataset.mascot,'none');assert.equal(floating.querySelector('.abstractin-reading-assistant').hidden,true);
+	assert.equal(floating.querySelectorAll('.abstractin-mascot img').length,0);
+	plugin._readingLayouts.delete('floating-fixture');
 });
 
 test("changing reading companions refreshes the composer companion", () => {

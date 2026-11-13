@@ -1,6 +1,6 @@
 "use strict";
 
-// Reading and writing have independent, top-level title-bar entries.
+// One title-bar entry opens the shared reading and writing layout chooser.
 (() => {
 	const addWindow = AbstractIn.addToWindow, removeWindow = AbstractIn.removeFromWindow;
 	Object.assign(AbstractIn, {
@@ -24,16 +24,13 @@
 			button.id = "abstractin-main-toggle";
 			button.setAttribute("aria-controls", "abstractin-workspace-menu");
 			button.setAttribute("aria-expanded", "false");
-			const notes = doc.getElementById("abstractin-notes-toggle") || this.iconButton(doc, "abstractin-main-toggle abstractin-notes-toggle zotero-tb-button", "NoteOut — open notes", "noteFull", () => {
-				this.openReadingLayoutMenu(win, notes);
-			});
-			notes.id = "abstractin-notes-toggle"; notes.setAttribute("aria-haspopup", "menu"); button.setAttribute("aria-haspopup", "menu");
-			const dot = doc.getElementById("abstractin-workspace-dot") || this.el(doc, "span", "abstractin-workspace-dot", "·");
-			dot.id = "abstractin-workspace-dot"; dot.setAttribute("aria-hidden", "true");
+			button.setAttribute("aria-haspopup", "menu");
+			doc.getElementById("abstractin-notes-toggle")?.remove();
+			doc.getElementById("abstractin-workspace-dot")?.remove();
 			const separator = doc.getElementById("abstractin-main-separator") || this.el(doc, "div", "zotero-tb-separator abstractin-main-separator");
 			separator.id = "abstractin-main-separator";
 			separator.setAttribute("role", "separator"); separator.setAttribute("aria-orientation", "vertical");
-			anchor.before(button, dot, notes, separator);
+			anchor.before(button, separator);
 			return true;
 		},
 		async openLibraryLauncher(win) {
@@ -64,8 +61,9 @@
 			header.append(this.el(doc, "h2", null, "Reading companion"),
 				this.iconButton(doc, "", "Close AbstractIn", "close", () => this.closeReaderPanel(win)));
 			const welcome = this.el(doc, "div", "abstractin-library-welcome");
+			welcome.dataset.mascot = this.getAppearance().mascot;
 			welcome.append(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"),
-				this.el(doc, "h3", null, "Read with " + this.companionName()),
+				this.el(doc, "h3", null, this.getAppearance().mascot === "none" ? "Read literature" : "Read with " + this.companionName()),
 				this.el(doc, "p", null, "Select books or papers in the document list on the left, then click Add selected documents."));
 			const add = this.el(doc, "button", "abstractin-library-add", "Add selected documents"); add.type = "button";
 			const list = this.el(doc, "div", "abstractin-library-list"); list.setAttribute("role", "group"); list.setAttribute("aria-label", "Documents");
