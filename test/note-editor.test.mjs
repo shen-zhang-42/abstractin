@@ -40,6 +40,30 @@ async function setup() {
  return { ...env, p, dir, parent, note, state, items };
 }
 
+test('note discussion shortcuts fill a question and quote one reviewed answer without changing history', async () => {
+ const {p,window,state}=await setup(); await p.mountMarkdownNote(window,state);
+ const view=state.chatView,row=view.root.querySelector('.abstractin-composer-shortcuts');
+ const quick=row.querySelector('.abstractin-prompt-menu'),quote=row.querySelector('.abstractin-result-picker');
+ assert.ok(quick && quote); assert.equal(quick.closest('.abstractin-quick').hidden,false);
+ quick.click();
+ const prompt=[...view.root.querySelectorAll('.abstractin-menu-item')].find(button=>button.textContent.includes('Summarize this note'));
+ assert.ok(prompt); prompt.click(); assert.match(view.input.value,/Summarize the main ideas/);
+ assert.equal(view.root.querySelector('.abstractin-menu'),null);
+ const history=[{role:'user',text:'Question'}, {role:'assistant',text:'Keep **this answer** and $x^2$.'}];
+ await p.saveHistory(view.ctx.dir,history); view.input.value='Follow-up';
+ quote.click(); await new Promise(resolve=>setTimeout(resolve,20));
+ const menu=view.root.querySelector('.abstractin-result-menu');
+ assert.equal(menu.querySelector('.abstractin-result-menu-heading strong').textContent,'Quote');
+ [...menu.querySelectorAll('button')].find(button=>button.textContent.includes('Answer 1')).click();
+ assert.equal(view.input.value,'Follow-up','choosing a result requires review before insertion');
+ const review=view.root.querySelector('.abstractin-reference-review');
+ assert.equal(review.querySelector('textarea').value,history[1].text); review.querySelector('button').click();
+ assert.match(view.input.value,/> Keep \*\*this answer\*\* and \$x\^2\$\./);
+ assert.doesNotMatch(view.input.value,/result:undefined/);
+ assert.deepEqual(JSON.parse(JSON.stringify(await p.loadHistory(view.ctx.dir))),history);
+ state.dispose(); window.close();
+});
+
 test('note header has a compact source list and Source immediately after Save', async () => {
  const {p,window,document,state}=await setup();await p.mountMarkdownNote(window,state);
  const actions=document.querySelector('.abstractin-note-file-actions'), children=[...actions.children];

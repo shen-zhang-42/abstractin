@@ -1438,19 +1438,20 @@
 .abstractin-model-expanded .abstractin-model-agents { flex:0 0 42%; }
 .abstractin-model-submenu { flex:1; padding-left:4px; border-left:1px solid var(--abstractin-line); }
 .abstractin-model-submenu[hidden] { display:none; }
-.abstractin-model-menu [data-agent][aria-expanded="true"] { background:var(--abstractin-hover); }
-.abstractin-model-menu .abstractin-menu-next {
-	width: 12px;
-	height: 12px;
-	margin-inline-start: auto;
-	flex: none;
-	color: var(--abstractin-muted);
-}
+.abstractin-model-menu [data-menu-key][aria-expanded="true"] { background:var(--abstractin-hover); }
+.abstractin-model-menu .abstractin-model-setup { margin-top:6px; border-top:1px solid var(--abstractin-line); padding-top:9px; }
+.abstractin-model-menu .abstractin-menu-item { min-height:42px; padding:8px; }
+.abstractin-model-menu .abstractin-menu-text { gap:3px; }
 .abstractin-model-menu .abstractin-menu-back {
 	margin-bottom: 4px;
 	border-bottom: 1px solid var(--abstractin-line);
 	border-radius: 4px 4px 0 0;
 	font-weight: 600;
+}
+@container (max-width:360px) {
+	.abstractin-model-menu.abstractin-model-expanded { display:block; }
+	.abstractin-model-expanded .abstractin-model-agents { display:none; }
+	.abstractin-model-submenu { border:0; padding:0; }
 }
 .abstractin-menu-note {
 	padding: 4px 8px 6px;
@@ -3153,14 +3154,33 @@
 .abstractin-result-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
 .abstractin-result-summary { display: block; min-width: 0; color: var(--abstractin-muted); font-size: .85em; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Composer shortcuts occupy the upper right and retain their full labels. */
-.abstractin-composer-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 12px; margin-bottom: 8px; min-width: 0; }
+/* Quote keeps a fixed navigation header above its scrolling chapter/result list. */
+.abstractin-root .abstractin-result-menu { display:flex; flex-direction:column; gap:0; width:min(390px,100%); max-width:100%; max-height:min(430px,70vh); padding:0; overflow:hidden; border-radius:10px; }
+.abstractin-result-menu-head { display:flex; align-items:center; gap:9px; flex:0 0 auto; padding:12px; border-bottom:1px solid var(--abstractin-line); }
+.abstractin-result-menu-heading { display:flex; flex-direction:column; gap:4px; min-width:0; line-height:1.4; }
+.abstractin-result-menu-heading strong { font-size:13px; font-weight:600; }
+.abstractin-result-menu-heading > span { font-size:11px; color:var(--abstractin-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.abstractin-root .abstractin-result-menu .abstractin-result-back { display:inline-flex; justify-content:center; align-items:center; flex:0 0 28px; width:28px; min-height:28px; padding:5px; border:1px solid var(--abstractin-line); border-radius:6px; }
+.abstractin-result-back .abstractin-menu-content { display:flex; justify-content:center; }
+.abstractin-result-back :is(.abstractin-menu-text,.abstractin-check) { display:none; }
+.abstractin-result-back .abstractin-i { width:16px; height:16px; }
+.abstractin-result-menu-list { flex:1 1 auto; min-height:0; overflow-y:auto; padding:6px; scrollbar-width:thin; }
+.abstractin-root .abstractin-result-menu-list .abstractin-menu-item { display:flex; align-items:center; gap:8px; padding:10px; border:0; border-radius:6px; margin:2px 0; }
+.abstractin-result-menu-list .abstractin-menu-content { flex:1; min-width:0; }
+.abstractin-result-menu-list .abstractin-check { display:none; }
+.abstractin-result-menu-list .abstractin-menu-text { gap:4px; }
+.abstractin-result-menu-list .abstractin-menu-desc { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; white-space:normal; overflow:hidden; overflow-wrap:anywhere; }
+.abstractin-result-count { flex:0 0 auto; min-width:22px; padding:1px 5px; border-radius:5px; background:var(--abstractin-hover); color:var(--abstractin-muted); text-align:center; font:11px/1.6 system-ui,sans-serif; }
+.abstractin-root .abstractin-result-menu-list .abstractin-result-option + .abstractin-result-option { border-top:1px solid var(--abstractin-line); border-top-left-radius:0; border-top-right-radius:0; }
+
+/* Both discussion composers keep their shortcuts at the upper left. */
+.abstractin-composer-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px 12px; margin-bottom: 8px; min-width: 0; }
 .abstractin-composer-head .abstractin-context { flex: 1 1 120px; margin: 0; min-width: 0; }
-.abstractin-composer-shortcuts { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; max-width: 100%; min-width: 0; margin-inline-start: auto; }
-.abstractin-root .abstractin-composer-shortcuts .abstractin-quick { flex: 0 0 auto; overflow: visible; flex-wrap: nowrap; padding: 0; }
-.abstractin-composer-shortcuts .abstractin-quick-divider { display: none; }
-.abstractin-root .abstractin-composer-shortcuts .abstractin-ghost { flex: 0 0 auto; width: max-content; min-width: max-content; max-width: none; padding-inline: 6px; }
-.abstractin-root .abstractin-composer-shortcuts .abstractin-label { flex: 0 0 auto; display: inline; overflow: visible; text-overflow: clip; white-space: nowrap; }
+.abstractin-composer-shortcuts { display: flex; flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: 8px; width:100%; max-width: 100%; min-width: 0; margin-inline-start: 0; }
+.abstractin-root .abstractin-composer-shortcuts .abstractin-quick { flex: 0 1 auto; min-width:0; max-width:100%; overflow: visible; flex-wrap: nowrap; padding: 0; }
+.abstractin-composer-shortcuts :is(.abstractin-quick-divider,.abstractin-quote-divider) { display: none; }
+.abstractin-root .abstractin-composer-shortcuts .abstractin-ghost { flex: 0 1 auto; width: max-content; min-width:0; max-width:100%; padding-inline: 6px; }
+.abstractin-root .abstractin-composer-shortcuts .abstractin-label { flex: 1 1 auto; min-width:0; display: inline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .abstractin-root .abstractin-mascot, .abstractin-root .abstractin-mascot * { animation-play-state: paused; }
 .abstractin-root[data-answering="true"] .abstractin-mascot, .abstractin-root[data-answering="true"] .abstractin-mascot * { animation-play-state: running; }
 

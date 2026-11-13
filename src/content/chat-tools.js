@@ -347,32 +347,56 @@
   },
   resultReference(chat, message, index) { return "result:" + (message.referenceID || chat.id + "-" + index); },
   quoteDiscussionResult(view, chat, message, index, selectedText = "", result = null) {
-   const reference = result ? "result:" + result.id : this.resultReference(chat, message, index);
+   const reference = view.ctx.noteWorkspace && !result?.id ? "" : result ? "result:" + result.id : this.resultReference(chat, message, index);
    const label = result ? this.discussionResultLabel(result) : message.results?.length === 1 ? this.discussionResultLabel(message.results[0]) : "Answer";
    view.root.querySelector(".abstractin-reference-review")?.remove();
    const panel = this.el(view.doc, "div", "abstractin-panel abstractin-reference-review"); panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", "Review result citation");
    panel.append(this.el(view.doc, "p", null, label + (result?.title ? " · " + result.title : "") + " — Review the excerpt before inserting."));
    const field = this.el(view.doc, "textarea", "abstractin-input"); field.setAttribute("aria-label", "Quoted result excerpt"); field.value = selectedText || result?.text || message.text;
    const add = this.el(view.doc, "button", "abstractin-btn", "Insert citation"), cancel = this.el(view.doc, "button", "abstractin-btn", "Cancel");
-   add.onclick = () => { if (!field.value.trim()) return; view.input.value += (view.input.value ? "\n\n" : "") + "[" + reference + (label !== "Answer" ? "|" + label : "") + "]\n" + field.value.trim().split("\n").map(line => "> " + line).join("\n") + "\n\n"; this.autoGrow(view.input); panel.remove(); this.setBusy(view, this._pending.has(view.ctx.dir)); view.input.focus(); };
+   add.onclick = () => {
+    if (!field.value.trim()) return;
+    view.input.value += (view.input.value ? "\n\n" : "") + (reference ? "[" + reference + (label !== "Answer" ? "|" + label : "") + "]\n" : label + "\n") +
+     field.value.trim().split("\n").map(line => "> " + line).join("\n") + "\n\n";
+    this.autoGrow(view.input); panel.remove();
+    // The cited reading scope can differ from the note chat receiving the quote.
+    const target = this._views.get(view.root) || view;
+    this.setBusy(target, this._pending.has(target.ctx.dir)); view.input.focus();
+   };
    cancel.onclick = () => panel.remove(); panel.append(field, add, cancel); view.root.querySelector(".abstractin-log-wrap").append(panel); field.focus();
+  },
+  referenceMenuBody(doc, menu, { title, path = "", onBack = null }) {
+   menu.classList.add("abstractin-result-menu");
+   const head = this.el(doc, "div", "abstractin-result-menu-head");
+   if (onBack) {
+    const back = this.menuItem(doc, head, { label: "Back", icon: "previous", onSelect: onBack });
+    back.classList.add("abstractin-result-back"); back.title = "Back"; back.setAttribute("aria-label", "Back");
+   }
+   const text = this.el(doc, "div", "abstractin-result-menu-heading"); text.append(this.el(doc, "strong", null, title));
+   if (path) { const detail = this.el(doc, "span", null, path); detail.title = path; text.append(detail); }
+   head.append(text);
+   const list = this.el(doc, "div", "abstractin-result-menu-list"); menu.append(head, list); return list;
   },
   openDiscussionReferences(view, anchor = view.root.querySelector(".abstractin-result-picker"), answer = null, { mode = "quote" } = {}) {
    const state = { index: null, chapter: undefined, chat: null, rows: null, error: "" };
-   const focus = menu => menu.querySelector(".abstractin-menu-item:not(:disabled)")?.focus();
+   const focus = menu => (menu.querySelector(".abstractin-result-menu-list .abstractin-menu-item:not(:disabled)") || menu.querySelector(".abstractin-menu-item:not(:disabled)"))?.focus();
    const menu = this.openMenu(view.root, anchor, menu => {
-    menu.classList.add("abstractin-result-menu", "abstractin-quick-question-menu");
-    if (state.error) { menu.append(this.el(view.doc, "p", "abstractin-menu-note", state.error)); return; }
-    if (!state.index) { this.menuSection(view.doc, menu, "Loading results…"); return; }
+    const chapterTitle = state.index && this.discussionGroups(view.ctx, state.index).find(c => c.id === state.chapter)?.title;
+    const list = this.referenceMenuBody(view.doc, menu, {
+     title: mode === "jump" ? "Jump to" : "Quote",
+     path: state.chat ? this.discussionName(view.ctx, state.chat, state.index) : chapterTitle || "Choose a chapter",
+     onBack: state.chat ? () => { state.chat = null; state.rows = null; menu.refresh(); focus(menu); }
+      : state.chapter !== undefined ? () => { state.chapter = undefined; menu.refresh(); focus(menu); } : null
+    });
+    if (state.error) { list.append(this.el(view.doc, "p", "abstractin-menu-note", state.error)); return; }
+    if (!state.index) { this.menuSection(view.doc, list, "Loading results…"); return; }
     if (state.chat) {
-     this.menuItem(view.doc, menu, { label: "← Discussions", onSelect: () => { state.chat = null; state.rows = null; menu.refresh(); focus(menu); } });
-     this.menuSection(view.doc, menu, this.discussionName(view.ctx, state.chat, state.index));
-     if (!state.rows) { menu.append(this.el(view.doc, "p", "abstractin-menu-note", "Loading results…")); return; }
-     if (!state.rows.length) menu.append(this.el(view.doc, "p", "abstractin-menu-note", "No saved results in this discussion yet."));
+     if (!state.rows) { list.append(this.el(view.doc, "p", "abstractin-menu-note", "Loading results…")); return; }
+     if (!state.rows.length) list.append(this.el(view.doc, "p", "abstractin-menu-note", "No saved results in this discussion yet."));
      for (const { message, at, result } of state.rows) {
       const label = result.kind === "Question" ? "Question " + result.number : this.discussionResultLabel(result);
       const excerpt = result.text.replace(/\\(?:begin|end|label)\{[^}]*\}/g, "").replace(/\s+/g, " ").trim();
-      const item = this.menuItem(view.doc, menu, { label, onSelect: () => { this.closeMenu(view.root); if (mode === "jump") this.jumpToDiscussionContent(view, state.chat, at, result).catch(e => this.appendError(view, e.message || String(e))); else this.quoteDiscussionResult(view, state.chat, message, at, "", result); } });
+      const item = this.menuItem(view.doc, list, { label, onSelect: () => { this.closeMenu(view.root); if (mode === "jump") this.jumpToDiscussionContent(view, state.chat, at, result).catch(e => this.appendError(view, e.message || String(e))); else this.quoteDiscussionResult(view, state.chat, message, at, "", result); } });
       item.classList.add("abstractin-result-option"); item.title = label + "\n" + excerpt;
       const entry = this.el(view.doc, "span", "abstractin-result-entry");
       entry.append(this.el(view.doc, "span", "abstractin-result-number", label));
@@ -381,18 +405,18 @@
       item.replaceChildren(entry);
      }
     } else if (state.chapter !== undefined) {
-     this.menuItem(view.doc, menu, { label: "← Chapters", onSelect: () => { state.chapter = undefined; menu.refresh(); focus(menu); } });
-     this.menuSection(view.doc, menu, this.discussionGroups(view.ctx, state.index).find(c => c.id === state.chapter)?.title || (view.ctx.reading.type === "paper" ? "Paper discussions" : "Unassigned"));
      for (const chat of this.visibleDiscussions(state.index).filter(c => c.chapterID === state.chapter).sort((a, b) => a.number - b.number)) {
-      const item = this.menuItem(view.doc, menu, { label: "Discussion " + chat.number + " · " + (chat.topic === "discussion" ? "Untitled" : chat.topic), onSelect: () => chooseChat(chat) });
+      const item = this.menuItem(view.doc, list, { label: chat.topic === "discussion" ? "Untitled" : chat.topic, desc: "Discussion " + chat.number, onSelect: () => chooseChat(chat) });
       item.dataset.discussionId = chat.id;
      }
     } else {
-     this.menuSection(view.doc, menu, mode === "jump" ? "Jump to · Choose chapter" : "Quote · Choose chapter");
      for (const chapter of this.discussionGroups(view.ctx, state.index)) {
-      if (!this.visibleDiscussions(state.index).some(c => c.chapterID === chapter.id)) continue;
-      this.menuItem(view.doc, menu, { label: (chapter.prefix ? chapter.prefix + " · " : "") + chapter.title, onSelect: () => { state.chapter = chapter.id; menu.refresh(); focus(menu); } });
+      const count = this.visibleDiscussions(state.index).filter(c => c.chapterID === chapter.id).length;
+      if (!count) continue;
+      const item = this.menuItem(view.doc, list, { label: (chapter.prefix ? chapter.prefix + " · " : "") + chapter.title, onSelect: () => { state.chapter = chapter.id; menu.refresh(); focus(menu); } });
+      const badge = this.el(view.doc, "span", "abstractin-result-count", String(count)); badge.title = count + " discussion(s)"; item.append(badge);
      }
+     if (!list.children.length) list.append(this.el(view.doc, "p", "abstractin-menu-note", "No saved discussions yet."));
     }
    });
    if (!menu) return;
@@ -438,15 +462,15 @@
   updateReadingControls(view) {
    previous.updateReadingControls.call(this, view);
    const controls = view.root.querySelector(".abstractin-quote-controls");
-   if (controls) controls.hidden = !view.ctx.discussion;
-   if (!view.ctx.discussion) return;
+   if (controls) controls.hidden = !view.ctx.discussion && !view.ctx.noteWorkspace;
+   if (!view.ctx.discussion && !view.ctx.noteWorkspace) return;
    const name = view.root.querySelector(".abstractin-discussion-name");
    if (name) name.title = view.ctx.discussion.topic || "";
    const row = view.root.querySelector(".abstractin-composer-shortcuts");
    if (row && !row.querySelector(".abstractin-result-picker")) {
     const divider = this.el(view.doc, "span", "abstractin-quote-divider"); divider.setAttribute("aria-hidden", "true");
-    const button = this.ghostButton(view.doc, "abstractin-result-picker", null, "Quote", () => this.openDiscussionReferences(view, button), { chevron: true });
-    button.title = "Quote a numbered result"; button.setAttribute("aria-label", button.title); button.setAttribute("aria-haspopup", "menu");
+    const button = this.ghostButton(view.doc, "abstractin-result-picker", null, "Quote", () => view.ctx.noteWorkspace ? this.openNoteDiscussionReferences(view, button) : this.openDiscussionReferences(view, button), { chevron: true });
+    button.title = view.ctx.noteWorkspace ? "Quote a discussion answer" : "Quote a numbered result"; button.setAttribute("aria-label", button.title); button.setAttribute("aria-haspopup", "menu");
     const group = this.el(view.doc, "span", "abstractin-quote-controls"); group.append(divider, button); row.append(group);
    }
   },

@@ -105,7 +105,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 .abstractin-note-preview pre { padding: 16px; border: 1px solid var(--note-line); border-radius: 8px; background: var(--note-ground); overflow-x: auto; white-space: pre-wrap; }
 .abstractin-note-preview blockquote { margin-inline: 0; padding-inline-start: 18px; border-inline-start: 3px solid var(--note-accent); color: var(--note-muted); }
 .abstractin-note-preview math[display="block"] { overflow-x: auto; max-width: 100%; }
-.abstractin-note-chat { flex: 1 1 0; min-width: min(300px, 40%); height: 100%; padding: 18px 16px 12px; background: var(--note-ground); }
+.abstractin-note-chat { container-type:inline-size; flex: 1 1 0; min-width: min(300px, 40%); height: 100%; padding: 18px 16px 12px; background: var(--note-ground); }
 .abstractin-note-splitter { flex: 0 0 8px; width: 8px; cursor: col-resize; position: relative; background: var(--note-ground); touch-action: none; outline-offset: -2px; }
 .abstractin-note-splitter::after { content: ""; position: absolute; inset: 0 3px; background: var(--note-line); transition: background .12s; }
 .abstractin-note-splitter:hover::after, .abstractin-note-splitter:focus-visible::after, .abstractin-note-resizing .abstractin-note-splitter::after { background: var(--note-accent); }
@@ -138,7 +138,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 .abstractin-note-chat .abstractin-history, .abstractin-note-chat .abstractin-new-chat,
 .abstractin-note-chat .abstractin-initialize-contents, .abstractin-note-chat .abstractin-export-reading,
 .abstractin-note-chat .abstractin-write-note, .abstractin-note-chat .abstractin-reading-bar,
-.abstractin-note-chat .abstractin-statusbar, .abstractin-note-chat .abstractin-quick { display: none !important; }
+.abstractin-note-chat .abstractin-statusbar { display: none !important; }
 .abstractin-note-list { width: 258px; flex: 0 0 258px; padding: 25px 16px; background: var(--note-sidebar); border-right: 1px solid var(--note-line); overflow: auto; scrollbar-width: thin; }
 .abstractin-note-list h1 { margin: 0; font-size: 23px; letter-spacing: -.045em; font-weight: 650; }
 .abstractin-note-list-description { margin: 4px 0 24px; color: var(--note-muted); font-size: 12px; }

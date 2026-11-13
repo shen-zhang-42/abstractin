@@ -1449,7 +1449,7 @@ AbstractIn = {
 			}
 			if (focus) {
 				const target = key ? menu.querySelector('.abstractin-model-submenu .abstractin-menu-item[aria-checked="true"]') || menu.querySelector('.abstractin-model-submenu .abstractin-menu-item:not(.abstractin-menu-back)')
-					: [...menu.querySelectorAll('[data-agent]')].find(item => item.dataset.agent === previous);
+					: [...menu.querySelectorAll('[data-menu-key]')].find(item => item.dataset.menuKey === previous);
 				target?.focus();
 			}
 		};
@@ -1457,7 +1457,7 @@ AbstractIn = {
 			menu.classList.add("abstractin-model-menu");
 			const reading = this._views.get(root)?.ctx.reading;
 			const current = reading ? this.readingAgent() : this.getBackend();
-			if (!this.BACKENDS[level]) level = null;
+			if (level !== "setup" && !this.BACKENDS[level]) level = null;
 			const agents = this.el(doc, "div", "abstractin-model-agents"); agents.dataset.menuColumn = "agents";
 			const models = this.el(doc, "div", "abstractin-model-submenu"); models.dataset.menuColumn = "models"; models.setAttribute("role", "menu");
 			menu.append(agents, models);
@@ -1471,26 +1471,33 @@ AbstractIn = {
 					onSelect: () => show(key),
 				});
 				item.dataset.agent = key;
+				item.dataset.menuKey = key;
 				item.setAttribute("aria-haspopup", "menu");
 				item.setAttribute("aria-expanded", String(level === key));
 				item.addEventListener("mouseenter", () => show(key));
-				item.firstChild.appendChild(this.svgIcon(doc, "chevronRight", "abstractin-menu-next"));
 			}
-			this.menuSection(doc, agents, "Configure");
-			for (let [key, backend] of Object.entries(this.BACKENDS)) {
-				this.menuItem(doc, agents, { label: "Set up " + backend.fullName + "…",
-					onSelect: () => this.openAgentSetup(root, key, { reading: !!reading }) });
-			}
+			const setup = this.menuItem(doc, agents, { label: "Setup", desc: "Agents and APIs", icon: "settings", onSelect: () => show("setup") });
+			setup.classList.add("abstractin-model-setup"); setup.dataset.menuKey = "setup";
+			setup.setAttribute("aria-haspopup", "menu"); setup.addEventListener("mouseenter", () => show("setup"));
 			renderModels = () => {
 				models.replaceChildren(); models.hidden = !level; menu.classList.toggle("abstractin-model-expanded", !!level);
-				for (const item of agents.querySelectorAll('[data-agent]')) item.setAttribute("aria-expanded", String(item.dataset.agent === level));
+				for (const item of agents.querySelectorAll('[data-menu-key]')) item.setAttribute("aria-expanded", String(item.dataset.menuKey === level));
 				if (!level) return;
+				if (level === "setup") {
+					this.menuItem(doc, models, { label: "Setup", icon: "back", onSelect: () => show(null, true) }).classList.add("abstractin-menu-back");
+					for (const [key, backend] of Object.entries(this.BACKENDS)) {
+						const item = this.menuItem(doc, models, { label: backend.fullName, desc: backend.api ? "Configure API" : "Set up local CLI",
+							onSelect: () => this.openAgentSetup(root, key, { reading: !!reading }) });
+						item.dataset.setupAgent = key;
+					}
+					return;
+				}
 				let key = level, backend = this.BACKENDS[key];
 				this.menuItem(doc, models, { label: backend.fullName, icon: "back", onSelect: () => show(null, true) })
 					.classList.add("abstractin-menu-back");
 				if (root._installed?.[key] === null) {
 					models.appendChild(this.el(doc, "div", "abstractin-menu-note",
-						"Not installed. Choose Set up " + backend.fullName + " to install or locate its local CLI."));
+						"Not installed. Open Setup to install or locate this local CLI."));
 					return;
 				}
 				for (let model of this.getModels(key)) {
@@ -1534,7 +1541,7 @@ AbstractIn = {
 			renderModels();
 		});
 		menu?.addEventListener("keydown", event => {
-			const key = doc.activeElement?.dataset?.agent;
+			const key = doc.activeElement?.dataset?.menuKey;
 			if (event.key === "ArrowRight" && key) { event.preventDefault(); show(key, true); }
 			else if (event.key === "ArrowLeft" && level) { event.preventDefault(); show(null, true); }
 		});
@@ -1667,16 +1674,21 @@ AbstractIn = {
 		let type = view?.ctx.reading?.type === "book" ? "book" : "paper";
 		quick.dataset.materialType = type;
 		quick.textContent = "";
-		let prompts = this.getPrompts(type).filter(p => p.prompt.trim());
-		const workflows = type === "paper" && view?.ctx.reading ? this.paperReadingQuickQuestions() : [];
+		const note = !!view?.ctx.noteWorkspace;
+		let prompts = note ? [
+			{ label: "Summarize this note", prompt: "Summarize the main ideas in this note, preserving its language and distinguishing conclusions from open questions." },
+			{ label: "Explain the reasoning", prompt: "Explain the main concepts and reasoning in this note step by step, identifying any assumptions or missing steps." },
+			{ label: "Suggest improvements", prompt: "Suggest improvements to the clarity, structure and reasoning of this note. Identify missing evidence without inventing source content." },
+		] : this.getPrompts(type).filter(p => p.prompt.trim());
+		const workflows = !note && type === "paper" && view?.ctx.reading ? this.paperReadingQuickQuestions() : [];
 		quick.dataset.paperWorkflows = String(workflows.length > 0);
 		if (prompts.length || workflows.length) {
 			let button = this.ghostButton(doc, "abstractin-prompt-menu", null, "Quick questions", () => {
 				this.openMenu(root, button, menu => {
 					let currentView = this._views.get(root);
 					menu.classList.add("abstractin-quick-question-menu");
-					this.menuSection(doc, menu, type === "book" ? "Book questions" : "Paper questions");
-					for (let { label, prompt } of this.getPrompts(type).filter(p => p.prompt.trim())) {
+					this.menuSection(doc, menu, note ? "Note questions" : type === "book" ? "Book questions" : "Paper questions");
+					for (let { label, prompt } of note ? prompts : this.getPrompts(type).filter(p => p.prompt.trim())) {
 						const item = this.menuItem(doc, menu, {
 							label: label.trim() || prompt,
 							disabled: !currentView || this._pending.has(currentView.ctx.dir),
@@ -1691,7 +1703,7 @@ AbstractIn = {
 					});
 				});
 			}, { chevron: true });
-			button.title = type === "book" ? "Choose a book question" : "Choose a paper question";
+			button.title = note ? "Choose a note question" : type === "book" ? "Choose a book question" : "Choose a paper question";
 			button.setAttribute("aria-label", button.title);
 			const divider = this.el(doc, "span", "abstractin-quick-divider"); divider.setAttribute("aria-hidden", "true");
 			quick.append(divider, button);

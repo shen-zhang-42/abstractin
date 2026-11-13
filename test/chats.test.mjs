@@ -1048,18 +1048,22 @@ test("formal results share numbering and keep IDs when a merge updates numbers",
 
 test("Quote navigates chapter, discussion and numbered result with preview before insertion", async () => {
  const { p, view, send, requests } = await setup(); await send("Chapter 1: sets");
+ const waitFor = async find => {
+  for (let i = 0; i < 100; i++) { const node = find(); if (node) return node; await new Promise(resolve => setTimeout(resolve, 5)); }
+  throw new Error("Quote menu did not finish loading");
+ };
  await p.saveHistory(view.ctx.dir, [{ role: "user", text: "q" }, { role: "assistant", text: "\\begin{theorem}[Set result]\nSelected theorem.\n\\end{theorem}\n\\begin{definition}[Other result]\nExcluded definition.\n\\end{definition}" }]);
  const source = view.ctx.discussion.id; await send("Chapter 2: continuity"); const active = view.ctx.discussion.id, count = requests.length;
  p.updateReadingControls(view);
  const button = view.root.querySelector(".abstractin-result-picker");
  assert.equal(button.querySelector(".abstractin-label").textContent, "Quote");
  assert.ok(button.querySelector('[data-icon="chevron"]')); assert.ok(view.root.querySelector(".abstractin-quote-divider"));
- button.click(); await new Promise(r => setTimeout(r, 20));
+ button.click();
  let menu = view.root.querySelector(".abstractin-result-menu"); assert.ok(menu);
- [...menu.querySelectorAll("button")].find(b => b.textContent.includes("chap-01")).click();
- menu.querySelector('[data-discussion-id="' + source + '"]').click(); await new Promise(r => setTimeout(r, 30));
+ (await waitFor(() => [...menu.querySelectorAll("button")].find(b => b.textContent.includes("chap-01")))).click();
+ menu.querySelector('[data-discussion-id="' + source + '"]').click();
  menu = view.root.querySelector(".abstractin-result-menu");
- [...menu.querySelectorAll("button")].find(b => b.textContent.includes("Theorem 1.1.1.1")).click();
+ (await waitFor(() => [...menu.querySelectorAll("button")].find(b => b.textContent.includes("Theorem 1.1.1.1")))).click();
  const panel = view.root.querySelector(".abstractin-reference-review"); assert.ok(panel);
  assert.match(panel.querySelector("textarea").value, /Selected theorem/); assert.doesNotMatch(panel.querySelector("textarea").value, /Excluded definition/);
  panel.querySelector("button").click();

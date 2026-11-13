@@ -176,10 +176,14 @@ test("model menu lists configured agents first and their models in a second leve
 	plugin._agyModels = [{ id: "gemini-3.1-pro-high", label: "Gemini 3.1 Pro (High)" }];
 	plugin.setPref("agentValidation", JSON.stringify({ agy: { configKey: plugin.agentConfigKey("agy"), discussion: true } }));
 	root.querySelector(".abstractin-model-btn").click();
-	assert.deepEqual([...root.querySelectorAll(".abstractin-menu-section")].map(n => n.textContent), ["Agents & APIs", "Configure"]);
+	assert.deepEqual([...root.querySelectorAll(".abstractin-menu-section")].map(n => n.textContent), ["Agents & APIs"]);
 	const agents = [...root.querySelectorAll(".abstractin-menu-item[data-agent]")].map(n => n.dataset.agent);
 	assert.ok(agents.includes("agy") && !agents.includes("deepseek"), "only configured agents are listed");
-	for (const name of ["Claude Code", "OpenAI Codex", "Google Antigravity", "DeepSeek API"]) assert.ok(menuLabels(root).includes("Set up " + name + "…"));
+	assert.equal(root.querySelector('[data-setup-agent]'), null);
+	assert.equal(root.querySelector('.abstractin-menu-next'), null);
+	root.querySelector('[data-menu-key="setup"]').click();
+	for (const name of ["Claude Code", "OpenAI Codex", "Google Antigravity", "DeepSeek API"]) assert.ok(menuLabels(root).includes(name));
+	assert.equal(root.querySelectorAll('.abstractin-model-agents [data-setup-agent]').length, 0);
 	openAgent(root, "agy");
 	assert.equal(root.querySelector(".abstractin-menu-back .abstractin-menu-label").textContent, "Google Antigravity");
 	root.querySelector(".abstractin-menu-back").click();
@@ -1158,7 +1162,8 @@ test("reading menus expose unconfigured agents and selecting Claude opens guided
  const original = plugin.readingAgent();
  plugin.openModelMenu(root, root.querySelector(".abstractin-model-btn"));
  assert.equal(root.querySelector('.abstractin-menu-item[data-agent="claude"]'), null);
- [...root.querySelectorAll(".abstractin-menu-item")].find(n => n.textContent.includes("Set up Claude Code")).click();
+ root.querySelector('[data-menu-key="setup"]').dispatchEvent(new root.ownerDocument.defaultView.MouseEvent('mouseenter'));
+ root.querySelector('[data-setup-agent="claude"]').click();
  assert.ok(root.querySelector(".abstractin-agent-setup"));
  assert.equal(plugin.readingAgent(), original);
  assert.equal(root.querySelector(".abstractin-menu"), null);

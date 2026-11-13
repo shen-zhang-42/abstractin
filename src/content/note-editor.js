@@ -579,6 +579,7 @@
    const ctx = this.registerChatContext({ dir, paperItem: state.note, attachmentItem: null, noteWorkspace: true, noteState: state });
    const view = { doc, root, input, logEl: root.querySelector(".abstractin-log"), ctx };
    view.send = (text, images) => this.sendText(view, text, images); this._views.set(root, view); state.chatView = view;
+   this.renderQuickPrompts(root, root.querySelector(".abstractin-quick"));
    const scope = this.el(doc, "select"); scope.setAttribute("aria-label", "Note context");
    for (const [value, text] of [["full", "Use full note"], ["selection", "Use editor selection only"]]) {
     const option = this.el(doc, "option", null, text); option.value = value; scope.append(option);
@@ -602,6 +603,37 @@
    input.addEventListener("keydown", event => { if (this.isSendKey(event) && !event.isComposing) { event.preventDefault(); this.sendOrStop(root); } });
    this.updateControls(root); this.setBusy(view, false); input.focus();
    if (this._pending.has(dir)) this.showPending(view, this._pending.get(dir));
+  },
+  openNoteDiscussionReferences(view, anchor) {
+   const state = view.ctx.noteState, source = state.readingLayout ? this._views.get(state.readingLayout.entry.root) : state.sourceView;
+   const readingContext = source?.ctx.discussion && state.documents?.some(ref => ref.libraryID === source.ctx.paperItem.libraryID && ref.key === source.ctx.paperItem.key) ? source.ctx : null;
+   let history = null, error = "";
+   const menu = this.openMenu(view.root, anchor, menu => {
+    const list = this.referenceMenuBody(view.doc, menu, { title: "Quote", path: state.title.value || "Note discussion" });
+    if (readingContext) {
+     this.menuItem(view.doc, list, { label: "Reading discussion", desc: "Browse saved results from the linked reading", icon: "book", onSelect: () => {
+      this.closeMenu(view.root);
+      this.openDiscussionReferences({ ...view, ctx: readingContext }, anchor);
+     } });
+     this.menuSection(view.doc, list, "Note discussion");
+    }
+    if (error) { list.append(this.el(view.doc, "p", "abstractin-menu-note", error)); return; }
+    if (!history) { list.append(this.el(view.doc, "p", "abstractin-menu-note", "Loading answers…")); return; }
+    const answers = history.map((message, at) => ({ message, at })).filter(row => row.message.role === "assistant" && row.message.text?.trim());
+    if (!answers.length) list.append(this.el(view.doc, "p", "abstractin-menu-note", "No saved answers in this note discussion yet."));
+    answers.forEach(({ message, at }, index) => {
+     const excerpt = message.text.replace(/\s+/g, " ").trim();
+     const item = this.menuItem(view.doc, list, { label: "Answer " + (index + 1), desc: excerpt.slice(0, 160), onSelect: () => {
+      this.closeMenu(view.root);
+      this.quoteDiscussionResult(view, null, message, at, "", { kind: "Answer", number: index + 1, text: message.text });
+     } });
+     item.title = excerpt;
+    });
+   });
+   if (!menu) return;
+   this.loadHistory(view.ctx.dir).then(saved => { if (menu.isConnected) { history = saved; menu.refresh(); } })
+    .catch(e => { if (menu.isConnected) { error = e.message || String(e); menu.refresh(); } });
+   return menu;
   },
   showNoteEditProposal(state, proposal) {
    state.proposalHost?.remove(); const doc = state.input.ownerDocument;
