@@ -484,7 +484,8 @@
      await state.saveQueue.catch(() => {});
      await Zotero.File.putContentsAsync(OS.Path.join(state.dir, "draft.json"), JSON.stringify({ format: "abstractin-note-draft-v1", noteKey: state.note.key,
       title: title.value, markdown: input.value, documents: state.documents, updatedAt: Date.now() }));
-     state.forceClose = true; win.close();
+     state.forceClose = true;
+     if (state.dockManaged) await this.closeReadingLayout(state.readingLayout, { discard: true }); else win.close();
     } catch (e) { report(e); }
    };
    const flush = () => { win.clearTimeout(state.timer); state.timer = null; return this.saveMarkdownNote(state); };

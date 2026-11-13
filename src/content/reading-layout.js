@@ -659,7 +659,7 @@
   disposeReadingLayout(layout) {
    if (layout.disposed) return; layout.disposed = true;
    const state = layout.noteState;
-   if (state?.input && !state.note.deleted && (state.revision !== state.savedRevision || state.timer)) {
+   if (state?.input && !state.forceClose && !state.note.deleted && (state.revision !== state.savedRevision || state.timer)) {
     // Snapshot synchronously before destroying an editor, including when its
     // native PDF tab closes. Track the write so plugin shutdown can await it.
     const task = state.flush().catch(error => this.logError("layout closing save", error));

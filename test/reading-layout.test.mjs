@@ -178,6 +178,19 @@ test('closing the native reader snapshots an unsaved docked note before disposin
  dispose();
 });
 
+test('keeping a recovery draft closes only the docked workspace, never the Zotero window', async () => {
+ const { p, layout, win, files, dispose } = await setup();
+ let mainClosed = false, workspaceClosed = false;
+ const close = win.close.bind(win); win.close = () => { mainClosed = true; };
+ p.closeReadingLayout = async (target, options) => { assert.equal(target, layout); assert.equal(options.discard, true); workspaceClosed = true; };
+ layout.noteState.input.value = 'Keep this local draft';
+ const button = [...layout.noteState.editor.querySelectorAll('button')].find(button => button.textContent === 'Close keeping local draft');
+ await button.onclick();
+ assert.equal(mainClosed, false); assert.equal(workspaceClosed, true);
+ assert.equal(JSON.parse(files.get(layout.noteState.dir + '/draft.json')).markdown, 'Keep this local draft');
+ dispose(); close();
+});
+
 test('docked note stylesheet cannot target native html/body or the document root', () => {
  const css = readFileSync(new URL('../src/content/reading-note.css', import.meta.url), 'utf8');
  assert.doesNotMatch(css, /(^|[\n{},])\s*(?:html|body|:root)\b/);
