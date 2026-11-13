@@ -54,6 +54,25 @@ test('search reports cancellation, incomplete timeout and missing matches distin
  await assert.rejects(p.findBinary('gemini', { directory: 'relative' }), /absolute path/);
 });
 
+test("search works with Zotero's OS.File, which reports every path as a link", async () => {
+ const home = 'C:\\Users\\test', ext = home + '\\.positron\\extensions';
+ const binary = version => ext + '\\anthropic.claude-code-' + version + '-win32-x64\\resources\\native-binary';
+ const tree = { 'C:\\': { isDir: true }, [home]: { isDir: true }, [home + '\\.positron']: { isDir: true }, [ext]: { isDir: true } };
+ for (const version of ['2.1.319', '2.1.322']) {
+  const folder = ext + '\\anthropic.claude-code-' + version + '-win32-x64';
+  Object.assign(tree, { [folder]: { isDir: true }, [folder + '\\resources']: { isDir: true }, [binary(version)]: { isDir: true }, [binary(version) + '\\claude.exe']: {} });
+ }
+ const e = fixture(tree, { USERPROFILE: home, PATH: '' });
+ // Mirror chrome/content/zotero/osfile.mjs: stat() always says isSymLink, entries carry only isDir.
+ const { stat, DirectoryIterator } = e.window.OS.File;
+ e.window.OS.File.stat = async path => ({ ...(await stat(path)), isSymLink: true });
+ e.window.OS.File.DirectoryIterator = class extends DirectoryIterator {
+  async forEach(callback) { await super.forEach(entry => callback({ name: entry.name, path: entry.path, isDir: !!entry.isDir })); }
+ };
+ assert.equal(await e.p.findBinary('claude', { directory: binary('2.1.322') }), binary('2.1.322') + '\\claude.exe');
+ assert.equal(await e.p.findBinary('claude', { directory: '' }), binary('2.1.322') + '\\claude.exe', 'blank search finds the newest editor extension');
+});
+
 test('a chosen executable is used directly instead of being rejected as not a directory', async () => {
  const { p, read } = fixture({ 'D:\\my tools\\claude.exe': {}, 'D:\\my tools\\claude.cmd': {}, 'D:\\bin\\gemini.cmd': {}, 'D:\\bin\\notes.txt': {} });
  assert.equal(await p.findBinary('claude', { directory: '"D:\\my tools\\claude.exe"' }), 'D:\\my tools\\claude.exe');

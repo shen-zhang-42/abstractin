@@ -70,12 +70,13 @@
    const env = Subprocess.getEnvironment?.() || {}, home = env.USERPROFILE || env.HOME || "";
    const local = env.LOCALAPPDATA || (home && OS.Path.join(home, "AppData", "Local")), roaming = env.APPDATA || (home && OS.Path.join(home, "AppData", "Roaming"));
    // Folders searched completely before the rest of the root, e.g. CLIs bundled in editor extensions.
+   const editors = [".vscode", ".vscode-insiders", ".positron", ".cursor", ".windsurf"];
    const likely = !home ? [] : Zotero.isWin ? [
     OS.Path.join(home, ".local"), OS.Path.join(roaming, "npm", "node_modules"), OS.Path.join(local, "Programs"),
-    OS.Path.join(local, "Microsoft", "WinGet", "Packages"), OS.Path.join(home, ".vscode", "extensions"),
-    OS.Path.join(home, ".cursor", "extensions"), OS.Path.join(home, ".windsurf", "extensions"),
+    OS.Path.join(local, "Microsoft", "WinGet", "Packages"),
+    ...editors.map(name => OS.Path.join(home, name, "extensions")),
     "C:\\Program Files", "C:\\Program Files (x86)", home,
-   ] : [OS.Path.join(home, ".local"), OS.Path.join(home, ".vscode", "extensions"), OS.Path.join(home, ".cursor", "extensions"), home];
+   ] : [OS.Path.join(home, ".local"), ...editors.map(name => OS.Path.join(home, name, "extensions")), home];
    // System and cache folders are large and never hold a CLI; skipping them keeps a drive-wide search feasible.
    const skipped = new Set(["$recycle.bin", "system volume information", ".git", ".cache", "winsxs", "$winreagent", "perflogs", "recovery"]);
    const skippedPaths = new Set((Zotero.isWin ? [root.slice(0, 3) + "Windows", local && OS.Path.join(local, "Packages"), local && OS.Path.join(local, "Temp")]
@@ -93,20 +94,22 @@
     check();
     for (const filename of accepted) {
      const path = OS.Path.join(folder, filename);
-     try { const info = await OS.File.stat(path); if (!info.isDir && !info.isSymLink) { const found = await result(path); check(); if (found) return found; } } catch (error) { if (isCancelled()) throw error; }
+     // Zotero's OS.File.stat reports isSymLink: true for every path, so only isDir is trusted here.
+     try { const info = await OS.File.stat(path); if (!info.isDir) { const found = await result(path); check(); if (found) return found; } } catch (error) { if (isCancelled()) throw error; }
     }
    }
    // Breadth-first: each likely folder is searched completely, then the root.
-   const queue = [...new Set(likely.filter(inside))]; let cursor = 0, rootQueued = false;
+   // Zotero's directory entries do not report links, so a depth limit stops junction loops.
+   const queue = [...new Set(likely.filter(inside))].map(path => [path, 0]); let cursor = 0, rootQueued = false;
    while (cursor < queue.length || !rootQueued) {
-    if (cursor === queue.length) { queue.push(root); rootQueued = true; }
-    check(); const folder = queue[cursor++], key = comparable(folder);
+    if (cursor === queue.length) { queue.push([root, 0]); rootQueued = true; }
+    check(); const [folder, depth] = queue[cursor++], key = comparable(folder);
     if (seen.has(key)) continue; seen.add(key);
     if (scanned++ % 25 === 0) onProgress("Searching for " + basename + " in " + folder);
     const entries = []; let iterator;
     try {
-     const info = await OS.File.stat(folder, { unixNoFollowingLinks: true });
-     if (!info.isDir || info.isSymLink) continue;
+     const info = await OS.File.stat(folder);
+     if (!info.isDir) continue;
      iterator = new OS.File.DirectoryIterator(folder); await iterator.forEach(entry => { if (entries.length % 256 === 0) check(); entries.push(entry); });
     } catch (error) { check(); if (key === comparable(root)) throw new Error("Cannot read the CLI search directory. Check its path and permissions."); continue; }
     finally { iterator?.close(); }
@@ -115,7 +118,10 @@
      const entry = entries.find(value => !value.isDir && !value.isSymLink && (Zotero.isWin ? value.name.toLowerCase() : value.name) === filename);
      if (entry) { const found = await result(entry.path); check(); if (found) return found; }
     }
-    for (const entry of entries) if (entry.isDir && !entry.isSymLink && !skipped.has(entry.name.toLowerCase()) && !skippedPaths.has(comparable(entry.path))) queue.push(entry.path);
+    if (depth >= 16) continue;
+    // Newest versions first, e.g. extension folders named by version.
+    entries.sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
+    for (const entry of entries) if (entry.isDir && !entry.isSymLink && !skipped.has(entry.name.toLowerCase()) && !skippedPaths.has(comparable(entry.path))) queue.push([entry.path, depth + 1]);
     if (scanned % 25 === 0) await new Promise(resolve => Zotero.getMainWindow().setTimeout(resolve, 0));
    }
    throw new Error("Could not find " + basename + " in " + root + " or its readable subdirectories. Choose the executable itself, or its installation folder, and try again.");
