@@ -459,6 +459,7 @@
    status.setAttribute("role", "status");
    const save = this.el(doc, "button", null, "Save"), chatToggle = this.el(doc, "button", null, "Discuss note");
    save.className = "abstractin-note-save";
+   save.title = "Save note"; save.setAttribute("aria-label", "Save note"); save.replaceChildren(this.svgIcon(doc, "save"));
    const closeDraft = this.el(doc, "button", null, "Close keeping local draft"); closeDraft.hidden = true;
    const append = this.el(doc, "button", null, "Append last answer"), toDiscussion = this.el(doc, "button", null, "Use in document discussion");
    toDiscussion.hidden = !state.sourceView || !!state.sourceView.ctx.noteWorkspace;
@@ -504,7 +505,8 @@
     header.insertBefore(header.querySelector(".abstractin-note-documents"), toolbar);
    }
    title.addEventListener("input", change); input.addEventListener("input", change);
-   state.disposeEditor = this.installMathComposer(input, { note: true });
+   state.disposeEditor = this.installMathComposer(input, { note: true, compactToolbar: !!state.dockManaged,
+    onToolbarChange: visible => state.formatButton?.setAttribute("aria-expanded", String(visible)) });
    save.onclick = () => flush().catch(report);
    const shortcut = event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); flush().catch(report); } };
    const scopedShortcut = event => { if (!state.home || state.home.active === state) shortcut(event); };
@@ -555,7 +557,7 @@
    if (!state.home && !state.dockManaged) win.addEventListener("beforeunload", state.beforeUnload);
    state.dispose = () => {
     if (state.disposed) return; state.disposed = true;
-    state.sourceDisposers?.forEach(dispose => dispose());
+    state.sourceDisposers?.splice(0).forEach(dispose => dispose());
     win.removeEventListener("unload", state.dispose); win.removeEventListener("beforeunload", state.beforeUnload);
     win.clearTimeout(state.timer); win.clearTimeout(state.previewTimer); win.removeEventListener("keydown", scopedShortcut); state.disposeEditor?.(); state.disposeSplitter?.();
     if (state.chatView) {
@@ -584,7 +586,14 @@
    const mode = this.el(doc, "select"); mode.setAttribute("aria-label", "Note assistant action");
    for (const [value, text] of [["answer", "Answer questions"], ["edit", "Edit note"]]) { const option = this.el(doc, "option", null, text); option.value = value; mode.append(option); }
    const controls = this.el(doc, "div", "abstractin-note-chat-controls"); controls.append(mode, scope);
-   state.contextScope = scope; state.assistantMode = mode; root.querySelector(".abstractin-header").after(controls);
+   state.contextScope = scope; state.assistantMode = mode;
+   if (state.dockManaged) {
+    this.integrateReadingDiscussionHeader(state.readingLayout, "notes", root);
+    const header = root.querySelector(".abstractin-header"), move = state.readingLayout.surfaces.get("notes").moveButton;
+    controls.append(this.readingChoiceButton(doc, mode, "edit", "Assistant action"), this.readingChoiceButton(doc, scope, "paper", "Note context"));
+    header.insertBefore(controls, move);
+    state.sourceDisposers ||= []; state.sourceDisposers.push(() => { mode._closeMenu?.(); scope._closeMenu?.(); });
+   } else root.querySelector(".abstractin-header").after(controls);
    const history = await this.loadHistory(dir);
    this.renderMessages(view, history); input.disabled = false;
    const last = history[history.length - 1], decision = await this.readDiscussionJSON(OS.Path.join(state.dir, "edit-decision.json"), null);

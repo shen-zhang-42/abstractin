@@ -6,6 +6,9 @@ html,body,#editor { height:100%; margin:0; overflow:hidden; }
 :root { --vscode-editor-background:transparent; --vscode-editor-foreground:var(--editor-text,CanvasText); --vscode-foreground:var(--editor-text,CanvasText); --vscode-descriptionForeground:var(--editor-faint,GrayText); --vscode-focusBorder:var(--editor-faint,#888); --vscode-editorWidget-background:Canvas; --vscode-input-background:Canvas; --vscode-input-foreground:CanvasText; --vscode-panel-border:var(--editor-faint,#aaa); }
 body { background:transparent; color:var(--editor-text,CanvasText); font:13px/1.8 system-ui,sans-serif; }
 #editor { display:flex; flex-direction:column; }
+#editor { position:relative; }
+.note-format-toolbar[hidden] { display:none; }
+.note-format-toolbar[data-floating="true"] { position:absolute; z-index:120; top:0; left:0; right:0; padding:8px; background:Canvas; color:CanvasText; border:1px solid var(--editor-hover,#8883); border-radius:6px; box-shadow:0 6px 20px #0002; }
 #editor>.cm-editor { flex:1; min-height:0; font:inherit; }
 .cm-editor .cm-scroller { font-family:inherit; }
 .cm-editor .cm-content.cm-content { font-family:var(--note-display-font, inherit); font-size:inherit; padding:12px 16px 80px; }

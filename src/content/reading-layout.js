@@ -78,11 +78,14 @@
    }
    await original.openReaderPanel.call(this, reader, options);
    const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state?.views.get(reader);
-   if (entry && !entry.layoutButton) {
-    entry.layoutButton = this.iconButton(entry.root.ownerDocument, "abstractin-layout-open", "Read and write side by side", "noteFull", () => {
-     this.openReadingLayoutMenu(state.win, entry.layoutButton, { reader });
-    });
-    entry.root.querySelector(".abstractin-header").append(entry.layoutButton);
+   if (entry && !entry.layout && !entry.globalToolbar) {
+    this.installReadingLayoutStyle(entry.root.ownerDocument, "reading-layout.css");
+    const bar = this.el(entry.root.ownerDocument, "header", "abstractin-layout-toolbar abstractin-reading-global-toolbar");
+    const label = this.el(entry.root.ownerDocument, "span", "abstractin-layout-name", "AbstractIn");
+    const chooser = this.iconButton(entry.root.ownerDocument, "abstractin-layout-choose", "Layout", "patternGrid", () => this.openReadingLayoutMenu(state.win, chooser, { reader: state.reader }));
+    bar.append(label, chooser, this.iconButton(entry.root.ownerDocument, "abstractin-global-settings", "Plugin settings", "settings", () => this.openSettings()));
+    entry.root.querySelector(".abstractin-open-settings")?.remove();
+    entry.body.prepend(bar); entry.globalToolbar = bar;
    }
   },
   async openReadingLayout(panelState, entry, reader, note = null, { restore = true } = {}) {
@@ -130,16 +133,18 @@
    const doc = layout.win.document;
    for (const file of ["reading-note.css", "reading-layout.css"]) this.installReadingLayoutStyle(doc, file);
    const shell = this.el(doc, "section", "abstractin-reading-layout"), toolbar = this.el(doc, "header", "abstractin-layout-toolbar");
-   const title = this.el(doc, "span", "abstractin-layout-name"), source = this.el(doc, "button", null, "Sources +");
-   source.onclick = () => this.showReadingSources(layout);
-   const chooser = this.el(doc, "button", null, "Layout ▾"); chooser.setAttribute("aria-label", "Panel layout"); chooser.setAttribute("aria-haspopup", "menu");
-   chooser.onclick = () => this.openReadingLayoutMenu(layout.win, chooser, { layout });
-   const reset = this.el(doc, "button", null, "Reset layout"); reset.onclick = () => this.applyReadingLayoutPreset(layout, "stacked").catch(error => this.layoutError(layout, error));
-   const exit = this.el(doc, "button", null, "Hide notes"); exit.onclick = () => this.applyReadingLayoutPreset(layout, "reading").catch(error => this.layoutError(layout, error));
-   toolbar.append(title, source, chooser, reset, exit);
+   entry.globalToolbar?.remove(); delete entry.globalToolbar;
+   const title = this.el(doc, "span", "abstractin-layout-name");
+   const source = this.iconButton(doc, "abstractin-layout-add-source", "Manage sources", "paper", () => this.showReadingSources(layout));
+   const chooser = this.iconButton(doc, "abstractin-layout-choose", "Layout", "patternGrid", () => this.openReadingLayoutMenu(layout.win, chooser, { layout }));
+   chooser.setAttribute("aria-haspopup", "menu");
+   const reset = this.iconButton(doc, "abstractin-layout-reset", "Reset layout", "retry", () => this.applyReadingLayoutPreset(layout, "stacked").catch(error => this.layoutError(layout, error)));
+   const exit = this.iconButton(doc, "abstractin-layout-toggle-notes", "Hide notes", "noteNone", () => this.toggleReadingNotes(layout).catch(error => this.layoutError(layout, error)));
+   toolbar.append(title, source, chooser, reset, exit, this.iconButton(doc, "abstractin-global-settings", "Plugin settings", "settings", () => this.openSettings()));
    const sources = this.el(doc, "nav", "abstractin-layout-sources"), status = this.el(doc, "div", "abstractin-layout-status"); status.setAttribute("role", "status");
    const host = this.el(doc, "div", "abstractin-dock-host"); shell.append(toolbar, sources, status, host);
-   entry.body.append(shell); Object.assign(layout, { shell, title, sources, status });
+   entry.body.append(shell); Object.assign(layout, { shell, title, sources, status, noteToggle: exit });
+   this.updateReadingNoteToggle(layout);
    layout.showSources = () => { layout.win.focus(); return this.showReadingSources(layout); };
    const saved = this.getJSONPref("readingDockLayout", null);
    const valid = tree => tree && (tree.panel ? Object.hasOwn(names, tree.panel) : ["x", "y"].includes(tree.axis) && tree.children?.length === 2 && tree.children.every(valid));
@@ -151,6 +156,7 @@
    layout.groups.set("main", { id: "main", win: layout.win, host, tree });
    for (const id of Object.keys(names)) this.createReadingSurface(layout, id, layout.groups.get("main"));
    const reading = layout.surfaces.get("reading"); reading.content.append(entry.root); reading.root = entry.root;
+   this.integrateReadingDiscussionHeader(layout, "reading", entry.root);
    const dir = OS.Path.join(this.getDataDir(), "notes", note.libraryID + "-" + note.key);
    for (const path of [this.getDataDir(), OS.Path.join(this.getDataDir(), "notes"), dir]) await Zotero.File.createDirectoryIfMissingAsync(path);
    layout.noteState = { key, note, parent: note.parentID ? parent : null, documents: layout.documents, linkedDocuments: layout.documents.slice(), dir,
@@ -177,6 +183,55 @@
    (doc.head || doc.documentElement).append(link);
   },
   layoutError(layout, error) { layout.status.textContent = error.message || String(error); this.logError("reading layout", error); },
+  readingChoiceButton(doc, select, icon, label) {
+   const button = this.iconButton(doc, "abstractin-panel-choice", label, icon, () => {
+    if (select._closeMenu) { select._closeMenu(); return; }
+    const menu = this.el(doc, "div", "abstractin-panel-choice-menu"); menu.setAttribute("role", "menu");
+    const close = () => { menu.remove(); button.setAttribute("aria-expanded", "false"); doc.removeEventListener("mousedown", outside, true); doc.removeEventListener("keydown", keyboard, true); doc.defaultView.removeEventListener("unload", close); delete select._closeMenu; };
+    const outside = event => { if (!menu.contains(event.target) && !button.contains(event.target)) close(); };
+    const keyboard = event => {
+     if (event.key === "Escape") { event.preventDefault(); close(); button.focus(); return; }
+     if (event.key === "Tab") { close(); return; }
+     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+     event.preventDefault(); const items = [...menu.querySelectorAll("button")], index = items.indexOf(doc.activeElement);
+     items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+    };
+    for (const option of select.options) {
+     if (!option.value) continue;
+     const item = this.el(doc, "button", null, option.textContent); item.type = "button"; item.setAttribute("role", "menuitemradio"); item.setAttribute("aria-checked", String(option.value === select.value));
+     item.onclick = () => { select.value = option.value; select.dispatchEvent(new doc.defaultView.Event("change", { bubbles: true })); close(); button.title = label + (select.selectedOptions[0]?.value ? ": " + select.selectedOptions[0].textContent : ""); };
+     menu.append(item);
+    }
+    (doc.body || doc.documentElement).append(menu);
+    const rect = button.getBoundingClientRect();
+    Object.assign(menu.style, { left: Math.max(8, Math.min(rect.right - 220, doc.defaultView.innerWidth - 228)) + "px", top: Math.max(8, Math.min(rect.bottom + 4, doc.defaultView.innerHeight - menu.offsetHeight - 8)) + "px" });
+    select._closeMenu = close; button.setAttribute("aria-expanded", "true");
+    doc.addEventListener("mousedown", outside, true); doc.addEventListener("keydown", keyboard, true); doc.defaultView.addEventListener("unload", close, { once: true }); menu.querySelector("button")?.focus();
+   });
+   if (select.selectedOptions[0]?.value) button.title = label + ": " + select.selectedOptions[0].textContent;
+   button.setAttribute("aria-haspopup", "menu"); select.hidden = true; return button;
+  },
+  integrateReadingDiscussionHeader(layout, id, root) {
+   const surface = layout.surfaces.get(id), header = surface.header, original = root.querySelector(".abstractin-header");
+   const actions = [...original.children].filter(node => node.matches("button") && !node.matches(".abstractin-open-settings"));
+   surface.destination._closeMenu?.();
+   header.classList.add("abstractin-header"); surface.label.classList.add("abstractin-header-title");
+   header.replaceChildren(surface.label, ...actions, surface.destination, surface.moveButton);
+   if (original !== header) original.remove(); root.prepend(header);
+   root.dataset.sharedSources = "true"; root.dataset.readingTheme = "neutral";
+  },
+  integrateReadingNoteHeader(layout) {
+   const surface = layout.surfaces.get("editor"), state = layout.noteState;
+   surface.destination._closeMenu?.();
+   const formatting = this.iconButton(state.editor.ownerDocument, "abstractin-note-format", "Formatting, font and shortcuts", "edit", () => state.input._composerEditor?.toggleToolbar?.());
+   formatting.setAttribute("aria-expanded", "false"); state.formatButton = formatting;
+   const outside = event => { if (formatting.getAttribute("aria-expanded") === "true" && !formatting.contains(event.target)) state.input._composerEditor?.toggleToolbar?.(); };
+   state.editor.ownerDocument.addEventListener("mousedown", outside, true);
+   state.sourceDisposers ||= []; state.sourceDisposers.push(() => state.editor.ownerDocument.removeEventListener("mousedown", outside, true));
+   surface.header.replaceChildren(surface.label, state.title, formatting, state.editor.querySelector(".abstractin-note-file-actions"), surface.destination, surface.moveButton);
+   state.editor.prepend(surface.header);
+   state.editor.querySelector(".abstractin-note-topline")?.remove();
+  },
   createReadingSurface(layout, id, group) {
    const doc = group.win.document, node = this.el(doc, "section", "abstractin-dock-panel"), header = this.el(doc, "header", "abstractin-dock-header");
    node.dataset.panel = id; header.draggable = true;
@@ -186,11 +241,12 @@
     const value = destination.value; destination.value = "";
     (value === "new" ? this.floatReadingSurface(layout, id) : this.moveReadingSurface(layout, id, value, null, "right")).catch(error => this.layoutError(layout, error));
    };
-   header.append(destination);
+   const moveButton = this.readingChoiceButton(doc, destination, "jumpTo", "Move " + names[id]);
+   header.append(destination, moveButton);
    const content = this.el(doc, "div", "abstractin-dock-content"); node.append(header, content); group.host.append(node);
-   const surface = { id, node, content, header, destination, group: group.id }; layout.surfaces.set(id, surface);
+   const surface = { id, node, content, header, label, destination, moveButton, group: group.id }; layout.surfaces.set(id, surface);
    header.addEventListener("dragstart", event => {
-    if (event.target.closest("select,button")) { event.preventDefault(); return; }
+    if (event.target.closest("select,button,input,summary")) { event.preventDefault(); return; }
     this._dragReadingSurface = { layoutID: layout.id, id };
     event.dataTransfer.setData("text/plain", "abstractin-panel:" + layout.id + ":" + id); event.dataTransfer.effectAllowed = "move";
     layout.dropZones = [...layout.surfaces.values()].filter(value => value.id !== id).map(value => {
@@ -285,7 +341,7 @@
    }
   },
   saveReadingDockLayout(layout) {
-   if (layout.restoring || layout.disposed || layout.bundling) return;
+   if (layout.restoring || layout.disposed || layout.bundling || layout.notesHidden || layout.togglingNotes) return;
    const main = layout.groups.get("main");
    if (panels(main.tree).length === 3) this.setPref("readingDockLayout", JSON.stringify(main.tree));
    const groups = [...layout.groups.values()].filter(group => group.id === "main" || group.tree).map(group => ({ main: group.id === "main", tree: group.tree,
@@ -529,6 +585,7 @@
    editor.content.replaceChildren(); chat.content.replaceChildren();
    this._markdownNoteWindows.set(state.key, state);
    await this.mountMarkdownNote(editor.node.ownerDocument.defaultView, state, editor.content);
+   this.integrateReadingNoteHeader(layout);
    if (layout.noteDraft && state.chatView) {
     state.chatView.input.value = layout.noteDraft.text; this.autoGrow(state.chatView.input);
     state.chatView.input.dispatchEvent(new state.chatView.doc.defaultView.Event("input", { bubbles: true }));
@@ -542,6 +599,7 @@
    if (oldRoot) { this.rememberChatPosition(oldView); oldRoot.disposeUI?.(); this._views.delete(oldRoot); oldRoot.remove(); }
    surface.content.replaceChildren(); this.renderSkeleton(doc, surface.content);
    const root = surface.content.querySelector(".abstractin-root"); layout.entry.root = root; surface.root = root;
+   this.integrateReadingDiscussionHeader(layout, "reading", root);
    const item = Zotero.Items.get(layout.reader.itemID);
    // renderContent may remain pending for the entire streamed answer. Resolve
    // the move as soon as its replacement view is registered, not after the AI.
@@ -573,6 +631,7 @@
    if (!single && ["editor", "notes"].includes(id)) return this.moveReadingNoteGroup(layout, groupID, target, edge);
    if (layout.moving) throw new Error("Wait for the previous panel move to finish.");
    const surface = layout.surfaces.get(id), source = layout.groups.get(surface.group), group = layout.groups.get(groupID);
+   surface.destination._closeMenu?.();
    if (!group?.host) throw new Error("The destination window is still opening.");
    if (target === id) return;
    layout.moving = true;
@@ -628,8 +687,8 @@
     (async () => {
      while (layout.moving) await new Promise(resolve => win.setTimeout(resolve, 20));
      const returning = panels(group.tree), hadNotes = returning.some(id => ["editor", "notes"].includes(id));
+     if (hadNotes) { await this.toggleReadingNotes(layout, false); return; }
      for (const id of returning) if (layout.surfaces.get(id).group !== "main") await this.moveReadingSurface(layout, id, "main");
-     if (hadNotes) await this.applyReadingLayoutPreset(layout, "reading");
     })()
      .catch(error => this.layoutError(layout, error)).finally(() => { group.returning = false; });
    };
@@ -642,6 +701,7 @@
     for (const id of panels(group.restoreTree)) if (layout.surfaces.get(id).group !== groupID) await this.moveReadingSurface(layout, id, groupID, null, "right", { single: true });
     group.tree = group.restoreTree; delete group.restoreTree;
     if (group.bounds) { win.resizeTo(Math.max(350, group.bounds.width || 780), Math.max(300, group.bounds.height || 850)); }
+    if (Number.isFinite(group.bounds?.left) && Number.isFinite(group.bounds?.top)) win.moveTo(group.bounds.left, group.bounds.top);
     if (group.restoreRequested && layout.restoring) {
      layout.restoreRemaining--;
      if (!layout.restoreRemaining) { layout.groups.get("main").tree = layout.restoreMain; layout.restoring = false; }
@@ -652,16 +712,57 @@
    win.addEventListener("unload", () => { win.removeEventListener("resize", resized); group.splitDisposers?.forEach(dispose => dispose()); }, { once: true });
   },
   async applyReadingLayoutPreset(layout, name) {
+   if (name === "reading") return this.toggleReadingNotes(layout, false);
+   layout.notesHidden = false; this.updateReadingNoteToggle(layout);
    for (const id of Object.keys(names)) if (layout.surfaces.get(id).group !== "main") await this.moveReadingSurface(layout, id, "main");
    const main = layout.groups.get("main"); main.tree = this.readingLayoutPreset(name);
-   for (const surface of layout.surfaces.values()) surface.node.hidden = name === "reading" && surface.id !== "reading";
-   if (name === "reading") main.tree = leaf("reading");
-   layout.panelState.panel.classList.toggle("abstractin-reading-notes-hidden", name === "reading");
-   layout.panelState.panel.style.width = (Number(this.getPref(name === "reading" ? "readerPanelWidth" : "readingWorkspaceWidth")) || (name === "reading" ? 380 : 850)) + "px";
+   for (const surface of layout.surfaces.values()) surface.node.hidden = false;
+   layout.panelState.panel.classList.remove("abstractin-reading-notes-hidden");
+   layout.panelState.panel.style.width = (Number(this.getPref("readingWorkspaceWidth")) || 850) + "px";
    if (name === "separate") {
     await this.floatReadingSurface(layout, "editor");
    }
    this.drawReadingLayout(layout); this.saveReadingDockLayout(layout);
+  },
+  updateReadingNoteToggle(layout) {
+   const button = layout.noteToggle, label = layout.notesHidden ? "Show notes" : "Hide notes";
+   if (!button) return;
+   button.title = label; button.setAttribute("aria-label", label); button.setAttribute("aria-pressed", String(!layout.notesHidden));
+   button.replaceChildren(this.svgIcon(button.ownerDocument, layout.notesHidden ? "noteFull" : "noteNone"));
+  },
+  async toggleReadingNotes(layout, show = !!layout.notesHidden) {
+   if (layout.togglingNotes || show === !layout.notesHidden) return;
+   if (layout.restoring || layout.moving || [...layout.groups.values()].some(group => !group.host)) throw new Error("Wait for the panel layout to finish opening.");
+   layout.togglingNotes = true; layout.noteToggle.disabled = true;
+   try {
+    if (!show) {
+     this.saveReadingDockLayoutSnapshot(layout);
+     // Reuse the normal transfer path, retaining dirty notes and unsent drafts.
+     for (const id of ["editor", "notes"]) if (layout.surfaces.get(id).group !== "main") await this.moveReadingSurface(layout, id, "main");
+     for (const group of layout.groups.values()) group.tree = without(without(group.tree, "editor"), "notes");
+     layout.notesHidden = true;
+    } else {
+     const snapshot = layout.hiddenNoteLayout;
+     for (const id of Object.keys(names)) if (layout.surfaces.get(id).group !== "main") await this.moveReadingSurface(layout, id, "main");
+     layout.notesHidden = false;
+     layout.groups.get("main").tree = snapshot?.groups.find(group => group.main)?.tree || this.readingLayoutPreset("stacked");
+     const floating = snapshot?.groups.filter(group => !group.main && group.tree) || [];
+     if (floating.length) {
+      layout.restoring = true; layout.restoreMain = layout.groups.get("main").tree; layout.restoreRemaining = floating.length;
+      // All panels need a temporary home until the floating documents mount.
+      layout.groups.get("main").tree = this.readingLayoutPreset("stacked");
+      for (const group of floating) await this.floatReadingSurface(layout, panels(group.tree)[0], { tree: group.tree, bounds: group.bounds });
+     }
+    }
+    for (const surface of layout.surfaces.values()) surface.node.hidden = !!layout.notesHidden && surface.id !== "reading";
+    layout.panelState.panel.classList.toggle("abstractin-reading-notes-hidden", !!layout.notesHidden);
+    layout.panelState.panel.style.width = show && layout.hiddenNoteLayout?.width || (Number(this.getPref(show ? "readingWorkspaceWidth" : "readerPanelWidth")) || (show ? 850 : 380)) + "px";
+    this.updateReadingNoteToggle(layout); this.drawReadingLayout(layout);
+   } finally { layout.togglingNotes = false; layout.noteToggle.disabled = false; this.saveReadingDockLayout(layout); }
+  },
+  saveReadingDockLayoutSnapshot(layout) {
+   layout.hiddenNoteLayout = { width: layout.panelState.panel.style.width, groups: [...layout.groups.values()].map(group => ({ main: group.id === "main", tree: JSON.parse(JSON.stringify(group.tree)),
+    bounds: group.id === "main" ? null : { width: group.win.outerWidth, height: group.win.outerHeight, left: group.win.screenX, top: group.win.screenY } })) };
   },
   drawReadingSources(layout) {
    layout.readingContext = this._views.get(layout.entry.root)?.ctx || layout.readingContext;
@@ -696,6 +797,7 @@
   },
   disposeReadingLayout(layout) {
    if (layout.disposed) return; layout.disposed = true;
+   for (const surface of layout.surfaces.values()) surface.destination._closeMenu?.();
    const state = layout.noteState;
    if (state?.input && !state.forceClose && !state.note.deleted && (state.revision !== state.savedRevision || state.timer)) {
     // Snapshot synchronously before destroying an editor, including when its

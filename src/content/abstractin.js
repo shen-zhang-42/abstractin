@@ -2055,8 +2055,8 @@ AbstractIn = {
 			return;
 		}
 		holder.textContent = "";
-		holder.hidden = !info;
-		if (!info) {
+		holder.hidden = !info || root.dataset.sharedSources === "true";
+		if (holder.hidden) {
 			return;
 		}
 		let doc = root.ownerDocument;

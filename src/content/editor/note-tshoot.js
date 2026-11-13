@@ -69,6 +69,13 @@ export function createTshootNote(config) {
   button.addEventListener('mousedown', event => event.preventDefault()); button.addEventListener('click', () => format(action)); toolbar.append(button);
  }
  const controls = noteToolbarControls(toolbar, { ...config, onFontChange: value => { view.requestMeasure(); config.onFontChange?.(value); } });
+ const setToolbar = visible => { toolbar.hidden = !visible; config.onToolbarChange?.(visible); };
+ if (config.compactToolbar) { toolbar.dataset.floating = 'true'; toolbar.hidden = true; }
+ const closeToolbar = event => {
+  if (!config.compactToolbar || toolbar.hidden) return;
+  if (event.type === 'keydown' ? event.key === 'Escape' : !toolbar.contains(event.target)) setToolbar(false);
+ };
+ document.addEventListener('mousedown', closeToolbar); document.addEventListener('keydown', closeToolbar);
  root.append(toolbar);
  const publish = update => {
   if (syncing || destroyed) return;
@@ -110,6 +117,7 @@ export function createTshootNote(config) {
  const flush = () => { if (!destroyed) commitActiveTableCell(view); };
  return {
   view, markdownShortcuts, flush, formatMarkdown: format,
+  toggleToolbar() { setToolbar(toolbar.hidden); },
   setFont(value) { if (controls.setFont(value)) view.requestMeasure(); },
   getMarkdown() { flush(); return view.state.doc.toString(); },
   getSelectionSnapshot() { flush(); return savedSelection || { from: 0, to: 0, markdown: '' }; },
@@ -138,6 +146,6 @@ export function createTshootNote(config) {
   focus() { if (!disabled) view.focus(); },
   select(anchor, head) { view.dispatch({ selection: EditorSelection.single(Math.min(anchor, view.state.doc.length), Math.min(head, view.state.doc.length)), scrollIntoView: true }); },
   measure() { view.requestMeasure(); },
-  destroy() { destroyed = true; controls.destroy(); root.removeEventListener('mousedown', preventReadOnly, true); root.removeEventListener('keydown', appKey, true); view.destroy(); toolbar.remove(); },
+  destroy() { destroyed = true; controls.destroy(); document.removeEventListener('mousedown', closeToolbar); document.removeEventListener('keydown', closeToolbar); root.removeEventListener('mousedown', preventReadOnly, true); root.removeEventListener('keydown', appKey, true); view.destroy(); toolbar.remove(); },
  };
 }

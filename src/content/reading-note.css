@@ -132,7 +132,7 @@
 .abstractin-note-chat-controls select { flex: 1; min-width: 130px; max-width: 100%; padding: 7px 8px; color: var(--note-text); background: var(--note-paper); border: 1px solid var(--note-line); border-radius: 7px; font-size: 12px !important; }
 .abstractin-note-chat .abstractin-log-wrap { flex: 1 1 0; min-height: 0; }
 .abstractin-note-chat .abstractin-log { height: 100%; min-height: 0; max-height: none; padding: 12px 4px; }
-.abstractin-note-chat .abstractin-composer { flex: 0 0 auto; border: 1px solid var(--note-line); border-radius: 12px; background: var(--note-paper); box-shadow: 0 3px 12px #00000005; }
+.abstractin-note-chat .abstractin-composer { flex: 0 0 auto; }
 .abstractin-note-chat .abstractin-empty { margin: auto 0; padding: 28px 14px; text-align: left; }
 .abstractin-note-chat .abstractin-empty-title { font-size: 22px; font-weight: 600; letter-spacing: -.03em; color: var(--note-text); }
 .abstractin-note-chat .abstractin-empty p { max-width: 31em; color: var(--note-muted); line-height: 1.8; font-size: 13px; }

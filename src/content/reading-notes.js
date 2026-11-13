@@ -73,7 +73,15 @@ Object.assign(AbstractIn, {
  mountReadingNoteActions(state, actions, before) {
   const doc = actions.ownerDocument, create = this.el(doc, "button", "abstractin-note-new", "New note"), open = this.el(doc, "button", "abstractin-note-open", "Open note");
   create.type = "button"; open.type = "button";
+  for (const [button, icon, label] of [[create, "paper", "New note"], [open, "book", "Open note"]]) {
+   button.classList.add("abstractin-icon"); button.title = label; button.setAttribute("aria-label", label); button.replaceChildren(this.svgIcon(doc, icon));
+  }
   actions.insertBefore(create, before); actions.insertBefore(open, before);
+  // Narrow note panels retain these commands in the actions menu.
+  const overflow = before.querySelector(".abstractin-note-more-actions");
+  for (const [original, label] of [[create, "New note"], [open, "Open note"]]) {
+   const item = this.el(doc, "button", "abstractin-note-overflow-action", label); item.type = "button"; item.onclick = () => original.click(); overflow.append(item);
+  }
   create.onclick = async () => {
    create.disabled = true;
    try { await this.newReadingNote(state.readingLayout); }

@@ -227,7 +227,7 @@ test('Save is followed by New note and Open note and each note retains its own t
  const {p,layout,win,a,dispose}=await setup();
  const first=layout.note,firstState=layout.noteState,readingRoot=layout.entry.root,readingDir=layout.readingContext.dir;
  const buttons=[...firstState.editor.querySelector('.abstractin-note-file-actions').children].filter(node=>node.tagName==='BUTTON');
- assert.deepEqual(buttons.slice(0,3).map(button=>button.textContent),['Save','New note','Open note']);
+ assert.deepEqual(buttons.slice(0,3).map(button=>button.getAttribute('aria-label')),['Save note','New note','Open note']);
  assert.ok(!buttons.some(button=>/Sources?/.test(button.textContent)));
  firstState.input.value='# First note';firstState.input.dispatchEvent(new win.Event('input'));
  firstState.chatView.input.value='Unsent first question';
@@ -287,4 +287,69 @@ test('a failed save leaves the current note active and prevents creating a secon
  await assert.rejects(p.newReadingNote(layout),/Save failed/);
  assert.equal(layout.note.key,first.key);assert.equal(items.size,count);assert.equal(layout.noteCreating,false);
  first.saveTx=save;dispose();
+});
+
+test('panel actions share their title row and settings appear only in the global toolbar', async () => {
+ const {p,layout,doc,dispose}=await setup();
+ assert.equal(layout.shell.querySelectorAll('.abstractin-global-settings').length,1);
+ assert.equal(layout.shell.querySelectorAll('.abstractin-open-settings,.abstractin-layout-open').length,0);
+ for(const surface of layout.surfaces.values()) {
+  assert.equal(surface.node.querySelectorAll('.abstractin-dock-header').length,1);
+  assert.equal(surface.moveButton.closest('.abstractin-dock-header'),surface.header);
+ }
+ assert.ok(layout.surfaces.get('editor').header.contains(layout.noteState.saveButton));
+ assert.ok(layout.surfaces.get('editor').header.contains(layout.noteState.title));
+ for(const root of [layout.entry.root,layout.noteState.chatView.root]) {
+  p.renderPaperChip(root,{label:'Duplicate source'});
+  assert.equal(root.querySelector('.abstractin-context').hidden,true);
+  assert.equal(root.querySelector('.abstractin-context').children.length,0);
+  assert.ok(root.querySelector('.abstractin-composer .abstractin-model-btn'));
+ }
+ const select=layout.noteState.assistantMode;
+ select.parentElement.querySelector('.abstractin-panel-choice').click();
+ const edit=[...doc.querySelectorAll('.abstractin-panel-choice-menu button')].find(button=>button.textContent==='Edit note');
+ edit.click();assert.equal(select.value,'edit');assert.equal(doc.querySelector('.abstractin-panel-choice-menu'),null);
+ dispose();
+});
+
+test('Hide and Show notes restore custom split ratios and sidebar width without remounting docked input', async () => {
+ const {p,layout,dispose}=await setup();
+ await p.applyReadingLayoutPreset(layout,'columns');layout.groups.get('main').tree.ratio=.37;
+ layout.panelState.panel.style.width='1123px';
+ const tree=JSON.stringify(layout.groups.get('main').tree),input=layout.noteState.input;
+ layout.noteState.chatView.input.value='Keep this draft';
+ await p.toggleReadingNotes(layout,false);
+ assert.equal(layout.noteToggle.title,'Show notes');assert.equal(layout.surfaces.get('editor').node.hidden,true);
+ await p.toggleReadingNotes(layout,true);
+ assert.equal(layout.noteToggle.title,'Hide notes');assert.equal(JSON.stringify(layout.groups.get('main').tree),tree);
+ assert.equal(layout.panelState.panel.style.width,'1123px');assert.equal(layout.noteState.input,input);
+ assert.equal(layout.noteState.chatView.input.value,'Keep this draft');
+ dispose();
+});
+
+test('Hide and Show notes restore floating geometry, linked panels and unsent discussion drafts', async () => {
+ const {p,layout,win,dispose}=await setup();
+ const floating=new JSDOM('<main id="float"></main>',{url:'http://localhost/'});
+ floating.window.outerWidth=930;floating.window.outerHeight=720;floating.window.screenX=100;floating.window.screenY=80;
+ layout.groups.set('float',{id:'float',win:floating.window,host:floating.window.document.getElementById('float'),tree:null});
+ await p.moveReadingSurface(layout,'editor','float');
+ layout.groups.get('float').tree.ratio=.67;layout.noteState.chatView.input.value='A floating draft';
+ const tree=JSON.stringify(layout.groups.get('float').tree);
+ await p.toggleReadingNotes(layout,false);assert.equal(layout.groups.has('float'),false);
+ const windows=[];
+ win.openDialog=(url,name,features,args)=>{
+  const env=new JSDOM('<main id="abstractin-floating-root"></main>',{url:'http://localhost/'}),w=env.window;
+  w.resizeTo=(width,height)=>{w.outerWidth=width;w.outerHeight=height;};w.moveTo=(left,top)=>{w.screenX=left;w.screenY=top;};
+  windows.push(w);queueMicrotask(()=>p.mountReadingGroup(layout,args.groupID,w));return w;
+ };
+ await p.toggleReadingNotes(layout,true);
+ for(let i=0;i<60&&layout.restoring;i++) await new Promise(resolve=>setTimeout(resolve,5));
+ assert.equal(layout.restoring,false);
+ const group=layout.groups.get(layout.surfaces.get('editor').group);
+ assert.notEqual(group.id,'main');assert.equal(layout.surfaces.get('notes').group,group.id);
+ assert.equal(JSON.stringify(group.tree),tree);
+ assert.deepEqual([group.win.outerWidth,group.win.outerHeight,group.win.screenX,group.win.screenY],[930,720,100,80]);
+ assert.equal(layout.noteState.chatView.input.value,'A floating draft');
+ assert.ok(layout.surfaces.get('editor').header.contains(layout.noteState.saveButton));
+ dispose();for(const w of windows) w.close();
 });

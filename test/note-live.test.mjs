@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 
-async function setup(text) {
+async function setup(text, config = {}) {
  const dom = new JSDOM('<!doctype html><div id="editor"></div>', { runScripts: 'outside-only', pretendToBeVisual: true });
  const { window } = dom;
  window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
@@ -12,7 +12,7 @@ async function setup(text) {
  window.Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
  const changes = [];
  window.eval(await readFile(new URL('../src/content/editor/note.bundle.js', import.meta.url), 'utf8'));
- const api = window.AbstractInComposer.create({ text, tokens: () => [], onChange: (...args) => changes.push(args), onKey: () => false, onPaste: () => false, onDrop: () => false });
+ const api = window.AbstractInComposer.create({ text, tokens: () => [], onChange: (...args) => changes.push(args), onKey: () => false, onPaste: () => false, onDrop: () => false, ...config });
  return { api, window, changes, close() { api.destroy(); window.close(); } };
 }
 
@@ -23,6 +23,16 @@ test('Live Markdown preserves source on open, selection changes and external syn
  api.select(3, 6); assert.equal(changes.length, 0);
  api.sync('External **text**', false, 'Write'); assert.equal(api.getMarkdown(), 'External **text**'); assert.equal(changes.length, 0);
  env.close();
+});
+
+test('compact formatting opens from the panel command and dismisses without changing Markdown', async () => {
+ const visible=[],env=await setup('Keep **this**.',{compactToolbar:true,onToolbarChange:value=>visible.push(value)});
+ const {api,window}=env,toolbar=window.document.querySelector('.note-format-toolbar');
+ assert.equal(toolbar.hidden,true);
+ api.toggleToolbar();assert.equal(toolbar.hidden,false);assert.equal(visible.at(-1),true);
+ window.document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(toolbar.hidden,true);
+ api.toggleToolbar();window.document.getElementById('editor').dispatchEvent(new window.MouseEvent('mousedown',{bubbles:true}));
+ assert.equal(toolbar.hidden,true);assert.equal(api.getMarkdown(),'Keep **this**.');env.close();
 });
 
 test('Live Markdown formats selected words with edge spaces outside the markers and supports undo', async () => {
