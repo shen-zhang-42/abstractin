@@ -64,7 +64,7 @@
    let layout = this._readingLayoutReaders.get(reader.itemID);
    await this.openReaderPanel(reader);
    if (layout) { await this.applyReadingLayoutPreset(layout, preset); return; }
-   if (preset === "reading") return;
+   // Reading-only uses the same shell and discussion header as every preset.
    const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state?.views.get(reader);
    if (!entry) throw new Error("Open the PDF in Zotero before choosing this layout.");
    layout = await this.openReadingLayout(state, entry, reader, null, { restore: false });

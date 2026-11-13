@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { loadPlugin } from './load-plugin.mjs';
 
-async function setup() {
+async function setup({ initialPreset = null } = {}) {
  const env = loadPlugin(), { plugin: p, window: win, document: doc } = env;
  win.focus = () => {};
  const files = new Map(), items = new Map(), collections = new Map(); let next = 10;
@@ -50,10 +50,35 @@ async function setup() {
  await p.openReaderPanel(reader);
  const panel = p.readerPanelState(win), entry = panel.views.get(reader); await entry.render;
  files.set('/data/source-' + a.pdf.key + '/chat.json', JSON.stringify([{ role: 'user', text: 'Explain A' }, { role: 'assistant', text: 'Original answer' }]));
- const layout = await p.openReadingLayout(panel, entry, reader);
- const dispose = () => { p.disposeReadingLayout(layout); win.close(); };
+ if (initialPreset) await p.startReadingLayout(win, initialPreset, reader);
+ const layout = initialPreset ? entry.layout : await p.openReadingLayout(panel, entry, reader);
+ const dispose = () => { if (layout) p.disposeReadingLayout(layout); win.close(); };
  return { ...env, p, win, doc, layout, files, items, collections, Item, Collection, a, b, reader, panel, dispose };
 }
+
+test('opening two panels directly matches switching from four panels to reading-only', async () => {
+ const direct = await setup({ initialPreset: 'reading' });
+ const switched = await setup({ initialPreset: 'columns' });
+ try {
+  assert.ok(direct.layout, 'reading-only startup must mount the shared panel layout');
+  await switched.p.applyReadingLayoutPreset(switched.layout, 'reading');
+  const display = ({ layout, p }) => ({
+   notesHidden: layout.notesHidden,
+   visiblePanels: [...layout.surfaces.values()].filter(surface => !surface.node.hidden).map(surface => surface.id),
+   tree: [...p.readingLayoutPanels(layout.groups.get('main').tree)],
+   mode: layout.title.title,
+   actions: [...layout.toolbar.querySelectorAll('button')].map(button => button.className),
+   header: layout.entry.root.querySelector('.abstractin-header').className,
+   sharedSources: layout.entry.root.dataset.sharedSources,
+   neutralTheme: layout.entry.root.dataset.readingTheme,
+   oldToolbar: !!layout.entry.globalToolbar,
+   panelClass: layout.panelState.panel.className
+  });
+  assert.deepEqual(display(direct), display(switched));
+  assert.equal(direct.layout.noteToggle.title, 'Show notes');
+  assert.equal(direct.layout.surfaces.get('reading').header.contains(direct.layout.entry.root.querySelector('.abstractin-chats')), true);
+ } finally { direct.dispose(); switched.dispose(); }
+});
 
 test('one-source docking preserves native reader and both independent discussion scopes', async () => {
  const { p, layout, doc, a, collections, files, dispose } = await setup();
