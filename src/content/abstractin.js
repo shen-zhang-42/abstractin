@@ -836,6 +836,7 @@ AbstractIn = {
 	removeFromWindow(window) {
 		this.removeReaderPanel(window);
 		let doc = window.document;
+		doc.querySelectorAll('link[data-reading-style]').forEach(link => link.remove());
 		doc.getElementById("abstractin-stylesheet")?.remove();
 		doc.querySelector('[href="abstractin.ftl"]')?.remove();
 	},

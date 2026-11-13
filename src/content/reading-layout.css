@@ -1,6 +1,6 @@
 /* Native PDF surfaces remain untouched; only AbstractIn's sibling is docked. */
-.abstractin-reader-panel.abstractin-reader-panel-workspace { min-width:420px; max-width:min(1600px, 80vw); }
-.abstractin-reader-panel.abstractin-reading-notes-hidden { min-width:280px; max-width:min(720px,65vw); }
+.abstractin-reader-panel.abstractin-reader-panel-workspace { min-width:min(420px,var(--abstractin-panel-limit,100vw)); max-width:min(1600px,80vw,var(--abstractin-panel-limit,100vw)); }
+.abstractin-reader-panel.abstractin-reading-notes-hidden { min-width:min(280px,var(--abstractin-panel-limit,100vw)); max-width:min(720px,65vw,var(--abstractin-panel-limit,100vw)); }
 .abstractin-reading-layout { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; height:100%; position:relative; color:var(--note-text); background:var(--note-ground); font:13px/1.4 system-ui,sans-serif; }
 .abstractin-reading-layout *, .abstractin-dock-host * { box-sizing:border-box; }
 .abstractin-layout-toolbar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:7px 10px; border-bottom:1px solid var(--note-line); }
@@ -104,4 +104,41 @@
 }
 @container abstractin-panel (max-width:250px) {
  [data-panel="editor"] .abstractin-dock-header > span:first-child { display:none; }
+}
+
+/* Title space shrinks; the command group keeps fixed icon geometry. */
+.abstractin-dock-host .abstractin-dock-header.abstractin-panel-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; justify-content:initial; column-gap:6px; }
+.abstractin-dock-host [data-panel="editor"] .abstractin-dock-header.abstractin-panel-toolbar { grid-template-columns:auto minmax(0,1fr) auto; }
+.abstractin-dock-host .abstractin-panel-toolbar > span:first-child { min-width:0; }
+.abstractin-dock-host .abstractin-panel-toolbar > .abstractin-note-title { min-width:0; width:100%; font-size:13px; line-height:22px; padding:0 2px; text-overflow:ellipsis; }
+.abstractin-dock-host .abstractin-panel-actions,
+.abstractin-dock-host .abstractin-panel-actions > .abstractin-note-file-actions,
+.abstractin-dock-host .abstractin-panel-actions > .abstractin-note-chat-controls { display:flex; flex-flow:row nowrap; align-items:center; justify-content:flex-end; gap:2px; width:max-content; min-width:0; margin:0; padding:0; }
+.abstractin-dock-host .abstractin-panel-actions > :is(button,details),
+.abstractin-dock-host .abstractin-note-file-actions > :is(button,details),
+.abstractin-dock-host .abstractin-note-chat-controls > button { flex:0 0 28px; width:28px; min-width:28px; max-width:28px; height:28px; min-height:28px; max-height:28px; padding:0; margin:0; box-sizing:border-box; }
+.abstractin-dock-host .abstractin-panel-actions .abstractin-note-more > summary { width:28px; height:28px; min-height:28px; padding:5px; margin:0; box-sizing:border-box; }
+.abstractin-dock-host .abstractin-panel-actions .abstractin-panel-overflow,
+.abstractin-dock-host .abstractin-note-more-actions .abstractin-note-compact-action { display:none; }
+.abstractin-panel-header-menu { min-width:0; width:min(230px,100%); box-sizing:border-box; }
+@container abstractin-panel (max-width:360px) {
+ .abstractin-panel-actions > .abstractin-panel-secondary { display:none!important; }
+ .abstractin-dock-host .abstractin-panel-actions > .abstractin-panel-overflow { display:inline-flex; }
+}
+@container abstractin-panel (max-width:250px) {
+ .abstractin-dock-host [data-panel="editor"] .abstractin-dock-header.abstractin-panel-toolbar { grid-template-columns:minmax(0,1fr) auto; }
+}
+@container abstractin-panel (max-width:200px) {
+ .abstractin-panel-actions > .abstractin-note-format { display:none!important; }
+ .abstractin-dock-host .abstractin-note-more-actions .abstractin-note-compact-action[data-command="format"] { display:block; }
+}
+@container abstractin-panel (max-width:180px) {
+ .abstractin-panel-actions > .abstractin-history { display:none!important; }
+}
+@container abstractin-panel (max-width:140px) {
+ .abstractin-dock-host .abstractin-dock-header.abstractin-panel-toolbar { padding-inline:2px; column-gap:2px; }
+ .abstractin-dock-host .abstractin-dock-header .abstractin-panel-actions :is(button,details,summary):not(.abstractin-note-more-actions *) { flex-basis:24px; width:24px; min-width:24px; max-width:24px; height:24px; min-height:24px; max-height:24px; padding:0; }
+ .abstractin-dock-header .abstractin-i { width:16px; height:16px; }
+ .abstractin-note-file-actions > .abstractin-note-save { display:none!important; }
+ .abstractin-dock-host .abstractin-note-more-actions .abstractin-note-compact-action[data-command="save"] { display:block; }
 }

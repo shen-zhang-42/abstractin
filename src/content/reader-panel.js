@@ -215,6 +215,25 @@ Object.assign(AbstractIn, {
 		}
 	},
 
+	constrainReaderPanel(state) {
+		const { win, panel, splitter, mount } = state;
+		const box = mount.parent.getBoundingClientRect();
+		const available = Math.min(box.right, win.innerWidth) - Math.max(0, box.left);
+		if (!(available > 0)) return; // Detached/hidden windows are measured on reveal.
+		const siblings = [...mount.parent.children];
+		const inFlow = node => !["absolute", "fixed"].includes(win.getComputedStyle(node).position);
+		const reader = siblings.find(node => ["tabs-deck", "reader-deck", "zotero-reader"].includes(node.id)) ||
+			siblings.find(node => node !== panel && node !== splitter && node !== mount.context && node !== mount.before && inFlow(node) && node.getBoundingClientRect().width > 0);
+		const minimum = reader ? parseFloat(win.getComputedStyle(reader).minWidth) || 320 : 320;
+		let reserved = splitter.getBoundingClientRect().width;
+		for (const sibling of siblings) {
+			if (sibling === panel || sibling === splitter || sibling === reader || !inFlow(sibling)) continue;
+			reserved += sibling.getBoundingClientRect().width;
+		}
+		const limit = Math.max(0, Math.floor(available - minimum - reserved - 2)) + "px";
+		if (panel.style.getPropertyValue("--abstractin-panel-limit") !== limit) panel.style.setProperty("--abstractin-panel-limit", limit);
+	},
+
 	createReaderPanel(win) {
 		let doc = win.document;
 		let mount = this.readerPanelMount(doc);
@@ -233,7 +252,7 @@ Object.assign(AbstractIn, {
 		panel.hidden = true; splitter.hidden = true;
 		mount.parent.insertBefore(splitter, mount.before);
 		mount.parent.insertBefore(panel, mount.before);
-		let state = { win, panel, splitter, views: new Map(), active: false, reader: null, contextWasOpen: false };
+		let state = { win, panel, splitter, mount, views: new Map(), active: false, reader: null, contextWasOpen: false };
 		this._readerPanelWindows.set(win, state);
 		state.observer = new win.MutationObserver(() => {
 			// Native XUL splitters resize their next sibling through a width
@@ -241,6 +260,7 @@ Object.assign(AbstractIn, {
 			let width = Number(panel.getAttribute("width"));
 			const limit = panel.classList.contains("abstractin-reader-panel-workspace") ? 1600 : 720;
 			if (width >= 280 && panel.style.width !== Math.min(width, limit) + "px") panel.style.width = Math.min(width, limit) + "px";
+			this.constrainReaderPanel(state);
 			if (!state.active) return;
 			if (splitter.getAttribute("state") === "collapsed") this.closeReaderPanel(win);
 			else if (mount.context && win.ZoteroContextPane?.collapsed === false) this.closeReaderPanel(win, { restoreContext: false });
@@ -250,11 +270,17 @@ Object.assign(AbstractIn, {
 		state.observer.observe(panel, { attributes: true, attributeFilter: ["width"] });
 		if (win.ResizeObserver) {
 			state.resize = new win.ResizeObserver(entries => {
+				this.constrainReaderPanel(state);
 				let width = Math.round(entries[0].contentRect.width);
 				if (state.active && width >= 280) this.setPref(panel.classList.contains("abstractin-reader-panel-workspace") ? "readingWorkspaceWidth" : "readerPanelWidth", Math.min(width, panel.classList.contains("abstractin-reader-panel-workspace") ? 1600 : 720));
 			});
 			state.resize.observe(panel);
+			state.boundsResize = new win.ResizeObserver(() => this.constrainReaderPanel(state));
+			state.boundsResize.observe(mount.parent);
 		}
+		state.constrain = () => this.constrainReaderPanel(state);
+		win.addEventListener("resize", state.constrain);
+		this.constrainReaderPanel(state);
 		state.notifier = Zotero.Notifier.registerObserver({ notify: async (action, type, ids, extraData) => {
 			if (type !== "tab") return;
 			if (action === "close") {
@@ -396,6 +422,8 @@ Object.assign(AbstractIn, {
 			if (this.readerPanelNodeAlive(state.panel)) this.cleanupReaderPanelResource(() => this.closeReaderPanelState(state));
 			this.cleanupReaderPanelResource(() => state.observer.disconnect());
 			this.cleanupReaderPanelResource(() => state.resize?.disconnect());
+			this.cleanupReaderPanelResource(() => state.boundsResize?.disconnect());
+			this.cleanupReaderPanelResource(() => win.removeEventListener("resize", state.constrain));
 			this.cleanupReaderPanelResource(() => Zotero.Notifier.unregisterObserver(state.notifier));
 			this.cleanupReaderPanelResource(() => win.removeEventListener("unload", state.unload));
 			for (let [reader, entry] of state.views) this.releaseReaderPanelView(state, reader, entry);

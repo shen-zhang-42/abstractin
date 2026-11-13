@@ -178,11 +178,29 @@
    return layout;
   },
   installReadingLayoutStyle(doc, file) {
-   if (doc.querySelector('link[data-reading-style="' + file + '"]')) return;
-   const link = this.el(doc, "link"); link.rel = "stylesheet"; link.href = (this.resourceURI || "chrome://abstractin/content/") + "content/" + file; link.dataset.readingStyle = file;
-   (doc.head || doc.documentElement).append(link);
+   // Hot updates leave these links in the native window. Refresh their resource
+   // address and order instead of retaining the previous plugin's stylesheet.
+   const link = doc.querySelector('link[data-reading-style="' + file + '"]') || this.el(doc, "link");
+   const href = (this.resourceURI || "chrome://abstractin/content/") + "content/" + file;
+   link.rel = "stylesheet"; if (link.getAttribute("href") !== href) link.href = href; link.dataset.readingStyle = file;
+   doc.documentElement.append(link);
+   if (file === "reading-note.css") {
+    const layoutStyle = doc.querySelector('link[data-reading-style="reading-layout.css"]'); if (layoutStyle) doc.documentElement.append(layoutStyle);
+   }
   },
   layoutError(layout, error) { layout.status.textContent = error.message || String(error); this.logError("reading layout", error); },
+  openReadingHeaderActions(surface, actions) {
+   const root = surface.root, anchor = surface.actions.querySelector(".abstractin-panel-overflow");
+   this.openMenu(root, anchor, menu => {
+    menu.classList.add("abstractin-panel-header-menu");
+    for (const action of actions) {
+     if (action.hidden) continue;
+     const item = this.el(root.ownerDocument, "button", "abstractin-menu-item", action.getAttribute("aria-label") || action.title);
+     item.type = "button"; item.disabled = action.disabled; item.setAttribute("role", "menuitem");
+     item.onclick = () => { this.closeMenu(root); action.click(); }; menu.append(item);
+    }
+   }, { placement: "below", align: "end" });
+  },
   readingChoiceButton(doc, select, icon, label) {
    const button = this.iconButton(doc, "abstractin-panel-choice", label, icon, () => {
     if (select._closeMenu) { select._closeMenu(); return; }
@@ -215,8 +233,14 @@
    const surface = layout.surfaces.get(id), header = surface.header, original = root.querySelector(".abstractin-header");
    const actions = [...original.children].filter(node => node.matches("button") && !node.matches(".abstractin-open-settings"));
    surface.destination._closeMenu?.();
-   header.classList.add("abstractin-header"); surface.label.classList.add("abstractin-header-title");
-   header.replaceChildren(surface.label, ...actions, surface.destination, surface.moveButton);
+   header.classList.add("abstractin-header", "abstractin-panel-toolbar"); surface.label.classList.add("abstractin-header-title");
+   surface.actions.replaceChildren(...actions, surface.destination, surface.moveButton);
+   if (id === "reading") {
+    for (const action of actions) if (!action.matches(".abstractin-history")) action.classList.add("abstractin-panel-secondary");
+    const more = this.iconButton(root.ownerDocument, "abstractin-panel-overflow", "More reading actions", "more", () => this.openReadingHeaderActions(surface, actions));
+    surface.actions.insertBefore(more, surface.moveButton);
+   }
+   header.replaceChildren(surface.label, surface.actions);
    if (original !== header) original.remove(); root.prepend(header);
    root.dataset.sharedSources = "true"; root.dataset.readingTheme = "neutral";
   },
@@ -228,7 +252,13 @@
    const outside = event => { if (formatting.getAttribute("aria-expanded") === "true" && !formatting.contains(event.target)) state.input._composerEditor?.toggleToolbar?.(); };
    state.editor.ownerDocument.addEventListener("mousedown", outside, true);
    state.sourceDisposers ||= []; state.sourceDisposers.push(() => state.editor.ownerDocument.removeEventListener("mousedown", outside, true));
-   surface.header.replaceChildren(surface.label, state.title, formatting, state.editor.querySelector(".abstractin-note-file-actions"), surface.destination, surface.moveButton);
+   const files = state.editor.querySelector(".abstractin-note-file-actions");
+   surface.actions.replaceChildren(formatting, files, surface.destination, surface.moveButton);
+   surface.header.classList.add("abstractin-panel-toolbar");
+   surface.header.replaceChildren(surface.label, state.title, surface.actions);
+   for (const [action, label, kind] of [[formatting, "Formatting, font and shortcuts", "format"], [state.saveButton, "Save note", "save"]]) {
+    const item = this.el(state.editor.ownerDocument, "button", "abstractin-note-compact-action", label); item.dataset.command = kind; item.onclick = () => action.click(); files.querySelector(".abstractin-note-more-actions").append(item);
+   }
    state.editor.prepend(surface.header);
    state.editor.querySelector(".abstractin-note-topline")?.remove();
   },
@@ -244,7 +274,8 @@
    const moveButton = this.readingChoiceButton(doc, destination, "jumpTo", "Move " + names[id]);
    header.append(destination, moveButton);
    const content = this.el(doc, "div", "abstractin-dock-content"); node.append(header, content); group.host.append(node);
-   const surface = { id, node, content, header, label, destination, moveButton, group: group.id }; layout.surfaces.set(id, surface);
+   const actions = this.el(doc, "div", "abstractin-panel-actions");
+   const surface = { id, node, content, header, label, actions, destination, moveButton, group: group.id }; layout.surfaces.set(id, surface);
    header.addEventListener("dragstart", event => {
     if (event.target.closest("select,button,input,summary")) { event.preventDefault(); return; }
     this._dragReadingSurface = { layoutID: layout.id, id };

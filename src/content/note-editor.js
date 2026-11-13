@@ -589,9 +589,9 @@
    state.contextScope = scope; state.assistantMode = mode;
    if (state.dockManaged) {
     this.integrateReadingDiscussionHeader(state.readingLayout, "notes", root);
-    const header = root.querySelector(".abstractin-header"), move = state.readingLayout.surfaces.get("notes").moveButton;
+    const surface = state.readingLayout.surfaces.get("notes"), move = surface.moveButton;
     controls.append(this.readingChoiceButton(doc, mode, "edit", "Assistant action"), this.readingChoiceButton(doc, scope, "paper", "Note context"));
-    header.insertBefore(controls, move);
+    surface.actions.insertBefore(controls, move);
     state.sourceDisposers ||= []; state.sourceDisposers.push(() => { mode._closeMenu?.(); scope._closeMenu?.(); });
    } else root.querySelector(".abstractin-header").after(controls);
    const history = await this.loadHistory(dir);

@@ -353,3 +353,14 @@ test('Hide and Show notes restore floating geometry, linked panels and unsent di
  assert.ok(layout.surfaces.get('editor').header.contains(layout.noteState.saveButton));
  dispose();for(const w of windows) w.close();
 });
+
+test('hot updates refresh layout styles and retain their priority over legacy note styles', () => {
+ const {plugin:p,document:doc,window:win}=loadPlugin();
+ p.resourceURI='chrome://old/content/';p.installReadingLayoutStyle(doc,'reading-layout.css');p.installReadingLayoutStyle(doc,'reading-note.css');
+ const link=doc.querySelector('[data-reading-style="reading-layout.css"]');
+ p.resourceURI='chrome://updated/content/';p.installReadingLayoutStyle(doc,'reading-note.css');p.installReadingLayoutStyle(doc,'reading-layout.css');
+ assert.equal(link.getAttribute('href'),'chrome://updated/content/content/reading-layout.css');
+ assert.equal(doc.querySelectorAll('[data-reading-style="reading-layout.css"]').length,1);
+ assert.equal(doc.documentElement.lastElementChild,link);
+ p.removeFromWindow(win);assert.equal(doc.querySelector('[data-reading-style]'),null);win.close();
+});

@@ -32,6 +32,22 @@ function setup({ detached = false } = {}) {
 	return { ...env, a, b, observer: () => observer };
 }
 
+test('oversized panels reserve the native reader and right-side controls when the window shrinks', async () => {
+ const {plugin:p,document:doc,window:win,a}=setup();
+ await p.openReaderPanel(a);const state=p.readerPanelState(win);
+ const parent=doc.getElementById('layout'),reader=doc.getElementById('reader-deck'),context=doc.getElementById('zotero-context-pane');
+ const cover=doc.createElement('div');cover.id='zotero-tab-cover';cover.style.position='absolute';cover.getBoundingClientRect=()=>({width:1800});parent.prepend(cover);
+ parent.getBoundingClientRect=()=>({left:0,right:1800,width:1800});reader.style.minWidth='570px';
+ state.splitter.getBoundingClientRect=()=>({width:4});context.getBoundingClientRect=()=>({width:40});
+ doc.getElementById('zotero-context-splitter').getBoundingClientRect=()=>({width:2});
+ win.innerWidth=1800;state.panel.style.width='1600px';p.constrainReaderPanel(state);
+ assert.equal(state.panel.style.getPropertyValue('--abstractin-panel-limit'),'1182px');
+ win.innerWidth=1000;win.dispatchEvent(new win.Event('resize'));
+ assert.equal(state.panel.style.getPropertyValue('--abstractin-panel-limit'),'382px');
+ assert.equal(reader.style.minWidth,'570px');assert.equal(state.panel.style.width,'1600px','requested width survives a temporarily smaller window');
+ p.removeFromWindow(win);win.close();
+});
+
 test("reader toolbar uses the public append hook and toggles a panel outside item metadata", async () => {
 	const { plugin: p, document: doc, window: win, a } = setup();
 	const toolbar = doc.createElement("div"); doc.body.append(toolbar);
