@@ -805,6 +805,7 @@ class TableWidget extends WidgetType {
 			const tableFrom = this.tableFrom + (editBeforeTable ? view.state.doc.length - previousLength : 0);
 			const finish = (): void => {
 				if (tableFocusRequests.get(view) !== request) return;
+				if (needsCommit && !view.dom.ownerDocument.hasFocus()) return;
 				// An outside click during the rebuild owns focus; an old transition
 				// must not pull the user back from a paragraph, search or another table.
 				const active = view.dom.ownerDocument.activeElement;

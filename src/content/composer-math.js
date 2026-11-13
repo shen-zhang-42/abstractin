@@ -38,9 +38,9 @@ Object.assign(AbstractIn, {
 		const nativeFocus = input.focus, nativeSelect = input.setSelectionRange;
 		const focusDescriptor = Object.getOwnPropertyDescriptor(input, "focus");
 		const selectDescriptor = Object.getOwnPropertyDescriptor(input, "setSelectionRange");
-		let editor = null, disposed = false, failed = false, updating = false, initializing = false;
+		let editor = null, editorDocument = null, releaseFrameFocus = null, disposed = false, failed = false, updating = false, initializing = false;
 		const sync = () => {
-			if (!editor || updating) return;
+			if (!editor || updating || frame.contentDocument !== editorDocument) return;
 			editor.sync(input.value, input.disabled, input.placeholder);
 			const tabIndex = input.disabled ? -1 : 0;
 			if (frame.tabIndex !== tabIndex) frame.tabIndex = tabIndex;
@@ -71,6 +71,7 @@ Object.assign(AbstractIn, {
 		const fail = error => {
 			if (disposed || failed) return;
 			failed = true;
+			releaseFrameFocus?.(); releaseFrameFocus = null;
 			const focused = doc.activeElement === frame;
 			editor?.destroy(); editor = null;
 			disposeNative?.();
@@ -89,8 +90,17 @@ Object.assign(AbstractIn, {
 			return event.defaultPrevented;
 		};
 		const loaded = async () => {
-			if (disposed || failed || editor || initializing) return;
+			if (disposed || failed || initializing || editor && frame.contentDocument === editorDocument) return;
+			if (editor) {
+				// Reparenting a pane reloads its iframe in Gecko. The old EditorView
+				// belongs to a detached document and must not own the replacement.
+				try { editor.destroy(); } catch (_) {}
+				releaseFrameFocus?.(); releaseFrameFocus = null;
+				editor = null; editorDocument = null; restore();
+				disposeNative?.(); disposeNative = this.installNativeMathComposer(input);
+			}
 			initializing = true;
+			const loadingDocument = frame.contentDocument;
 			try {
 				const child = frame.contentWindow.wrappedJSObject || frame.contentWindow;
 				const bridge = options.note && this.noteEditorURI ? this.noteEditorBridge : null;
@@ -127,6 +137,18 @@ Object.assign(AbstractIn, {
 				};
 				const created = factory.create(bridge ? bridge.cloneInto(config, child, { cloneFunctions: true }) : config);
 				editor = created?.then ? await created : created;
+				if (disposed || failed || frame.contentDocument !== loadingDocument) { editor?.destroy(); editor = null; return; }
+				editorDocument = loadingDocument;
+				const activateFrame = event => {
+					if (event.button !== 0 || input.disabled || loadingDocument.hasFocus()) return;
+					// Gecko can retain a contenteditable as a child document's active
+					// element after focus has moved into a sibling iframe. Activate its
+					// browsing context before CodeMirror handles this exact pointer hit.
+					frame.focus({ preventScroll: true }); loadingDocument.defaultView.focus();
+				};
+				loadingDocument.addEventListener("pointerdown", activateFrame, true);
+				loadingDocument.addEventListener("mousedown", activateFrame, true);
+				releaseFrameFocus = () => { loadingDocument.removeEventListener("pointerdown", activateFrame, true); loadingDocument.removeEventListener("mousedown", activateFrame, true); };
 				if (bridge) {
 					const nativeEditor = bridge.waiveXrays(editor);
 					// Only an AI edit snapshot crosses back into the content realm as an
@@ -149,6 +171,7 @@ Object.assign(AbstractIn, {
 					sync();
 					editor.select(direction === "backward" ? input.selectionEnd : input.selectionStart, direction === "backward" ? input.selectionStart : input.selectionEnd);
 				};
+				const restoreFocus = focused && doc.activeElement === input;
 				input.hidden = true;
 				frame.style.removeProperty("position");
 				frame.style.removeProperty("left");
@@ -156,9 +179,9 @@ Object.assign(AbstractIn, {
 				if (options.note) { frame.style.height = "100%"; frame.classList.add("abstractin-note-rich-frame"); }
 				frame.hidden = false;
 				sync(); editor.measure();
-				if (focused) editor.focus();
+				if (restoreFocus) editor.focus();
 			} catch (error) { fail(error); }
-			finally { initializing = false; }
+			finally { initializing = false; if (!disposed && !failed && frame.contentDocument !== loadingDocument) loaded(); }
 		};
 		frame.addEventListener("load", loaded, true);
 		frame.addEventListener("error", fail);
@@ -170,6 +193,7 @@ Object.assign(AbstractIn, {
 		if (frame.contentWindow?.AbstractInComposer) loaded();
 		return () => {
 			disposed = true;
+			releaseFrameFocus?.();
 			observer.disconnect();
 			frame.removeEventListener("load", loaded, true);
 			frame.removeEventListener("error", fail);

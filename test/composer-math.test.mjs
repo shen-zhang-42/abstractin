@@ -85,6 +85,23 @@ test('NoteOut supports asynchronous native-editor initialization and disposal be
  assert.equal(disposed,1);assert.equal(input.hidden,false);assert.equal(input._composerEditor,undefined);env.window.close();
 });
 
+test('a reloaded iframe rebuilds its editor and preserves the current draft and selection',()=>{
+ const env=loadPlugin(),input=env.document.createElement('textarea');env.document.body.append(input);
+ input.value='Keep the draft';input.setSelectionRange(2,6);
+ const dispose=env.plugin.installMathComposer(input),frame=env.document.querySelector('iframe');
+ const replacement=env.document.createElement('iframe');env.document.body.append(replacement);
+ let current=frame.contentDocument,destroyed=0,focuses=0;const configs=[],selected=[];
+ Object.defineProperty(frame,'contentDocument',{get:()=>current});
+ frame.contentWindow.AbstractInComposer={create:config=>{configs.push(config);return {sync(){},select:(...range)=>selected.push(range),measure(){},focus(){},destroy(){destroyed++;}};}};
+ frame.dispatchEvent(new env.window.Event('load'));const first=input._composerEditor;
+ input.value='A newer draft';input.setSelectionRange(3,8);
+ current=replacement.contentDocument;current.defaultView.focus=()=>{};frame.focus=()=>{focuses++;};
+ frame.dispatchEvent(new env.window.Event('load'));
+ assert.notEqual(input._composerEditor,first);assert.equal(destroyed,1);assert.equal(configs[1].text,'A newer draft');assert.deepEqual(selected.at(-1),[3,8]);
+ current.body.dispatchEvent(new env.window.MouseEvent('mousedown',{button:0,bubbles:true}));assert.equal(focuses,1,'the target browsing context is activated before its editor handles the click');
+ dispose();assert.equal(destroyed,2);env.window.close();
+});
+
 
 test("native editing host stays visible and its DOM API is never replaced", () => {
 	const env = composer("Compare $x^2$ and $$y^2$$.");

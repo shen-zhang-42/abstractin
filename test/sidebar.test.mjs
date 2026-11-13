@@ -33,6 +33,16 @@ function sidebar(prefs = {}, readerPanel = true) {
 const openAgent = (root, key) => root.querySelector('.abstractin-menu-item[data-agent="' + key + '"]').click();
 const menuLabels = root => [...root.querySelectorAll(".abstractin-menu .abstractin-menu-label")].map(n => n.textContent);
 
+test('clicking discussion text transfers keyboard focus and copies its selected text',()=>{
+ const {view,window,document}=sidebar();view.input.disabled=false;view.input.focus();
+ const text=document.createElement('p');text.className='abstractin-rich';text.textContent='Copy the selected discussion.';view.logEl.replaceChildren(text);
+ text.dispatchEvent(new window.MouseEvent('mousedown',{button:0,bubbles:true}));assert.equal(document.activeElement,view.logEl);
+ const range=document.createRange();range.selectNodeContents(text);window.getSelection().removeAllRanges();window.getSelection().addRange(range);
+ let copied;window.Zotero.Utilities.Internal.copyTextToClipboard=value=>{copied=value;};
+ const event=new window.KeyboardEvent('keydown',{key:'c',ctrlKey:true,bubbles:true,cancelable:true});view.logEl.dispatchEvent(event);
+ assert.equal(event.defaultPrevented,true);assert.equal(copied,text.textContent);window.close();
+});
+
 test("finishing a streamed reply preserves the latest reading position after history loading and notices", async () => {
 	const { plugin, view, root, document } = sidebar();
 	Object.defineProperties(view.logEl, { scrollHeight: { value: 4000 }, clientHeight: { value: 500 } });

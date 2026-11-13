@@ -134,16 +134,19 @@
    for (const file of ["reading-note.css", "reading-layout.css"]) this.installReadingLayoutStyle(doc, file);
    const shell = this.el(doc, "section", "abstractin-reading-layout"), toolbar = this.el(doc, "header", "abstractin-layout-toolbar");
    entry.globalToolbar?.remove(); delete entry.globalToolbar;
-   const title = this.el(doc, "span", "abstractin-layout-name");
+   const title = this.el(doc, "span", "abstractin-layout-mode"); title.setAttribute("role", "img");
+   const separator = this.el(doc, "span", "abstractin-layout-separator"); separator.setAttribute("aria-hidden", "true");
+   const sources = this.el(doc, "button", "abstractin-layout-sources"); sources.type = "button"; sources.setAttribute("aria-haspopup", "menu");
+   sources.onclick = () => this.openReadingSourceMenu(layout);
    const source = this.iconButton(doc, "abstractin-layout-add-source", "Manage sources", "paper", () => this.showReadingSources(layout));
    const chooser = this.iconButton(doc, "abstractin-layout-choose", "Layout", "patternGrid", () => this.openReadingLayoutMenu(layout.win, chooser, { layout }));
    chooser.setAttribute("aria-haspopup", "menu");
    const reset = this.iconButton(doc, "abstractin-layout-reset", "Reset layout", "retry", () => this.applyReadingLayoutPreset(layout, "stacked").catch(error => this.layoutError(layout, error)));
    const exit = this.iconButton(doc, "abstractin-layout-toggle-notes", "Hide notes", "noteNone", () => this.toggleReadingNotes(layout).catch(error => this.layoutError(layout, error)));
-   toolbar.append(title, source, chooser, reset, exit, this.iconButton(doc, "abstractin-global-settings", "Plugin settings", "settings", () => this.openSettings()));
-   const sources = this.el(doc, "nav", "abstractin-layout-sources"), status = this.el(doc, "div", "abstractin-layout-status"); status.setAttribute("role", "status");
-   const host = this.el(doc, "div", "abstractin-dock-host"); shell.append(toolbar, sources, status, host);
-   entry.body.append(shell); Object.assign(layout, { shell, title, sources, status, noteToggle: exit });
+   toolbar.append(title, separator, sources, source, chooser, reset, exit, this.iconButton(doc, "abstractin-global-settings", "Plugin settings", "settings", () => this.openSettings()));
+   const status = this.el(doc, "div", "abstractin-layout-status"); status.setAttribute("role", "status");
+   const host = this.el(doc, "div", "abstractin-dock-host"); shell.append(toolbar, status, host);
+   entry.body.append(shell); Object.assign(layout, { shell, toolbar, title, sources, status, noteToggle: exit });
    this.updateReadingNoteToggle(layout);
    layout.showSources = () => { layout.win.focus(); return this.showReadingSources(layout); };
    const saved = this.getJSONPref("readingDockLayout", null);
@@ -797,23 +800,52 @@
   },
   drawReadingSources(layout) {
    layout.readingContext = this._views.get(layout.entry.root)?.ctx || layout.readingContext;
-   layout.title.textContent = layout.workspace?.name || "Single document"; layout.sources.replaceChildren();
+   const doc = layout.win.document, label = layout.workspace ? "Workspace: " + layout.workspace.name : "Single document";
+   layout.title.title = label; layout.title.setAttribute("aria-label", label); layout.title.replaceChildren(this.svgIcon(doc, layout.workspace ? "patternGrid" : "paper"));
+   const selected = layout.documents.find(ref => ref.key === layout.readingContext?.paperItem.key) || layout.documents[0];
+   layout.sources.replaceChildren(this.el(doc, "span", "abstractin-layout-source-label", selected?.title || "Sources"), this.svgIcon(doc, "chevron"));
+   layout.sources.title = (selected?.title || "Sources") + " — " + layout.documents.length + " document(s)";
+   layout.sources.setAttribute("aria-label", "Source documents: " + (selected?.title || "Sources"));
+   this.syncReadingToolbar(layout);
+  },
+  syncReadingToolbar(layout) {
+   const native = layout.reader._iframeWindow?.document.querySelector(".toolbar");
+   if (!native) return;
+   const style = native.ownerDocument.defaultView.getComputedStyle(native), height = native.getBoundingClientRect().height;
+   if (height > 0) layout.toolbar.style.setProperty("--abstractin-toolbar-height", height + "px");
+   if (style.backgroundColor && !["transparent", "rgba(0, 0, 0, 0)"].includes(style.backgroundColor)) layout.toolbar.style.setProperty("--abstractin-toolbar-background", style.backgroundColor);
+   if (parseFloat(style.borderBottomWidth)) layout.toolbar.style.borderBottom = style.borderBottom;
+  },
+  openReadingSourceMenu(layout) {
+   if (layout.closeSourceMenu) { layout.closeSourceMenu(); return; }
+   const doc = layout.win.document, anchor = layout.sources, menu = this.el(doc, "div", "abstractin-panel-choice-menu abstractin-layout-source-menu"); menu.setAttribute("role", "menu");
+   const close = () => { menu.remove(); anchor.setAttribute("aria-expanded", "false"); doc.removeEventListener("mousedown", outside, true); doc.removeEventListener("keydown", keyboard, true); layout.win.removeEventListener("resize", close); delete layout.closeSourceMenu; };
+   const outside = event => { if (!menu.contains(event.target) && !anchor.contains(event.target)) close(); };
+   const keyboard = event => {
+    if (event.key === "Escape") { event.preventDefault(); close(); anchor.focus(); return; }
+    if (event.key === "Tab") { close(); return; }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault(); const items = [...menu.querySelectorAll("button")], index = items.indexOf(doc.activeElement);
+    items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+   };
+   const add = this.el(doc, "button", "abstractin-layout-source-add", "+ Add documents"); add.setAttribute("role", "menuitem");
+   add.onclick = () => { close(); this.showReadingSources(layout); }; menu.append(add, this.el(doc, "hr"));
    for (const ref of layout.documents) {
-    const button = this.el(layout.win.document, "button", "abstractin-layout-source", ref.title);
-    button.setAttribute("aria-pressed", String(layout.readingContext?.paperItem.key === ref.key));
-    button.onclick = async () => {
-     button.disabled = true;
-     try {
-      const item = await this.resolveNoteDocument(ref), pdf = item && await item.getBestAttachment();
-      if (!pdf?.isPDFAttachment?.()) throw new Error("This document has no readable PDF.");
-      if (this._pending.has(this._views.get(layout.entry.root)?.ctx.dir)) throw new Error("Wait for the reading answer before switching documents.");
-      this._readingLayoutReaders.set(pdf.id, layout); const reader = await Zotero.Reader.open(pdf.id, null, { openInWindow: false });
-      if (reader) { if (reader._initPromise) await reader._initPromise; await this.openReaderPanel(reader); }
-      this.drawReadingSources(layout);
-     } catch (error) { this.layoutError(layout, error); } finally { button.disabled = false; }
-    };
-    layout.sources.append(button);
+    const button = this.el(doc, "button", "abstractin-layout-source", ref.title); button.setAttribute("role", "menuitemradio"); button.setAttribute("aria-checked", String(layout.readingContext?.paperItem.key === ref.key));
+    button.onclick = () => { close(); this.selectReadingSource(layout, ref).catch(error => this.layoutError(layout, error)); }; menu.append(button);
    }
+   doc.documentElement.append(menu); const rect = anchor.getBoundingClientRect(), width = Math.min(380, layout.win.innerWidth - 24);
+   Object.assign(menu.style, { width: width + "px", left: Math.max(8, Math.min(rect.left, layout.win.innerWidth - width - 8)) + "px", top: rect.bottom + 4 + "px" });
+   layout.closeSourceMenu = close; anchor.setAttribute("aria-expanded", "true"); doc.addEventListener("mousedown", outside, true); doc.addEventListener("keydown", keyboard, true); layout.win.addEventListener("resize", close); add.focus();
+  },
+  async selectReadingSource(layout, ref) {
+   if (layout.readingContext?.paperItem.key === ref.key) return;
+   const item = await this.resolveNoteDocument(ref), pdf = item && await item.getBestAttachment();
+   if (!pdf?.isPDFAttachment?.()) throw new Error("This document has no readable PDF.");
+   if (this._pending.has(this._views.get(layout.entry.root)?.ctx.dir)) throw new Error("Wait for the reading answer before switching documents.");
+   this._readingLayoutReaders.set(pdf.id, layout); const reader = await Zotero.Reader.open(pdf.id, null, { openInWindow: false });
+   if (reader) { if (reader._initPromise) await reader._initPromise; await this.openReaderPanel(reader); }
+   this.drawReadingSources(layout);
   },
   async closeReadingLayout(layout, { discard = false } = {}) {
    if (!discard) await layout.noteState.flush();
@@ -828,6 +860,7 @@
   },
   disposeReadingLayout(layout) {
    if (layout.disposed) return; layout.disposed = true;
+   layout.closeSourceMenu?.();
    for (const surface of layout.surfaces.values()) surface.destination._closeMenu?.();
    const state = layout.noteState;
    if (state?.input && !state.forceClose && !state.note.deleted && (state.revision !== state.savedRevision || state.timer)) {

@@ -364,3 +364,18 @@ test('hot updates refresh layout styles and retain their priority over legacy no
  assert.equal(doc.documentElement.lastElementChild,link);
  p.removeFromWindow(win);assert.equal(doc.querySelector('[data-reading-style]'),null);win.close();
 });
+
+test('mode and source share one toolbar and source menu starts with the existing add-documents action',async()=>{
+ const {p,layout,doc,a,b,dispose}=await setup();
+ assert.equal(layout.title.title,'Single document');assert.equal(layout.title.textContent,'');
+ assert.equal(layout.title.nextElementSibling.className,'abstractin-layout-separator');
+ assert.equal(layout.title.nextElementSibling.nextElementSibling,layout.sources);
+ assert.ok(layout.sources.textContent.includes(a.title));assert.equal(layout.sources.parentElement,layout.toolbar);
+ let added;p.showReadingSources=value=>{added=value;};layout.sources.click();
+ const menu=doc.querySelector('.abstractin-layout-source-menu');assert.equal(menu.querySelector('button').textContent,'+ Add documents');
+ menu.querySelector('button').click();assert.equal(added,layout);assert.equal(doc.querySelector('.abstractin-layout-source-menu'),null);
+ await p.updateReadingSources(layout,[p.noteDocumentRef(a),p.noteDocumentRef(b)],{name:'Compare'});
+ assert.equal(layout.title.title,'Workspace: Compare');layout.sources.click();
+ assert.equal(doc.querySelectorAll('.abstractin-layout-source-menu .abstractin-layout-source').length,2);
+ layout.closeSourceMenu();dispose();
+});

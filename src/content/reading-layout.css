@@ -57,6 +57,16 @@
 
 /* Each panel has one compact command row, also inside floating windows. */
 .abstractin-layout-toolbar { flex-wrap:nowrap; flex-shrink:0; }
+.abstractin-reading-layout > .abstractin-layout-toolbar { height:var(--abstractin-toolbar-height,40px); min-height:var(--abstractin-toolbar-height,40px); box-sizing:border-box; padding:0 8px; gap:6px; background:var(--abstractin-toolbar-background,var(--material-toolbar,#f9f9f9)); border-bottom:1px solid var(--fill-quarternary,#d6d6d9); }
+.abstractin-layout-mode { display:flex; align-items:center; justify-content:center; flex:0 0 24px; width:24px; height:28px; color:var(--fill-secondary,var(--note-muted)); }
+.abstractin-layout-separator { height:20px; width:1px; flex:0 0 1px; background:var(--fill-quarternary,var(--note-line)); }
+.abstractin-layout-toolbar > .abstractin-layout-sources { display:flex; align-items:center; flex:1 1 0; min-width:0; max-width:none; height:28px; margin:0; padding:2px 4px; gap:6px; border:0; border-radius:4px; background:transparent; color:var(--fill-primary,var(--note-text)); overflow:hidden; }
+.abstractin-layout-source-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.abstractin-layout-toolbar > .abstractin-layout-sources .abstractin-i { flex:0 0 10px; width:10px; height:10px; }
+.abstractin-layout-toolbar > .abstractin-layout-sources:hover { background:var(--fill-quinary,var(--note-soft)); }
+.abstractin-layout-source-menu { max-height:min(360px,70vh); }
+.abstractin-layout-source-menu button { overflow-wrap:anywhere; }
+.abstractin-layout-source-menu hr { margin:4px 0; border:0; border-top:1px solid var(--fill-quarternary,#d6d6d9); }
 .abstractin-layout-toolbar .abstractin-icon,
 .abstractin-dock-host .abstractin-dock-header :is(.abstractin-icon,.abstractin-note-save,summary) { display:inline-flex; align-items:center; justify-content:center; flex:0 0 28px; width:28px; min-width:28px; height:28px; min-height:28px; padding:5px; border:0; border-radius:5px; background:transparent; color:inherit; cursor:pointer; }
 .abstractin-layout-toolbar .abstractin-icon:hover,

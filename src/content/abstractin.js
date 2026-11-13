@@ -1250,6 +1250,13 @@ AbstractIn = {
 
 		header.querySelector(".abstractin-initialize-contents").hidden = true;
 		let log = this.el(doc, "div", "abstractin-log");
+		log.tabIndex = -1; log.setAttribute("aria-label", "Discussion messages");
+		log.addEventListener("mousedown", event => {
+			if (event.button !== 0 || event.target.closest("button,a,input,textarea,select,[contenteditable=true]")) return;
+			// Move keyboard/clipboard ownership out of the previously focused iframe
+			// before the browser starts selecting the discussion text.
+			log.focus({ preventScroll: true });
+		});
 		log.appendChild(this.el(doc, "div", "abstractin-notice", "Loading…"));
 		let logWrap = this.el(doc, "div", "abstractin-log-wrap");
 		let jump = this.iconButton(doc, "abstractin-jump", "Scroll to latest", "jump", () => {
