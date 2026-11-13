@@ -1123,6 +1123,7 @@ AbstractIn = {
 				menu.style.bottom = "";
 			}
 		};
+		menu.reposition = position;
 		menu.refresh = () => {
 			menu.textContent = "";
 			build(menu);
@@ -1147,7 +1148,8 @@ AbstractIn = {
 				this.closeMenu(root);
 				return;
 			}
-			let items = [...menu.querySelectorAll(".abstractin-menu-item:not(:disabled)")];
+			let column = doc.activeElement?.closest?.('[data-menu-column]') || menu;
+			let items = [...column.querySelectorAll(".abstractin-menu-item:not(:disabled)")];
 			if (!items.length || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
 				return;
 			}
@@ -1403,54 +1405,65 @@ AbstractIn = {
 	},
 
 	openModelMenu(root, anchor) {
-		let doc = root.ownerDocument;
-		let level = null;  // null shows agents and APIs; otherwise the key whose models are shown
-		let show = (key) => {
-			level = key;
-			menu.refresh();
-			(menu.querySelector('.abstractin-menu-item[aria-checked="true"]') || menu.querySelector(".abstractin-menu-item"))?.focus();
-		};
-		let menu = this.openMenu(root, anchor, (menu) => {
-			menu.classList.add("abstractin-model-menu");
-			let reading = this._views.get(root)?.ctx.reading;
-			let current = reading ? this.readingAgent() : this.getBackend();
-
-			// ---- First level: configured agents and APIs, then setup for every agent and API
-			if (!this.BACKENDS[level]) {
-				level = null;
-				this.menuSection(doc, menu, "Agents & APIs");
-				for (let key of Object.keys(this.BACKENDS)) {
-					if (key !== current && (root._installed?.[key] === null || !this.agentReadyForDiscussion(key))) continue;
-					let item = this.menuItem(doc, menu, {
-						label: this.BACKENDS[key].fullName,
-						desc: this.modelLabel(key, this.getModel(key)) || "Default",
-						checked: key === current,
-						onSelect: () => show(key),
-					});
-					item.dataset.agent = key;
-					item.setAttribute("aria-haspopup", "menu");
-					item.firstChild.appendChild(this.svgIcon(doc, "chevronRight", "abstractin-menu-next"));
-				}
-				this.menuSection(doc, menu, "Configure");
-				for (let [key, backend] of Object.entries(this.BACKENDS)) {
-					this.menuItem(doc, menu, { label: "Set up " + backend.fullName + "…",
-						onSelect: () => this.openAgentSetup(root, key, { reading: !!reading }) });
-				}
-				return;
+		const doc = root.ownerDocument;
+		let level = null, renderModels;
+		const show = (key, focus = false) => {
+			const previous = level;
+			if (key !== level) {
+				// Keep the hovered row in place when a long model list opens above
+				// the composer; each column scrolls inside the existing menu height.
+				if (key && !level && menu.offsetHeight) menu.style.height = menu.offsetHeight + "px";
+				if (!key) menu.style.height = "";
+				level = key; renderModels(); menu.reposition();
 			}
-
-			// ---- Second level: models of the chosen agent or API
-			{
+			if (focus) {
+				const target = key ? menu.querySelector('.abstractin-model-submenu .abstractin-menu-item[aria-checked="true"]') || menu.querySelector('.abstractin-model-submenu .abstractin-menu-item:not(.abstractin-menu-back)')
+					: [...menu.querySelectorAll('[data-agent]')].find(item => item.dataset.agent === previous);
+				target?.focus();
+			}
+		};
+		const menu = this.openMenu(root, anchor, menu => {
+			menu.classList.add("abstractin-model-menu");
+			const reading = this._views.get(root)?.ctx.reading;
+			const current = reading ? this.readingAgent() : this.getBackend();
+			if (!this.BACKENDS[level]) level = null;
+			const agents = this.el(doc, "div", "abstractin-model-agents"); agents.dataset.menuColumn = "agents";
+			const models = this.el(doc, "div", "abstractin-model-submenu"); models.dataset.menuColumn = "models"; models.setAttribute("role", "menu");
+			menu.append(agents, models);
+			this.menuSection(doc, agents, "Agents & APIs");
+			for (let key of Object.keys(this.BACKENDS)) {
+				if (key !== current && (root._installed?.[key] === null || !this.agentReadyForDiscussion(key))) continue;
+				let item = this.menuItem(doc, agents, {
+					label: this.BACKENDS[key].fullName,
+					desc: this.modelLabel(key, this.getModel(key)) || "Default",
+					checked: key === current,
+					onSelect: () => show(key),
+				});
+				item.dataset.agent = key;
+				item.setAttribute("aria-haspopup", "menu");
+				item.setAttribute("aria-expanded", String(level === key));
+				item.addEventListener("mouseenter", () => show(key));
+				item.firstChild.appendChild(this.svgIcon(doc, "chevronRight", "abstractin-menu-next"));
+			}
+			this.menuSection(doc, agents, "Configure");
+			for (let [key, backend] of Object.entries(this.BACKENDS)) {
+				this.menuItem(doc, agents, { label: "Set up " + backend.fullName + "…",
+					onSelect: () => this.openAgentSetup(root, key, { reading: !!reading }) });
+			}
+			renderModels = () => {
+				models.replaceChildren(); models.hidden = !level; menu.classList.toggle("abstractin-model-expanded", !!level);
+				for (const item of agents.querySelectorAll('[data-agent]')) item.setAttribute("aria-expanded", String(item.dataset.agent === level));
+				if (!level) return;
 				let key = level, backend = this.BACKENDS[key];
-				this.menuItem(doc, menu, { label: backend.fullName, icon: "back", onSelect: () => show(null) })
+				this.menuItem(doc, models, { label: backend.fullName, icon: "back", onSelect: () => show(null, true) })
 					.classList.add("abstractin-menu-back");
 				if (root._installed?.[key] === null) {
-					menu.appendChild(this.el(doc, "div", "abstractin-menu-note",
+					models.appendChild(this.el(doc, "div", "abstractin-menu-note",
 						"Not installed. Choose Set up " + backend.fullName + " to install or locate its local CLI."));
 					return;
 				}
 				for (let model of this.getModels(key)) {
-					this.menuItem(doc, menu, {
+					this.menuItem(doc, models, {
 						label: model.label,
 						desc: model.id ? "" : model.desc,
 						checked: key === current && model.id === this.getModel(key),
@@ -1467,32 +1480,32 @@ AbstractIn = {
 					});
 				}
 				if (key === "claude") {
-					if (this._claudeModelsPromise) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading Claude models…"));
-					if (this._claudeModelsError) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", this._claudeModelsError));
-					this.menuItem(doc, menu, { label: "Refresh Claude models", desc: "Read supported models from your local Claude Code",
+					if (this._claudeModelsPromise) models.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading Claude models…"));
+					if (this._claudeModelsError) models.appendChild(this.el(doc, "div", "abstractin-menu-note", this._claudeModelsError));
+					this.menuItem(doc, models, { label: "Refresh Claude models", desc: "Read supported models from your local Claude Code",
 						onSelect: () => { let task = this.loadClaudeModels(true); menu.refresh(); task.then(() => { if (menu.isConnected) { menu.refresh(); this.updateControls(root); } }); } });
 				}
 				if (key === "codex") {
-					if (this._codexModelsPromise) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading Codex models…"));
-					if (this._codexModelsError) menu.appendChild(this.el(doc, "div", "abstractin-menu-note", this._codexModelsError));
-					this.menuItem(doc, menu, { label: "Refresh Codex models", desc: "Read models from your local Codex",
+					if (this._codexModelsPromise) models.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading Codex models…"));
+					if (this._codexModelsError) models.appendChild(this.el(doc, "div", "abstractin-menu-note", this._codexModelsError));
+					this.menuItem(doc, models, { label: "Refresh Codex models", desc: "Read models from your local Codex",
 						onSelect: () => { let task = this.loadCodexModels(true); menu.refresh(); task.then(() => { if (menu.isConnected) { menu.refresh(); this.updateControls(root); } }); } });
-					this.menuItem(doc, menu, { label: "Choose another model…", desc: "Enter a model ID from Codex /model",
+					this.menuItem(doc, models, { label: "Choose another model…", desc: "Enter a model ID from Codex /model",
 						onSelect: () => { this.closeMenu(root); this.openCodexModelSetup(root); } });
 				}
 				if (key === "agy" && !Array.isArray(this._agyModels)) {
-					menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading models…"));
+					models.appendChild(this.el(doc, "div", "abstractin-menu-note", "Loading models…"));
 				}
 				if (key === "agy" && this._agyModelsError) {
-					menu.appendChild(this.el(doc, "div", "abstractin-menu-note", "Sign-in not reachable from Zotero, so only the default model is listed. See Settings."));
+					models.appendChild(this.el(doc, "div", "abstractin-menu-note", "Sign-in not reachable from Zotero, so only the default model is listed. See Settings."));
 				}
-			}
+			};
+			renderModels();
 		});
-		// Right arrow opens an agent's models; left arrow returns to the agents.
-		menu?.addEventListener("keydown", (event) => {
-			let key = doc.activeElement?.dataset?.agent;
-			if (event.key === "ArrowRight" && level === null && key) { event.preventDefault(); show(key); }
-			else if (event.key === "ArrowLeft" && level !== null) { event.preventDefault(); show(null); }
+		menu?.addEventListener("keydown", event => {
+			const key = doc.activeElement?.dataset?.agent;
+			if (event.key === "ArrowRight" && key) { event.preventDefault(); show(key, true); }
+			else if (event.key === "ArrowLeft" && level) { event.preventDefault(); show(null, true); }
 		});
 		if (menu && root._installed?.claude !== null && this.getAgentValidation("claude")?.discussion) {
 			let task = this.loadClaudeModels(); menu.refresh();

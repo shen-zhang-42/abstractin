@@ -184,6 +184,38 @@ test("model menu lists configured agents first and their models in a second leve
 	assert.equal(root.querySelector(".abstractin-effort-btn .abstractin-label").textContent, "Auto");
 });
 
+test('hovering agents reveals models without replacing rows or changing the selected agent', () => {
+ const {root,plugin,window}=sidebar();
+ root._installed.codex='/bin/codex';plugin.agentReadyForDiscussion=()=>true;
+ plugin.openModelMenu(root,root.querySelector('.abstractin-model-btn'));
+ const menu=root.querySelector('.abstractin-model-menu'),initial=plugin.getBackend();
+ const codex=menu.querySelector('[data-agent=codex]'),claude=menu.querySelector('[data-agent=claude]');
+ codex.dispatchEvent(new window.MouseEvent('mouseenter'));
+ assert.equal(menu.querySelector('[data-agent=codex]'),codex,'hover must keep the agent row mounted');
+ assert.equal(codex.getAttribute('aria-expanded'),'true');
+ assert.equal(menu.querySelector('.abstractin-model-submenu').hidden,false);
+ assert.match(menu.querySelector('.abstractin-model-submenu').textContent,/OpenAI Codex/);
+ claude.dispatchEvent(new window.MouseEvent('mouseenter'));
+ assert.equal(claude.getAttribute('aria-expanded'),'true');assert.equal(codex.getAttribute('aria-expanded'),'false');
+ assert.match(menu.querySelector('.abstractin-model-submenu').textContent,/Claude Code/);
+ assert.equal(plugin.getBackend(),initial,'hover previews models without choosing a backend');
+ menu.refresh();assert.match(menu.querySelector('.abstractin-model-submenu').textContent,/Claude Code/);
+ plugin.closeMenu(root);window.close();
+});
+
+test('model menu arrow keys stay in their column and return to the originating agent', () => {
+ const {root,plugin,window,document}=sidebar();root._installed.codex='/bin/codex';
+ plugin.agentReadyForDiscussion=()=>true;plugin.openModelMenu(root,root.querySelector('.abstractin-model-btn'));
+ const codex=root.querySelector('[data-agent=codex]');codex.focus();
+ codex.dispatchEvent(new window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+ assert.ok(document.activeElement.closest('.abstractin-model-submenu'));
+ document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true}));
+ assert.ok(document.activeElement.closest('.abstractin-model-submenu'));
+ document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));
+ assert.equal(document.activeElement,codex);assert.equal(root.querySelector('.abstractin-model-submenu').hidden,true);
+ plugin.closeMenu(root);window.close();
+});
+
 test("effort menu offers the levels the current backend supports", () => {
 	const { root, prefs } = sidebar({ [PREFIX + "backend"]: "agy" });
 	root.querySelector(".abstractin-effort-btn").click();
