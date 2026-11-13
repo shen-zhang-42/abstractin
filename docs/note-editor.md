@@ -1,5 +1,7 @@
 # NoteOut editor
 
+For the dockable reading-and-note layout and its unified document sources, see [Reading and note layout](reading-layout.md). The standalone home described below remains available outside the PDF reading view.
+
 NoteOut uses the MIT-licensed t-shoot Markdown Live Preview Editor, built on CodeMirror 6. Markdown remains the saved source. Editing, preview boundaries, tables, headings and quotations are handled by the upstream editor. AbstractIn supplies Zotero storage, AI edit proposals, fixed Markdown shortcuts, font settings and mathematics.
 
 The font selector appears at the left of the editor formatting toolbar. Its `?` button lists the fixed shortcuts. Ctrl/Cmd+S saves the note and commits an active table cell first. Bold, italic and inline-code commands place edge whitespace outside the Markdown markers, including when editing a table cell.

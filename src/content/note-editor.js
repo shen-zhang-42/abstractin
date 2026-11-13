@@ -223,12 +223,12 @@
    } catch (_) {}
    return null;
   },
-  markdownNoteHTML(note, title, markdown, parent, updatedAt, documents = parent ? [this.noteDocumentRef(parent)] : []) {
+  markdownNoteHTML(note, title, markdown, parent, updatedAt, documents = parent ? [this.noteDocumentRef(parent)] : [], workspace = null) {
    const doc = Zotero.getMainWindow().document, body = this.el(doc, "div");
    body.append(this.el(doc, "h1", null, title || "Untitled note"));
    const content = this.el(doc, "div"); this.renderMarkdown(doc, content, markdown); body.append(content);
    const data = this.el(doc, "pre", null, JSON.stringify({ format: "abstractin-markdown-note-v1", title, markdown,
-    itemKey: parent?.key || null, documents, noteKey: note.key || null, updatedAt }));
+    itemKey: parent?.key || null, documents, noteKey: note.key || null, updatedAt, ...(workspace ? { workspace } : {}) }));
    data.style.display = "none"; data.setAttribute("data-abstractin-markdown", "true"); body.append(data);
    return body.outerHTML;
   },
@@ -325,7 +325,7 @@
   },
   saveMarkdownNote(state) {
    state.input._composerEditor?.flush?.();
-   const snapshot = { title: state.title.value || "Untitled note", markdown: state.input.value, documents: (state.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : [])).slice(), revision: state.revision, updatedAt: Date.now() };
+   const snapshot = { title: state.title.value || "Untitled note", markdown: state.input.value, documents: (state.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : [])).slice(), workspace: state.readingWorkspace || this.markdownNoteData(state.note)?.workspace || null, revision: state.revision, updatedAt: Date.now() };
    const task = state.saveQueue.catch(() => {}).then(async () => {
     // Keep a recoverable source draft even if Zotero rejects a save or detects a conflict.
     await Zotero.File.putContentsAsync(OS.Path.join(state.dir, "draft.json"), JSON.stringify({ ...snapshot, format: "abstractin-note-draft-v1", noteKey: state.note.key }));
@@ -337,15 +337,16 @@
      if (!item || item.libraryID !== state.note.libraryID || item.isEditable?.() === false) throw new Error("A linked document is unavailable or read-only. Your draft was kept locally.");
      if (snapshot.documents.length === 1) parent = item;
     }
+    if (snapshot.workspace) parent = null;
     state.note.parentID = parent?.id || false;
-    state.note.setNote(this.markdownNoteHTML(state.note, snapshot.title, snapshot.markdown, parent, snapshot.updatedAt, snapshot.documents));
+    state.note.setNote(this.markdownNoteHTML(state.note, snapshot.title, snapshot.markdown, parent, snapshot.updatedAt, snapshot.documents, snapshot.workspace));
     try { await state.note.saveTx(); }
     catch (e) { state.baseHTML = state.note.getNote(); throw e; }
     state.baseHTML = state.note.getNote(); state.parent = parent;
     await this.syncNoteOutLinks(state.note, snapshot.documents, snapshot.title, state.linkedDocuments || []);
     state.linkedDocuments = snapshot.documents; state.savedRevision = snapshot.revision;
     this.updateNoteSaveButton(state);
-    if (state.win?.document && (!state.home || state.home.active === state)) state.win.document.title = (state.home ? "NoteOut — " : "AbstractIn — ") + snapshot.title;
+    if (!state.dockManaged && state.win?.document && (!state.home || state.home.active === state)) state.win.document.title = (state.home ? "NoteOut — " : "AbstractIn — ") + snapshot.title;
     if (state.status?.isConnected) state.status.textContent = state.savedRevision === state.revision ? "Saved to Zotero" : "Unsaved changes…";
    });
    state.saveQueue = task;
@@ -438,7 +439,9 @@
     await state.flush();
     const warning = await this.trashSavedMarkdownNote(state.note);
     state.forceClose = true; state.dispose?.(); this._markdownNoteWindows.delete(state.key);
-    if (state.home) {
+    if (state.dockManaged) {
+     await this.closeReadingLayout(state.readingLayout, { discard: true });
+    } else if (state.home) {
      const home = state.home; home.states.delete(state.key); state.host.remove();
      if (home.active === state) { const next = [...home.states.values()][0]; if (next) home.select(next); else home.showEmpty(); }
      await home.refresh(); if (warning && home.status) home.status.textContent = warning;
@@ -472,7 +475,7 @@
    const top = this.el(doc, "div", "abstractin-note-topline"), actions = this.el(doc, "div", "abstractin-note-file-actions");
    actions.append(status, save, more, closeDraft); top.append(title, actions);
    const header = this.el(doc, "header", "abstractin-note-editor-head"), notices = this.el(doc, "div", "abstractin-note-notices");
-   header.append(top, toolbar); notices.append(preview); editor.append(header, editHost, notices); host.append(editor);
+   header.append(top, toolbar); notices.append(preview); editor.append(header, editHost, notices); (state.dockHosts?.editor || host).append(editor);
    Object.assign(state, { title, input, preview, status, editor, saveButton: save });
    this.updateNoteSaveButton(state);
    const report = e => { status.textContent = "Not saved: " + (e.message || e); closeDraft.hidden = false; this.logError("Markdown note", e); };
@@ -492,17 +495,24 @@
     state.timer = win.setTimeout(() => { state.timer = null; this.saveMarkdownNote(state).catch(report); }, 800);
    };
    state.documents ||= data.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : []);
-   const redrawDocuments = this.mountNoteDocuments(doc, header, state, change, { controls: actions });
-   actions.insertBefore(actions.querySelector(".abstractin-note-source-control"), more);
-   header.insertBefore(header.querySelector(".abstractin-note-documents"), toolbar);
+   const redrawDocuments = state.dockManaged ? (() => {
+    const source = this.el(doc, "button", null, "Sources"); source.onclick = () => state.readingLayout.showSources(); actions.insertBefore(source, more); return () => {};
+   })() : this.mountNoteDocuments(doc, header, state, change, { controls: actions });
+   if (!state.dockManaged) {
+    actions.insertBefore(actions.querySelector(".abstractin-note-source-control"), more);
+    header.insertBefore(header.querySelector(".abstractin-note-documents"), toolbar);
+   }
    title.addEventListener("input", change); input.addEventListener("input", change);
    state.disposeEditor = this.installMathComposer(input, { note: true });
    save.onclick = () => flush().catch(report);
    const shortcut = event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); flush().catch(report); } };
    const scopedShortcut = event => { if (!state.home || state.home.active === state) shortcut(event); };
    win.addEventListener("keydown", scopedShortcut);
-   const chat = this.el(doc, "section", "abstractin-note-chat"); host.append(chat); state.chatHost = chat; chatToggle.textContent = "Hide discussion";
-   this.installNoteSplitter(state, host, editor, chat);
+   const chat = state.dockHosts?.chat || this.el(doc, "section", "abstractin-note-chat");
+   if (!state.dockHosts) host.append(chat);
+   chat.classList.add("abstractin-note-chat"); state.chatHost = chat; chatToggle.textContent = "Hide discussion";
+   if (!state.dockManaged) this.installNoteSplitter(state, host, editor, chat);
+   if (state.dockManaged) { chatToggle.hidden = true; toDiscussion.hidden = true; closeDraft.hidden = true; }
    chatToggle.onclick = async () => {
     chat.hidden = !chat.hidden; chatToggle.textContent = chat.hidden ? "Discuss note" : "Hide discussion";
     state.splitter.hidden = chat.hidden;
@@ -541,21 +551,21 @@
     event.preventDefault(); event.returnValue = "";
     if (!state.closing) { state.closing = true; flush().then(() => { state.forceClose = true; win.close(); }).catch(e => { state.closing = false; report(e); }); }
    };
-   if (!state.home) win.addEventListener("beforeunload", state.beforeUnload);
+   if (!state.home && !state.dockManaged) win.addEventListener("beforeunload", state.beforeUnload);
    state.dispose = () => {
     if (state.disposed) return; state.disposed = true;
     state.sourceDisposers?.forEach(dispose => dispose());
     win.removeEventListener("unload", state.dispose); win.removeEventListener("beforeunload", state.beforeUnload);
     win.clearTimeout(state.timer); win.clearTimeout(state.previewTimer); win.removeEventListener("keydown", scopedShortcut); state.disposeEditor?.(); state.disposeSplitter?.();
     if (state.chatView) {
-     this._pending.get(state.chatView.ctx.dir)?.cancel(); state.chatView.root.disposeUI?.();
-     this._views.delete(state.chatView.root); this.endNoteSession(state.chatView.ctx.dir);
+     if (!state.transferring) this._pending.get(state.chatView.ctx.dir)?.cancel(); state.chatView.root.disposeUI?.();
+     this._views.delete(state.chatView.root); if (!state.transferring) this.endNoteSession(state.chatView.ctx.dir);
     }
     this._markdownNoteWindows.delete(state.key);
    };
-   win.addEventListener("unload", state.dispose, { once: true });
+   if (!state.dockManaged) win.addEventListener("unload", state.dispose, { once: true });
    try { await this.mountMarkdownNoteChat(state, chat); } catch (e) { status.textContent = "Discussion unavailable: " + (e.message || e); }
-   doc.title = "NoteOut — " + (data.title || "Note"); input.focus();
+   if (!state.dockManaged) doc.title = "NoteOut — " + (data.title || "Note"); input.focus();
   },
   async mountMarkdownNoteChat(state, host) {
    if (state.chatView) return state.chatView;

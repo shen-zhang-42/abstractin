@@ -89,8 +89,8 @@
 						if (!busy) { selected.delete(id); draw(); }
 					})); list.append(row);
 				}
-				start.disabled = selected.size !== 1;
-				status.textContent = selected.size > 1 ? selected.size + " documents added. Multi-document reading is not available yet. Keep one to start." :
+				start.disabled = !selected.size;
+				status.textContent = selected.size > 1 ? selected.size + " documents added. Start to set up a shared workspace." :
 					selected.size === 1 ? "1 document added. Ready to read." : "No documents added yet.";
 			};
 			add.addEventListener("click", async () => {
@@ -109,15 +109,22 @@
 					if (!items.size) status.textContent = "Select a book or paper in the document list on the left first.";
 				}
 				catch (error) { status.textContent = "Could not add documents: " + (error.message || error); }
-				finally { busy = false; add.disabled = false; start.disabled = selected.size !== 1; }
+				finally { busy = false; add.disabled = false; start.disabled = !selected.size; }
 			});
 			start.addEventListener("click", async () => {
-				if (selected.size !== 1 || busy) return;
+				if (!selected.size || busy) return;
 				busy = true; start.disabled = true; add.disabled = true;
 				status.textContent = "Opening document…";
-				try { await this.startLibraryReading(win, selected.values().next().value); }
+				try {
+					const reader = await this.startLibraryReading(win, selected.values().next().value);
+					if (selected.size > 1) {
+						const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state.views.get(reader);
+						const layout = await this.openReadingLayout(state, entry, reader);
+						this.showReadingSources(layout, [...selected.values()].map(item => this.noteDocumentRef(item)));
+					}
+				}
 				catch (error) { status.textContent = error.message || String(error); }
-				finally { busy = false; start.disabled = selected.size !== 1; add.disabled = false; }
+				finally { busy = false; start.disabled = !selected.size; add.disabled = false; }
 			});
 			draw();
 		},

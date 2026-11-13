@@ -237,7 +237,8 @@ Object.assign(AbstractIn, {
 			// Native XUL splitters resize their next sibling through a width
 			// attribute. HTML sections need that value reflected into CSS.
 			let width = Number(panel.getAttribute("width"));
-			if (width >= 280 && panel.style.width !== Math.min(width, 720) + "px") panel.style.width = Math.min(width, 720) + "px";
+			const limit = panel.classList.contains("abstractin-reader-panel-workspace") ? 1600 : 720;
+			if (width >= 280 && panel.style.width !== Math.min(width, limit) + "px") panel.style.width = Math.min(width, limit) + "px";
 			if (!state.active) return;
 			if (splitter.getAttribute("state") === "collapsed") this.closeReaderPanel(win);
 			else if (mount.context && win.ZoteroContextPane?.collapsed === false) this.closeReaderPanel(win, { restoreContext: false });
@@ -248,7 +249,7 @@ Object.assign(AbstractIn, {
 		if (win.ResizeObserver) {
 			state.resize = new win.ResizeObserver(entries => {
 				let width = Math.round(entries[0].contentRect.width);
-				if (state.active && width >= 280) this.setPref("readerPanelWidth", Math.min(width, 720));
+				if (state.active && width >= 280) this.setPref(panel.classList.contains("abstractin-reader-panel-workspace") ? "readingWorkspaceWidth" : "readerPanelWidth", Math.min(width, panel.classList.contains("abstractin-reader-panel-workspace") ? 1600 : 720));
 			});
 			state.resize.observe(panel);
 		}

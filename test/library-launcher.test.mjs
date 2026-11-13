@@ -69,7 +69,7 @@ test('explicit native selection adds only chosen documents, deduplicates and per
 	select([a]);add.click();await tick();assert.equal(start.disabled,false);
 	assert.deepEqual([...loads.at(-1).ids],[1]);
 	select([a,b]);add.click();await tick();assert.equal(doc.querySelectorAll('.abstractin-library-item').length,2);
-	assert.equal(start.disabled,true);assert.match(doc.querySelector('.abstractin-library-status').textContent,/2 documents added/);
+	assert.equal(start.disabled,false);assert.match(doc.querySelector('.abstractin-library-status').textContent,/2 documents added/);
 	doc.querySelector('[data-item-id="2"] button').click();assert.equal(start.disabled,false);
 	let chosen;p.startLibraryReading=async(_,item)=>chosen=item;
 	start.click();await tick();assert.equal(chosen.id,1);

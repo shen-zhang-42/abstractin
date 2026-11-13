@@ -2524,6 +2524,7 @@ AbstractIn = {
 			}
 		}
 
+		if (this.readingLayoutContext) ctx = await this.readingLayoutContext(ctx, boundReader);
 		ctx.reader = reader?.itemID === ctx.attachmentItem?.id ? reader : null;
 		let view = { doc, root, logEl, input, ctx, send: null };
 		view.send = (text, images) => this.sendText(view, text, images);
@@ -2537,6 +2538,7 @@ AbstractIn = {
 		if (live?.readingSetup && [live.ctx.paperItem?.id, live.ctx.attachmentItem?.id].includes(item.id)) return;
 		this.rememberChatPosition(this._views.get(root));
 		this._views.set(root, view);
+		root._readingLayoutReady?.(view);
 		this.updateReadingControls(view);
 		this.renderPaperChip(root, this.paperInfo(ctx));
 		this.renderAttachments(view);

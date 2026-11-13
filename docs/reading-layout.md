@@ -1,0 +1,23 @@
+# Reading and note layout
+
+Open a PDF in Zotero, then click the top-level **NoteOut** icon or the **Read and write side by side** button in its reading discussion. The native PDF reader remains in place. The default sibling layout is a full-height note editor with reading discussion above note discussion on the right. Both discussions keep their own history and message draft.
+
+Drag a panel header to an edge of another panel to split it there. A shaded target previews the placement. Drag outside the window to open a floating window, or use the panel's **Move… → New window** menu. The Move menu also lists existing panel windows and **Dock in Zotero**, allowing the three plugin panels to combine independently. Closing a floating window returns its panels to Zotero. Splitters support dragging, arrow keys and Home to reset the ratio.
+
+The layout menu offers the default arrangement, three columns, focus reading and a separate note window. Reset layout returns all three panels to their default positions. Layout structure and floating window sizes are remembered. A native Zotero PDF window never automatically relocates these plugin panels. This version has one instance of each panel per open note, rather than duplicate editor or discussion windows.
+
+## Source scope
+
+**Sources +** searches books and papers in the same library. With one source, the note remains a child of that document and no workspace or collection is created. On adding a second source, choose a name and optionally an existing parent collection. AbstractIn creates a dedicated child collection with the original document items and the same canonical note, now a standalone item. Other notes and conversations under the original document stay in place.
+
+Reading and note discussion use the same source list. Source chips switch the native reading target. Source changes wait for active answers to finish; removing the current source requires selecting another one first. Removing a source unlinks it from the workspace collection, preserving the Zotero item, PDF, past messages and citations. An established workspace retains its structure even when only one source remains.
+
+The current reading conversation is copied into `workspaces/<libraryID>-<noteKey>/discussions/reading/`, preserving the original transcript. Further reading chats use the workspace discussion index. Note discussion stays at its existing stable note-key path. The note's hidden metadata contains the workspace identity and sources; a local `workspace.json` records the association. Workspace reading transcripts sync as standalone Zotero notes in the workspace collection and can reconstruct a missing local index. New reading messages record their active document and source membership at send time.
+
+Reading currently retrieves evidence from the selected document using the existing reading tools. Adding sources does not preload their full text or automatically transfer discussion history to the other agent. Cross-discussion turn search and automatic routing of evidence queries between documents are later steps.
+
+The older standalone NoteOut home remains available when no PDF is selected. Its source filter is separate from this new reading workspace UI.
+
+## Maintenance
+
+`reading-note.css` is generated from the standalone note stylesheet by `node scripts/reading-note-style.mjs`, which also runs during a normal build. Its root and hidden selectors are scoped to plugin surfaces so they cannot restyle Zotero's native window.

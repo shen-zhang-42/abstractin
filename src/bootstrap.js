@@ -49,6 +49,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(resourceURI + "content/notein.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/note-storage.js");
 	Services.scriptloader.loadSubScript(resourceURI + "content/note-editor.js");
+	Services.scriptloader.loadSubScript(resourceURI + "content/reading-layout.js");
 	AbstractIn.init({ id, version, rootURI, resourceURI });
 	AbstractIn.noteEditorURI = "resource://" + resourcePackage + "/";
 	AbstractIn.noteEditorBridge = Components.utils;
