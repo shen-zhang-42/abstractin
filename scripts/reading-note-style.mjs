@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 // Zotero's native window. Regenerate whenever note-editor.css changes.
 const root = new URL('../src/content/', import.meta.url);
 const css = readFileSync(new URL('note-editor.css', root), 'utf8')
+ .replace(/^\uFEFF/, '')
  .replaceAll(':root', '.abstractin-reading-layout, .abstractin-dock-host')
  .replaceAll('html, body', '.abstractin-dock-host')
  .replaceAll('[hidden] {', '.abstractin-dock-host [hidden] {')

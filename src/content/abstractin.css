@@ -784,6 +784,14 @@
 	opacity: 1;
 }
 
+/* Keep answer colors independent of the neutral docked-panel controls. */
+.abstractin-root .abstractin-log {
+	--abstractin-accent: var(--abstractin-discussion-accent, var(--accent-blue, #4072e5));
+	--abstractin-accent-soft: color-mix(in srgb, var(--abstractin-accent) 12%, transparent);
+	--abstractin-accent-line: color-mix(in srgb, var(--abstractin-accent) 55%, transparent);
+	--abstractin-accent-ink: color-mix(in srgb, var(--abstractin-accent) 80%, var(--abstractin-text));
+}
+
 /* Theorem-like environments. */
 .abstractin-env {
 	margin: 2px 0 10px;

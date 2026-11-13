@@ -138,11 +138,11 @@
    const separator = this.el(doc, "span", "abstractin-layout-separator"); separator.setAttribute("aria-hidden", "true");
    const sources = this.el(doc, "button", "abstractin-layout-sources"); sources.type = "button"; sources.setAttribute("aria-haspopup", "menu");
    sources.onclick = () => this.openReadingSourceMenu(layout);
-   const source = this.iconButton(doc, "abstractin-layout-add-source", "Manage sources", "paper", () => this.showReadingSources(layout));
+   const source = this.iconButton(doc, "abstractin-layout-add-source", "Manage sources", "sourceManage", () => this.showReadingSources(layout));
    const chooser = this.iconButton(doc, "abstractin-layout-choose", "Layout", "patternGrid", () => this.openReadingLayoutMenu(layout.win, chooser, { layout }));
    chooser.setAttribute("aria-haspopup", "menu");
    const reset = this.iconButton(doc, "abstractin-layout-reset", "Reset layout", "retry", () => this.applyReadingLayoutPreset(layout, "stacked").catch(error => this.layoutError(layout, error)));
-   const exit = this.iconButton(doc, "abstractin-layout-toggle-notes", "Hide notes", "noteNone", () => this.toggleReadingNotes(layout).catch(error => this.layoutError(layout, error)));
+   const exit = this.iconButton(doc, "abstractin-layout-toggle-notes", "Hide notes", "notesHide", () => this.toggleReadingNotes(layout).catch(error => this.layoutError(layout, error)));
    toolbar.append(title, separator, sources, source, chooser, reset, exit, this.iconButton(doc, "abstractin-global-settings", "Plugin settings", "settings", () => this.openSettings()));
    const status = this.el(doc, "div", "abstractin-layout-status"); status.setAttribute("role", "status");
    const host = this.el(doc, "div", "abstractin-dock-host"); shell.append(toolbar, status, host);
@@ -250,7 +250,7 @@
   integrateReadingNoteHeader(layout) {
    const surface = layout.surfaces.get("editor"), state = layout.noteState;
    surface.destination._closeMenu?.();
-   const formatting = this.iconButton(state.editor.ownerDocument, "abstractin-note-format", "Formatting, font and shortcuts", "edit", () => state.input._composerEditor?.toggleToolbar?.());
+   const formatting = this.iconButton(state.editor.ownerDocument, "abstractin-note-format", "Formatting, font and shortcuts", "noteFormat", () => state.input._composerEditor?.toggleToolbar?.());
    formatting.setAttribute("aria-expanded", "false"); state.formatButton = formatting;
    const outside = event => { if (formatting.getAttribute("aria-expanded") === "true" && !formatting.contains(event.target)) state.input._composerEditor?.toggleToolbar?.(); };
    state.editor.ownerDocument.addEventListener("mousedown", outside, true);
@@ -762,7 +762,7 @@
    const button = layout.noteToggle, label = layout.notesHidden ? "Show notes" : "Hide notes";
    if (!button) return;
    button.title = label; button.setAttribute("aria-label", label); button.setAttribute("aria-pressed", String(!layout.notesHidden));
-   button.replaceChildren(this.svgIcon(button.ownerDocument, layout.notesHidden ? "noteFull" : "noteNone"));
+   button.replaceChildren(this.svgIcon(button.ownerDocument, layout.notesHidden ? "notesShow" : "notesHide"));
   },
   async toggleReadingNotes(layout, show = !!layout.notesHidden) {
    if (layout.togglingNotes || show === !layout.notesHidden) return;
@@ -801,7 +801,7 @@
   drawReadingSources(layout) {
    layout.readingContext = this._views.get(layout.entry.root)?.ctx || layout.readingContext;
    const doc = layout.win.document, label = layout.workspace ? "Workspace: " + layout.workspace.name : "Single document";
-   layout.title.title = label; layout.title.setAttribute("aria-label", label); layout.title.replaceChildren(this.svgIcon(doc, layout.workspace ? "patternGrid" : "paper"));
+   layout.title.title = label; layout.title.setAttribute("aria-label", label); layout.title.replaceChildren(this.svgIcon(doc, layout.workspace ? "workspace" : "paper"));
    const selected = layout.documents.find(ref => ref.key === layout.readingContext?.paperItem.key) || layout.documents[0];
    layout.sources.replaceChildren(this.el(doc, "span", "abstractin-layout-source-label", selected?.title || "Sources"), this.svgIcon(doc, "chevron"));
    layout.sources.title = (selected?.title || "Sources") + " — " + layout.documents.length + " document(s)";

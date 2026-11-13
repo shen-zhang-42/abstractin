@@ -1,0 +1,19 @@
+{
+  "package": "@phosphor-icons/core",
+  "version": "2.1.1",
+  "repository": "https://github.com/phosphor-icons/core",
+  "tarball": "https://registry.npmjs.org/@phosphor-icons/core/-/core-2.1.1.tgz",
+  "integrity": "sha512-v4ARvrip4qBCImOE5rmPUylOEK4iiED9ZyKjcvzuezqMaiRASCHKcRIuvvxL/twvLpkfnEODCOJp5dM4eZilxQ==",
+  "description": "Additional workspace command icons; other Phosphor icons were bundled earlier.",
+  "files": {
+    "floppy-disk.svg": "assets/duotone/floppy-disk-duotone.svg",
+    "file-plus.svg": "assets/duotone/file-plus-duotone.svg",
+    "folder-open.svg": "assets/duotone/folder-open-duotone.svg",
+    "books.svg": "assets/duotone/books-duotone.svg",
+    "text-aa.svg": "assets/duotone/text-aa-duotone.svg",
+    "notebook.svg": "assets/duotone/notebook-duotone.svg",
+    "eye.svg": "assets/duotone/eye-duotone.svg",
+    "eye-slash.svg": "assets/duotone/eye-slash-duotone.svg",
+    "files.svg": "assets/duotone/files-duotone.svg"
+  }
+}

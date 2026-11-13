@@ -36,7 +36,7 @@
 .abstractin-dock-panel[data-drop-edge="right"]::after { inset:0 0 0 50%; }
 .abstractin-dock-panel[data-drop-edge="top"]::after { inset:0 0 50% 0; }
 .abstractin-dock-panel[data-drop-edge="bottom"]::after { inset:50% 0 0 0; }
-.abstractin-layout-source-dialog { position:absolute; inset:35px 12px auto; z-index:200; max-height:calc(100% - 50px); overflow:auto; display:flex; flex-direction:column; gap:10px; padding:18px; background:var(--note-paper); border:1px solid var(--note-line); border-radius:8px; box-shadow:0 10px 35px #0003; }
+.abstractin-layout-source-dialog { position:absolute; inset:35px 12px auto; z-index:200; max-height:calc(100% - 50px); overflow:auto; display:flex; flex-direction:column; gap:10px; padding:18px; background:var(--note-paper,var(--material-toolbar,#f5f5f6)); color:var(--note-text,var(--fill-primary,#303135)); border:1px solid var(--note-line,var(--fill-quarternary,#d6d6d9)); border-radius:8px; box-shadow:0 10px 35px #0003; }
 .abstractin-layout-picked-sources > div { display:flex; gap:8px; align-items:center; padding:3px 0; }
 .abstractin-layout-picked-sources span { flex:1; }
 .abstractin-layout-source-results { display:flex; flex-direction:column; max-height:180px; overflow:auto; gap:4px; }
@@ -103,7 +103,7 @@
 .abstractin-dock-host .abstractin-reading-statusbar { margin-inline:8px; }
 .abstractin-dock-host .abstractin-composer { margin-bottom:6px; }
 .abstractin-root[data-shared-sources="true"] .abstractin-context { display:none; }
-.abstractin-panel-choice-menu { position:fixed; z-index:2147483001; width:220px; max-height:280px; overflow:auto; padding:5px; background:var(--note-paper,#f7f7f8); color:var(--note-text,#242428); border:1px solid var(--note-line,#d4d4d8); border-radius:7px; box-shadow:0 8px 25px #0003; font:13px/1.5 system-ui,sans-serif; }
+.abstractin-panel-choice-menu { position:fixed; z-index:2147483001; width:220px; max-height:280px; overflow:auto; padding:5px; background:var(--note-paper,var(--material-toolbar,#f7f7f8)); color:var(--note-text,var(--fill-primary,#242428)); border:1px solid var(--note-line,var(--fill-quarternary,#d4d4d8)); border-radius:7px; box-shadow:0 8px 25px #0003; font:13px/1.5 system-ui,sans-serif; }
 .abstractin-panel-choice-menu button { display:block; width:100%; padding:7px 9px; border:0; border-radius:4px; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
 .abstractin-panel-choice-menu button:is(:hover,:focus-visible), .abstractin-panel-choice-menu button[aria-checked="true"] { background:var(--note-soft,#e7e7ea); }
 .abstractin-dock-panel { container:abstractin-panel / inline-size; }

@@ -459,7 +459,7 @@
    status.setAttribute("role", "status");
    const save = this.el(doc, "button", null, "Save"), chatToggle = this.el(doc, "button", null, "Discuss note");
    save.className = "abstractin-note-save";
-   save.title = "Save note"; save.setAttribute("aria-label", "Save note"); save.replaceChildren(this.svgIcon(doc, "save"));
+   save.title = "Save note"; save.setAttribute("aria-label", "Save note"); save.replaceChildren(this.svgIcon(doc, "noteSave"));
    const closeDraft = this.el(doc, "button", null, "Close keeping local draft"); closeDraft.hidden = true;
    const append = this.el(doc, "button", null, "Append last answer"), toDiscussion = this.el(doc, "button", null, "Use in document discussion");
    toDiscussion.hidden = !state.sourceView || !!state.sourceView.ctx.noteWorkspace;
@@ -590,7 +590,7 @@
    if (state.dockManaged) {
     this.integrateReadingDiscussionHeader(state.readingLayout, "notes", root);
     const surface = state.readingLayout.surfaces.get("notes"), move = surface.moveButton;
-    controls.append(this.readingChoiceButton(doc, mode, "edit", "Assistant action"), this.readingChoiceButton(doc, scope, "paper", "Note context"));
+    controls.append(this.readingChoiceButton(doc, mode, "edit", "Assistant action"), this.readingChoiceButton(doc, scope, "noteContext", "Note context"));
     surface.actions.insertBefore(controls, move);
     state.sourceDisposers ||= []; state.sourceDisposers.push(() => { mode._closeMenu?.(); scope._closeMenu?.(); });
    } else root.querySelector(".abstractin-header").after(controls);

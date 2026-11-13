@@ -137,6 +137,15 @@ AbstractIn = {
 		alert: "warning-circle.svg",
 		paper: "file-text.svg",
 		book: "book-open-text.svg",
+		noteSave: "floppy-disk.svg",
+		noteCreate: "file-plus.svg",
+		noteOpen: "folder-open.svg",
+		sourceManage: "books.svg",
+		noteFormat: "text-aa.svg",
+		noteContext: "notebook.svg",
+		notesShow: "eye.svg",
+		notesHide: "eye-slash.svg",
+		workspace: "files.svg",
 		app: "app-document-chat.svg",
 		"mascot-marmoset": "mascot-marmoset.svg",
 		"mascot-wagtail": "mascot-wagtail.svg",
@@ -605,6 +614,8 @@ AbstractIn = {
 			root.style.removeProperty("--abstractin-accent");
 		}
 		root.style.setProperty("--abstractin-accent-text", this.textOn(appearance.accent || this.ZOTERO_ACCENT));
+		// Discussion output retains the chosen accent when panel controls use gray.
+		root.style.setProperty("--abstractin-discussion-accent", appearance.accent || this.ZOTERO_ACCENT);
 		root.style.setProperty("--abstractin-font-size", this.FONT_SIZES[appearance.size]);
 		root.dataset.style = appearance.style;
 		root.dataset.bubble = appearance.bubble;
