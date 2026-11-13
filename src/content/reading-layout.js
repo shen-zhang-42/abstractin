@@ -252,7 +252,14 @@
    surface.destination._closeMenu?.();
    const formatting = this.iconButton(state.editor.ownerDocument, "abstractin-note-format", "Formatting, font and shortcuts", "noteFormat", () => state.input._composerEditor?.toggleToolbar?.());
    formatting.setAttribute("aria-expanded", "false"); state.formatButton = formatting;
-   const outside = event => { if (formatting.getAttribute("aria-expanded") === "true" && !formatting.contains(event.target)) state.input._composerEditor?.toggleToolbar?.(); };
+   const outside = event => {
+    if (formatting.getAttribute("aria-expanded") !== "true" || formatting.contains(event.target)) return;
+    // Gecko's chrome capture listeners also see clicks inside the HTML iframe.
+    // Its toolbar handles those clicks and dismisses itself within that document.
+    const frame = state.editor.querySelector(".abstractin-note-rich-frame");
+    if (frame && (event.target === frame || event.target.ownerDocument === frame.contentDocument)) return;
+    state.input._composerEditor?.toggleToolbar?.();
+   };
    state.editor.ownerDocument.addEventListener("mousedown", outside, true);
    state.sourceDisposers ||= []; state.sourceDisposers.push(() => state.editor.ownerDocument.removeEventListener("mousedown", outside, true));
    const files = state.editor.querySelector(".abstractin-note-file-actions");

@@ -352,6 +352,23 @@ test('Hide and Show notes restore custom split ratios and sidebar width without 
  dispose();
 });
 
+test('Formatting keeps iframe controls clickable when Gecko forwards their mousedown to chrome', async () => {
+ const {layout,doc,win,dispose}=await setup(),state=layout.noteState;
+ const frame=doc.createElement('iframe');frame.className='abstractin-note-rich-frame';state.editor.append(frame);
+ const command=frame.contentDocument.createElement('button');frame.contentDocument.body.append(command);
+ let executed=0,open=false;
+ state.input._composerEditor={toggleToolbar(){open=!open;state.formatButton.setAttribute('aria-expanded',String(open));}};
+ command.onclick=()=>{if(open) executed++;};
+ const forwarded=target=>{const event=new win.MouseEvent('mousedown',{bubbles:true,button:0});Object.defineProperty(event,'target',{value:target});doc.dispatchEvent(event);};
+ try {
+  state.formatButton.click();assert.equal(open,true);
+  forwarded(command);command.click();assert.equal(open,true);assert.equal(executed,1);
+  forwarded(frame);assert.equal(open,true,'a retargeted iframe hit is also inside the editor');
+  layout.noteState.chatView.root.dispatchEvent(new win.MouseEvent('mousedown',{bubbles:true,button:0}));
+  assert.equal(open,false,'a click outside the note editor still dismisses Formatting');
+ } finally { delete state.input._composerEditor;dispose(); }
+});
+
 test('Hide and Show notes restore floating geometry, linked panels and unsent discussion drafts', async () => {
  const {p,layout,win,dispose}=await setup();
  const floating=new JSDOM('<main id="float"></main>',{url:'http://localhost/'});
