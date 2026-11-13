@@ -32,14 +32,14 @@
   readingLayoutRemove: without,
   readingLayoutInsert: insert,
   readingLayoutPreset(name) {
-   return name === "columns" ? split("x", leaf("editor"), split("x", leaf("reading"), leaf("notes")), .45)
+   return name === "columns" ? split("x", leaf("reading"), split("x", leaf("editor"), leaf("notes"), .6), .28)
     : split("x", leaf("editor"), split("y", leaf("reading"), leaf("notes")), .52);
   },
   async openNoteOutHome(win, options = {}) {
    const workspaceNote = options.note && this.markdownNoteData(options.note);
    if (workspaceNote?.workspace) {
-    const existing = this._readingLayouts.get(options.note.libraryID + ":" + options.note.key);
-    if (existing) { existing.surfaces.get("editor").node.ownerDocument.defaultView.focus(); return existing; }
+    const existing = [...this._readingLayouts.values()].find(layout => layout.note.libraryID === options.note.libraryID && layout.workspace?.id === workspaceNote.workspace.id);
+    if (existing) { await this.switchReadingNote(existing, options.note); existing.surfaces.get("editor").node.ownerDocument.defaultView.focus(); return existing; }
     const document = await this.resolveNoteDocument(workspaceNote.documents[0]);
     if (!document) throw new Error("The workspace's source document is unavailable.");
     const reader = await this.startLibraryReading(win, document), state = this.readerPanelState(this.readerPanelWindow(reader));
@@ -86,7 +86,10 @@
    }
   },
   async openReadingLayout(panelState, entry, reader, note = null, { restore = true } = {}) {
-   if (entry.layout) return entry.layout;
+   if (entry.layout) {
+    if (note && note.key !== entry.layout.note.key) await this.switchReadingNote(entry.layout, note);
+    return entry.layout;
+   }
    if (!this._views.get(entry.root) && entry.render) {
     let ready, failed; const mounted = new Promise((resolve, reject) => { ready = resolve; failed = reject; });
     entry.root._readingLayoutReady = ready; entry.render.then(ready, failed);
@@ -356,6 +359,9 @@
   async updateReadingSources(layout, refs, { name, parentCollectionID = null } = {}) {
    layout.readingContext = this._views.get(layout.entry.root)?.ctx || layout.readingContext;
    if (this._pending.has(layout.readingContext.dir) || this._pending.has(layout.noteState.chatView?.ctx.dir)) throw new Error("Wait for both discussions to finish before changing sources.");
+   if (layout.noteChanging || layout.noteCreating) throw new Error("Wait for the note change to finish.");
+   const relatedNotes = layout.workspace ? await this.readingScopeNotes(layout) : [];
+   if (relatedNotes.some(note => note.key !== layout.note.key && this._markdownNoteWindows.has(note.libraryID + ":" + note.key))) throw new Error("Close other notes from this workspace before changing sources.");
    refs = [...new Map(refs.map(ref => [ref.key, ref])).values()];
    if (!refs.length) throw new Error("Keep at least one source.");
    if (!refs.some(ref => ref.key === layout.readingContext.paperItem.key)) throw new Error("Switch to a remaining document before removing the active source.");
@@ -401,6 +407,11 @@
    delete layout.pendingWorkspace;
    if (workspace) {
     layout.note.addToCollection(workspace.collectionID); await layout.note.saveTx(); layout.noteState.baseHTML = layout.note.getNote();
+    for (const note of relatedNotes) if (note.key !== layout.note.key) {
+     const data = this.markdownNoteData(note);
+     note.setNote(this.markdownNoteHTML(note, data.title, data.markdown, null, Date.now(), refs, workspace));
+     await note.saveTx(); await this.syncNoteOutLinks(note, refs, data.title, data.documents || []);
+    }
     await this.saveReadingWorkspaceManifest(layout);
    }
    for (const [id, value] of this._readingLayoutReaders) if (value === layout) this._readingLayoutReaders.delete(id);
@@ -410,7 +421,9 @@
   },
   readingWorkspaceDir(libraryID, id) { return OS.Path.join(this.getDataDir(), "workspaces", libraryID + "-" + id); },
   async saveReadingWorkspaceManifest(layout) {
-   await Zotero.File.putContentsAsync(OS.Path.join(this.readingWorkspaceDir(layout.note.libraryID, layout.workspace.id), "workspace.json"), JSON.stringify({ format: "abstractin-reading-workspace-v1", ...layout.workspace, libraryID: layout.note.libraryID, noteKey: layout.note.key, documents: layout.documents }, null, 2));
+   const noteKeys = (await this.readingScopeNotes(layout)).map(note => note.key);
+   if (!noteKeys.includes(layout.note.key)) noteKeys.push(layout.note.key);
+   await Zotero.File.putContentsAsync(OS.Path.join(this.readingWorkspaceDir(layout.note.libraryID, layout.workspace.id), "workspace.json"), JSON.stringify({ format: "abstractin-reading-workspace-v1", ...layout.workspace, libraryID: layout.note.libraryID, noteKey: layout.workspace.id, activeNoteKey: layout.note.key, noteKeys, documents: layout.documents }, null, 2));
   },
   async readingLayoutContext(ctx, reader) {
    const layout = reader && this._readingLayoutReaders.get(reader.itemID);
@@ -518,6 +531,7 @@
    await this.mountMarkdownNote(editor.node.ownerDocument.defaultView, state, editor.content);
    if (layout.noteDraft && state.chatView) {
     state.chatView.input.value = layout.noteDraft.text; this.autoGrow(state.chatView.input);
+    state.chatView.input.dispatchEvent(new state.chatView.doc.defaultView.Event("input", { bubbles: true }));
     state.input.setSelectionRange(layout.noteDraft.start, layout.noteDraft.end);
     delete layout.noteDraft;
    }

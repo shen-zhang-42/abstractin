@@ -497,7 +497,7 @@
    };
    state.documents ||= data.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : []);
    const redrawDocuments = state.dockManaged ? (() => {
-    const source = this.el(doc, "button", null, "Sources"); source.onclick = () => state.readingLayout.showSources(); actions.insertBefore(source, more); return () => {};
+    this.mountReadingNoteActions(state, actions, more); return () => {};
    })() : this.mountNoteDocuments(doc, header, state, change, { controls: actions });
    if (!state.dockManaged) {
     actions.insertBefore(actions.querySelector(".abstractin-note-source-control"), more);

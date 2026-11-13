@@ -25,7 +25,12 @@ async function setup() {
  win.Zotero.Collections = { get: id => collections.get(id), getByLibrary: libraryID => [...collections.values()].filter(item => item.libraryID === libraryID && !item.parentID), getByParent: id => [...collections.values()].filter(item => item.parentID === id) };
  win.Zotero.Items = { get: id => items.get(id), getAsync: async id => Array.isArray(id) ? id.map(value => items.get(value)) : items.get(id), getByLibraryAndKey: (libraryID, key) => [...items.values()].find(item => item.libraryID === libraryID && item.key === key) };
  win.Zotero.Notifier = { registerObserver: () => 1, unregisterObserver() {} }; win.Zotero.Libraries = { userLibraryID: 1, get: () => ({ editable: true }) };
- win.Zotero.Search = class { addCondition() {} async search() { return []; } };
+ win.Zotero.Search = class {
+  constructor() { this.conditions = []; }
+  addCondition(field, operator, value) { this.conditions.push([field, operator, value]); }
+  async search() { return [...items.values()].filter(item => item.libraryID === this.libraryID && this.conditions.every(([field, operator, value]) =>
+   field === 'itemType' ? item.itemType === value : field === 'tag' ? item.tags.includes(value) : true)).map(item => item.id); }
+ };
  p.getDataDir = () => '/data'; p.checkInstalledBackends = async () => {};
  p.installMathComposer = () => () => {};
  doc.createXULElement = name => doc.createElement(name);
@@ -209,4 +214,77 @@ test('docked note stylesheet cannot target native html/body or the document root
  const css = readFileSync(new URL('../src/content/reading-note.css', import.meta.url), 'utf8');
  assert.doesNotMatch(css, /(^|[\n{},])\s*(?:html|body|:root)\b/);
  assert.doesNotMatch(css, /^\[hidden\]/m);
+});
+
+test('four columns place reading discussion before the linked note and note discussion', async () => {
+ const {p,layout,dispose}=await setup();await p.applyReadingLayoutPreset(layout,'columns');
+ assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)],['reading','editor','notes']);
+ assert.deepEqual([...p.READING_LAYOUTS.find(preset=>preset.id==='columns').boxes.map(box=>box[4])],['PDF','Read','Note','Chat']);
+ dispose();
+});
+
+test('Save is followed by New note and Open note and each note retains its own text, history and draft', async () => {
+ const {p,layout,win,a,dispose}=await setup();
+ const first=layout.note,firstState=layout.noteState,readingRoot=layout.entry.root,readingDir=layout.readingContext.dir;
+ const buttons=[...firstState.editor.querySelector('.abstractin-note-file-actions').children].filter(node=>node.tagName==='BUTTON');
+ assert.deepEqual(buttons.slice(0,3).map(button=>button.textContent),['Save','New note','Open note']);
+ assert.ok(!buttons.some(button=>/Sources?/.test(button.textContent)));
+ firstState.input.value='# First note';firstState.input.dispatchEvent(new win.Event('input'));
+ firstState.chatView.input.value='Unsent first question';
+ const firstDir=firstState.chatView.ctx.dir;await p.saveHistory(firstDir,[{role:'user',text:'First question'},{role:'assistant',text:'First answer'}]);
+ const second=await p.newReadingNote(layout),secondState=layout.noteState,secondDir=secondState.chatView.ctx.dir;
+ assert.notEqual(second.key,first.key);assert.equal(second.parentID,a.id);assert.equal(secondState.input.value,'');
+ assert.equal(p.markdownNoteData(first).markdown,'# First note');assert.notEqual(secondDir,firstDir);
+ assert.equal((await p.loadHistory(secondDir)).length,0);
+ secondState.input.value='# Second note';secondState.input.dispatchEvent(new win.Event('input'));
+ secondState.chatView.input.value='Unsent second question';
+ await p.saveHistory(secondDir,[{role:'user',text:'Second question'},{role:'assistant',text:'Second answer'}]);
+ await p.switchReadingNote(layout,first);
+ assert.equal(layout.noteState.input.value,'# First note');assert.equal(layout.noteState.chatView.input.value,'Unsent first question');
+ assert.equal((await p.loadHistory(layout.noteState.chatView.ctx.dir))[1].text,'First answer');
+ await p.switchReadingNote(layout,second);
+ assert.equal(layout.noteState.input.value,'# Second note');assert.equal(layout.noteState.chatView.input.value,'Unsent second question');
+ assert.equal((await p.loadHistory(secondDir))[1].text,'Second answer');
+ assert.equal(layout.entry.root,readingRoot);assert.equal(layout.readingContext.dir,readingDir);
+ dispose();
+});
+
+test('Open note lists only current-document notes and opens the selected note',async()=>{
+ const {p,layout,a,b,Item,dispose}=await setup();
+ const first=layout.note,second=await p.newReadingNote(layout);
+ const other=new Item('note');other.parentID=b.id;other.addTag('AbstractIn:Markdown');other.setNote(p.markdownNoteHTML(other,'Other document','Other',b,Date.now(),[p.noteDocumentRef(b)]));await other.saveTx();
+ const button=layout.noteState.editor.querySelector('.abstractin-note-open');await button.onclick();
+ const picker=layout.noteState.notePicker,keys=[...picker.querySelectorAll('[data-note-key]')].map(node=>node.dataset.noteKey);
+ assert.ok(keys.includes(first.key)&&keys.includes(second.key));assert.ok(!keys.includes(other.key));
+ await picker.querySelector('[data-note-key="'+first.key+'"]').onclick();
+ assert.equal(layout.note.key,first.key);assert.equal(layout.note.parentID,a.id);assert.equal(picker.isConnected,false);
+ dispose();
+});
+
+test('workspace notes share sources and collection while their discussion directories remain distinct',async()=>{
+ const {p,layout,a,b,Item,files,dispose}=await setup();
+ await p.updateReadingSources(layout,[p.noteDocumentRef(a),p.noteDocumentRef(b)],{name:'Shared problem'});
+ const first=layout.note,workspaceID=layout.workspace.id,readingDir=layout.readingContext.dir;
+ const second=await p.newReadingNote(layout),secondDir=layout.noteState.chatView.ctx.dir;
+ assert.ok(second.collections.includes(layout.workspace.collectionID));assert.ok(!second.parentID);
+ assert.equal(p.markdownNoteData(second).workspace.id,workspaceID);
+ const c=new Item('book');c.title='Source C';c.pdf=new Item('attachment');c.pdf.parentItem=c;c.pdf.parentID=c.id;
+ await p.updateReadingSources(layout,[p.noteDocumentRef(a),p.noteDocumentRef(b),p.noteDocumentRef(c)]);
+ for(const note of [first,second]) assert.deepEqual([...p.markdownNoteData(note).documents.map(ref=>ref.key)],[a.key,b.key,c.key]);
+ const manifest=JSON.parse(files.get(p.readingWorkspaceDir(first.libraryID,workspaceID)+'/workspace.json'));
+ assert.equal(manifest.noteKey,workspaceID);assert.ok(manifest.noteKeys.includes(first.key)&&manifest.noteKeys.includes(second.key));
+ await p.switchReadingNote(layout,first);
+ assert.notEqual(layout.noteState.chatView.ctx.dir,secondDir);assert.equal(layout.readingContext.dir,readingDir);
+ assert.equal(layout.workspace.id,workspaceID);
+ dispose();
+});
+
+test('a failed save leaves the current note active and prevents creating a second note',async()=>{
+ const {p,layout,win,items,dispose}=await setup();
+ const first=layout.note,count=items.size,save=first.saveTx;
+ layout.noteState.input.value='Unsaved';layout.noteState.input.dispatchEvent(new win.Event('input'));
+ first.saveTx=async()=>{throw new Error('Save failed');};
+ await assert.rejects(p.newReadingNote(layout),/Save failed/);
+ assert.equal(layout.note.key,first.key);assert.equal(items.size,count);assert.equal(layout.noteCreating,false);
+ first.saveTx=save;dispose();
 });

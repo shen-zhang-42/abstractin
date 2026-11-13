@@ -6,7 +6,13 @@ Choose **None** under **Settings → Appearance → Reading companion** to hide 
 
 Drag a panel header to an edge of another panel to split it there. A shaded target previews the placement. Drag outside the window to open a floating window, or use the panel's **Move… → New window** menu. The Move menu also lists existing panel windows and **Dock in Zotero**. Note editor and note discussion are linked: moving or floating either one moves both, opening them shows both, and hiding notes hides both. They share a floating window and retain an adjustable divider. Closing their floating window hides both while keeping their contents and history. Closing a floating reading discussion returns that discussion to Zotero. Splitters support dragging, arrow keys and Home to reset the ratio.
 
-The layout menu offers the default arrangement, three columns, focus reading and a separate note window. Reset layout returns all three panels to their default positions. Layout structure and floating window sizes are remembered. A native Zotero PDF window never automatically relocates these plugin panels. This version has one instance of each panel per open note, rather than duplicate editor or discussion windows.
+The four-column preset orders surfaces as **Reader | Reading discussion | Note | Note discussion**. Reset layout returns all three plugin panels to their default positions. Layout structure and floating window sizes are remembered. A native Zotero PDF window never automatically relocates these plugin panels. This version has one instance of each panel per reading scope, rather than duplicate editor or discussion windows.
+
+## Multiple notes
+
+The note toolbar provides **Save | New note | Open note**. New note saves the current edits, creates an empty note in the same document or workspace, and selects its editable title. Open note shows a searchable list restricted to the current document or workspace. Each note has its own Markdown and discussion directory. Switching restores that note's history and unsent question without replacing the reading discussion. Stop or finish an active note answer before switching notes.
+
+Single-document notes remain separate children of that document. Workspace notes are separate standalone items in the same workspace collection, with one shared workspace identity and source list. Updating workspace sources updates every note in that workspace. The note toolbar has no separate source button; use the shared **Sources +** control.
 
 ## Source scope
 
