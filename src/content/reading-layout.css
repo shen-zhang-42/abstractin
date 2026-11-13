@@ -1,5 +1,6 @@
 /* Native PDF surfaces remain untouched; only AbstractIn's sibling is docked. */
 .abstractin-reader-panel.abstractin-reader-panel-workspace { min-width:420px; max-width:min(1600px, 80vw); }
+.abstractin-reader-panel.abstractin-reading-notes-hidden { min-width:280px; max-width:min(720px,65vw); }
 .abstractin-reading-layout { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; height:100%; position:relative; color:var(--note-text); background:var(--note-ground); font:13px/1.4 system-ui,sans-serif; }
 .abstractin-reading-layout *, .abstractin-dock-host * { box-sizing:border-box; }
 .abstractin-layout-toolbar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:7px 10px; border-bottom:1px solid var(--note-line); }

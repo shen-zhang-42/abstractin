@@ -47,6 +47,7 @@ export function loadPlugin({ prefs = {} } = {}) {
 	window.eval(read("src/content/note-storage.js"));
 	window.eval(read("src/content/note-editor.js"));
 	window.eval(read("src/content/reading-layout.js"));
+	window.eval(read("src/content/reading-layout-menu.js"));
 	const plugin = window.AbstractIn;
 	plugin.rootURI = "./";
 	return { window, document: window.document, plugin, prefs };

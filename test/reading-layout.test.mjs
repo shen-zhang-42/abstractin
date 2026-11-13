@@ -66,11 +66,12 @@ test('one-source docking preserves native reader and both independent discussion
 test('drag docking rearranges panels without rebuilding editor or losing its input', async () => {
  const { p, layout, dispose } = await setup();
  const input = layout.noteState.input; input.value = 'Unsaved text';
- await p.moveReadingSurface(layout, 'notes', 'main', 'editor', 'bottom');
+ await p.moveReadingSurface(layout, 'notes', 'main', 'reading', 'bottom');
  assert.equal(layout.noteState.input, input); assert.equal(input.value, 'Unsaved text');
  assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)].sort(), ['editor', 'notes', 'reading']);
  const reading = layout.surfaces.get('reading').node;
- assert.equal(reading.style.height, '100%');
+ assert.equal(reading.style.width, '100%');
+ assert.equal(layout.surfaces.get('editor').node.style.top, layout.surfaces.get('notes').node.style.top);
  dispose();
 });
 
@@ -82,6 +83,7 @@ test('cross-window panels can join, retain note and chat drafts, and dock back',
  layout.noteState.input.value = '# Exact **Markdown**'; layout.noteState.input.dispatchEvent(new win.Event('input'));
  layout.noteState.chatView.input.value = 'Unsent note question';
  await p.moveReadingSurface(layout, 'editor', 'float');
+ assert.equal(layout.surfaces.get('notes').group, 'float', 'note discussion follows the editor into the same window');
  assert.equal(layout.noteState.input.value, '# Exact **Markdown**');
  assert.equal(layout.noteState.chatView.input.value, 'Unsent note question');
  assert.equal(layout.noteState.input.ownerDocument, floating.window.document);
@@ -165,6 +167,18 @@ test('source validation runs before collection creation or note migration', asyn
  const { p, layout, a, b, collections, dispose } = await setup(); b.pdf = null;
  await assert.rejects(p.updateReadingSources(layout, [p.noteDocumentRef(a), p.noteDocumentRef(b)], { name: 'Invalid' }), /with a PDF/);
  assert.equal(collections.size, 0); assert.equal(layout.workspace, null); assert.equal(layout.note.parentID, a.id);
+ dispose();
+});
+
+test('reading-only and four-panel presets hide and restore the note pair without changing its history', async () => {
+ const { p, layout, dispose } = await setup();
+ const input = layout.noteState.input, discussion = layout.noteState.chatView.ctx.dir;
+ await p.applyReadingLayoutPreset(layout, 'reading');
+ assert.equal(layout.surfaces.get('editor').node.hidden, true); assert.equal(layout.surfaces.get('notes').node.hidden, true);
+ assert.equal(layout.surfaces.get('reading').node.hidden, false);
+ await p.applyReadingLayoutPreset(layout, 'stacked');
+ assert.equal(layout.surfaces.get('editor').node.hidden, false); assert.equal(layout.surfaces.get('notes').node.hidden, false);
+ assert.equal(layout.noteState.input, input); assert.equal(layout.noteState.chatView.ctx.dir, discussion);
  dispose();
 });
 

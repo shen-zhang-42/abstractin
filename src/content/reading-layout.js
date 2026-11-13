@@ -16,10 +16,11 @@
   return children.length === 2 ? { ...tree, children } : children[0] || null;
  };
  const insert = (tree, target, id, edge) => {
-  if (!tree) return leaf(id);
+  const addition = typeof id === "string" ? leaf(id) : id;
+  if (!tree) return addition;
   if (tree.panel === target) {
    const horizontal = ["left", "right"].includes(edge), before = ["left", "top"].includes(edge);
-   return split(horizontal ? "x" : "y", before ? leaf(id) : tree, before ? tree : leaf(id));
+   return split(horizontal ? "x" : "y", before ? addition : tree, before ? tree : addition);
   }
   return tree.panel ? tree : { ...tree, children: tree.children.map(child => insert(child, target, id, edge)) };
  };
@@ -79,13 +80,13 @@
    const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state?.views.get(reader);
    if (entry && !entry.layoutButton) {
     entry.layoutButton = this.iconButton(entry.root.ownerDocument, "abstractin-layout-open", "Read and write side by side", "noteFull", () => {
-     this.openReadingLayout(state, entry, reader).catch(error => this.appendError(this._views.get(entry.root), error.message || String(error)));
+     this.openReadingLayoutMenu(state.win, entry.layoutButton, { reader });
     });
     entry.root.querySelector(".abstractin-header").append(entry.layoutButton);
    }
   },
-  async openReadingLayout(panelState, entry, reader, note = null) {
-   if (entry.layout) { entry.layout.showSources(); return entry.layout; }
+  async openReadingLayout(panelState, entry, reader, note = null, { restore = true } = {}) {
+   if (entry.layout) return entry.layout;
    if (!this._views.get(entry.root) && entry.render) {
     let ready, failed; const mounted = new Promise((resolve, reject) => { ready = resolve; failed = reject; });
     entry.root._readingLayoutReady = ready; entry.render.then(ready, failed);
@@ -128,13 +129,10 @@
    const shell = this.el(doc, "section", "abstractin-reading-layout"), toolbar = this.el(doc, "header", "abstractin-layout-toolbar");
    const title = this.el(doc, "span", "abstractin-layout-name"), source = this.el(doc, "button", null, "Sources +");
    source.onclick = () => this.showReadingSources(layout);
-   const chooser = this.el(doc, "select"); chooser.setAttribute("aria-label", "Panel layout");
-   for (const [value, text] of [["stacked", "Note | Discussions"], ["columns", "Three columns"], ["reading", "Focus reading"], ["separate", "Separate notes"]]) {
-    const option = this.el(doc, "option", null, text); option.value = value; chooser.append(option);
-   }
-   chooser.onchange = () => this.applyReadingLayoutPreset(layout, chooser.value).catch(error => this.layoutError(layout, error));
+   const chooser = this.el(doc, "button", null, "Layout ▾"); chooser.setAttribute("aria-label", "Panel layout"); chooser.setAttribute("aria-haspopup", "menu");
+   chooser.onclick = () => this.openReadingLayoutMenu(layout.win, chooser, { layout });
    const reset = this.el(doc, "button", null, "Reset layout"); reset.onclick = () => this.applyReadingLayoutPreset(layout, "stacked").catch(error => this.layoutError(layout, error));
-   const exit = this.el(doc, "button", null, "Close notes"); exit.onclick = () => this.closeReadingLayout(layout).catch(error => this.layoutError(layout, error));
+   const exit = this.el(doc, "button", null, "Hide notes"); exit.onclick = () => this.applyReadingLayoutPreset(layout, "reading").catch(error => this.layoutError(layout, error));
    toolbar.append(title, source, chooser, reset, exit);
    const sources = this.el(doc, "nav", "abstractin-layout-sources"), status = this.el(doc, "div", "abstractin-layout-status"); status.setAttribute("role", "status");
    const host = this.el(doc, "div", "abstractin-dock-host"); shell.append(toolbar, sources, status, host);
@@ -144,7 +142,7 @@
    const valid = tree => tree && (tree.panel ? Object.hasOwn(names, tree.panel) : ["x", "y"].includes(tree.axis) && tree.children?.length === 2 && tree.children.every(valid));
    const tree = valid(saved) && new Set(panels(saved)).size === 3 && panels(saved).length === 3 ? saved : this.readingLayoutPreset("stacked");
    const savedGroups = this.getJSONPref("readingDockGroups", null);
-   const restore = Array.isArray(savedGroups) && savedGroups.every(group => !group.tree || valid(group.tree)) &&
+   const restoreGroups = restore && Array.isArray(savedGroups) && savedGroups.every(group => !group.tree || valid(group.tree)) &&
     savedGroups.filter(group => group.main).length === 1 && savedGroups.flatMap(group => panels(group.tree)).length === 3 &&
     new Set(savedGroups.flatMap(group => panels(group.tree))).size === 3 ? savedGroups : null;
    layout.groups.set("main", { id: "main", win: layout.win, host, tree });
@@ -156,15 +154,16 @@
     sourceView: view, readingLayout: layout, readingWorkspace: layout.workspace, dockManaged: true, baseHTML: note.getNote(), revision: 0, savedRevision: 0, saveQueue: Promise.resolve() };
    this._markdownNoteWindows.set(key, layout.noteState);
    panelState.panel.classList.add("abstractin-reader-panel-workspace");
+   panelState.panel.classList.remove("abstractin-reading-notes-hidden");
    panelState.panel.style.width = (Number(this.getPref("readingWorkspaceWidth")) || 850) + "px";
    await this.mountLayoutNote(layout); this.drawReadingLayout(layout); this.drawReadingSources(layout);
    if (layout.workspace) await this.refreshLayoutReading(layout);
    layout.unload = () => this.disposeReadingLayout(layout);
    layout.win.addEventListener("unload", layout.unload, { once: true });
-   if (restore?.some(group => !group.main)) {
+   if (restoreGroups?.some(group => !group.main)) {
     layout.restoring = true;
-    const floating = restore.filter(group => !group.main && group.tree);
-    layout.restoreMain = restore.find(group => group.main).tree; layout.restoreRemaining = floating.length;
+    const floating = restoreGroups.filter(group => !group.main && group.tree);
+    layout.restoreMain = restoreGroups.find(group => group.main).tree; layout.restoreRemaining = floating.length;
     for (const savedGroup of floating) await this.floatReadingSurface(layout, panels(savedGroup.tree)[0], { tree: savedGroup.tree, bounds: savedGroup.bounds });
    }
    return layout;
@@ -225,6 +224,7 @@
   drawReadingLayout(layout) {
    for (const group of layout.groups.values()) {
     if (!group.host) continue;
+    if (group.id !== "main") group.win.document.title = "AbstractIn — " + panels(group.tree).map(id => names[id]).join(" + ");
     for (const dispose of group.splitDisposers || []) dispose(); group.splitDisposers = [];
     group.host.querySelectorAll(".abstractin-dock-divider").forEach(node => node.remove());
     const walk = (tree, box) => {
@@ -282,7 +282,7 @@
    }
   },
   saveReadingDockLayout(layout) {
-   if (layout.restoring || layout.disposed) return;
+   if (layout.restoring || layout.disposed || layout.bundling) return;
    const main = layout.groups.get("main");
    if (panels(main.tree).length === 3) this.setPref("readingDockLayout", JSON.stringify(main.tree));
    const groups = [...layout.groups.values()].filter(group => group.id === "main" || group.tree).map(group => ({ main: group.id === "main", tree: group.tree,
@@ -540,7 +540,23 @@
    try { view = await mounted; } finally { delete root._readingLayoutReady; }
    if (view) { view.input.value = draft; this.autoGrow(view.input); layout.readingContext = view.ctx; layout.noteState.sourceView = view; }
   },
-  async moveReadingSurface(layout, id, groupID, target, edge = "right") {
+  async moveReadingNoteGroup(layout, groupID, target, edge = "right") {
+   if (["editor", "notes"].includes(target)) return;
+   const editor = layout.surfaces.get("editor"), notes = layout.surfaces.get("notes"), group = layout.groups.get(groupID);
+   if (!group?.host) throw new Error("The destination window is still opening.");
+   const source = layout.groups.get(editor.group);
+   const bundle = editor.group === notes.group ? without(source.tree, "reading") : split("x", leaf("editor"), leaf("notes"));
+   target ||= panels(group.tree).find(id => id === "reading");
+   layout.bundling = true;
+   try {
+    for (const id of ["editor", "notes"]) await this.moveReadingSurface(layout, id, groupID, target, edge, { single: true });
+    const remainder = without(without(group.tree, "editor"), "notes");
+    group.tree = insert(remainder, target, bundle || split("x", leaf("editor"), leaf("notes")), edge);
+    this.drawReadingLayout(layout);
+   } finally { layout.bundling = false; this.saveReadingDockLayout(layout); }
+  },
+  async moveReadingSurface(layout, id, groupID, target, edge = "right", { single = false } = {}) {
+   if (!single && ["editor", "notes"].includes(id)) return this.moveReadingNoteGroup(layout, groupID, target, edge);
    if (layout.moving) throw new Error("Wait for the previous panel move to finish.");
    const surface = layout.surfaces.get(id), source = layout.groups.get(surface.group), group = layout.groups.get(groupID);
    if (!group?.host) throw new Error("The destination window is still opening.");
@@ -568,8 +584,13 @@
    } finally { layout.moving = false; }
   },
   async floatReadingSurface(layout, id, { tree = null, bounds = null } = {}) {
+   const restoreRequested = !!tree;
+   if (["editor", "notes"].includes(id)) {
+    id = "editor";
+    tree ||= split("x", leaf("editor"), leaf("notes"), .6);
+   }
    const groupID = this.chatSyncID();
-   const group = { id: groupID, tree: null, pendingPanel: id, restoreTree: tree, bounds }; layout.groups.set(groupID, group);
+   const group = { id: groupID, tree: null, pendingPanel: id, restoreTree: tree, restoreRequested, bounds }; layout.groups.set(groupID, group);
    try { group.win = layout.win.openDialog((this.resourceURI || "chrome://abstractin/content/") + "reading-window.xhtml", "abstractin-panel-" + groupID,
     "chrome,dialog=no,titlebar,centerscreen,resizable=yes,width=780,height=850", { layoutID: layout.id, groupID }); }
    catch (error) { layout.groups.delete(groupID); throw error; }
@@ -592,7 +613,9 @@
     if (group.returning) return; group.returning = true;
     (async () => {
      while (layout.moving) await new Promise(resolve => win.setTimeout(resolve, 20));
-     for (const id of panels(group.tree)) await this.moveReadingSurface(layout, id, "main");
+     const returning = panels(group.tree), hadNotes = returning.some(id => ["editor", "notes"].includes(id));
+     for (const id of returning) if (layout.surfaces.get(id).group !== "main") await this.moveReadingSurface(layout, id, "main");
+     if (hadNotes) await this.applyReadingLayoutPreset(layout, "reading");
     })()
      .catch(error => this.layoutError(layout, error)).finally(() => { group.returning = false; });
    };
@@ -600,14 +623,15 @@
    // beforeunload confirmation. Handle the native close button and window.close.
    win.addEventListener("close", beforeClose); win.addEventListener("DOMWindowClose", beforeClose);
    while (layout.moving) await new Promise(resolve => win.setTimeout(resolve, 20));
-   await this.moveReadingSurface(layout, group.pendingPanel, groupID); delete group.pendingPanel;
-   if (group.joinNotes) await this.moveReadingSurface(layout, "notes", groupID, "editor", "right");
+   await this.moveReadingSurface(layout, group.pendingPanel, groupID, null, "right", { single: true }); delete group.pendingPanel;
    if (group.restoreTree) {
-    for (const id of panels(group.restoreTree)) if (layout.surfaces.get(id).group !== groupID) await this.moveReadingSurface(layout, id, groupID);
+    for (const id of panels(group.restoreTree)) if (layout.surfaces.get(id).group !== groupID) await this.moveReadingSurface(layout, id, groupID, null, "right", { single: true });
     group.tree = group.restoreTree; delete group.restoreTree;
     if (group.bounds) { win.resizeTo(Math.max(350, group.bounds.width || 780), Math.max(300, group.bounds.height || 850)); }
-    layout.restoreRemaining--;
-    if (!layout.restoreRemaining) { layout.groups.get("main").tree = layout.restoreMain; layout.restoring = false; }
+    if (group.restoreRequested && layout.restoring) {
+     layout.restoreRemaining--;
+     if (!layout.restoreRemaining) { layout.groups.get("main").tree = layout.restoreMain; layout.restoring = false; }
+    }
     this.drawReadingLayout(layout); this.saveReadingDockLayout(layout);
    }
    const resized = () => this.saveReadingDockLayout(layout); win.addEventListener("resize", resized);
@@ -618,10 +642,10 @@
    const main = layout.groups.get("main"); main.tree = this.readingLayoutPreset(name);
    for (const surface of layout.surfaces.values()) surface.node.hidden = name === "reading" && surface.id !== "reading";
    if (name === "reading") main.tree = leaf("reading");
+   layout.panelState.panel.classList.toggle("abstractin-reading-notes-hidden", name === "reading");
+   layout.panelState.panel.style.width = (Number(this.getPref(name === "reading" ? "readerPanelWidth" : "readingWorkspaceWidth")) || (name === "reading" ? 380 : 850)) + "px";
    if (name === "separate") {
     await this.floatReadingSurface(layout, "editor");
-    const group = [...layout.groups.values()].find(value => value.pendingPanel === "editor");
-    if (group) group.joinNotes = true;
    }
    this.drawReadingLayout(layout); this.saveReadingDockLayout(layout);
   },
@@ -651,7 +675,7 @@
    layout.entry.root.disposeUI?.(); this._views.delete(layout.entry.root);
    this.disposeReadingLayout(layout); layout.shell.remove(); delete layout.entry.layout; delete layout.entry.layoutButton;
    this.renderSkeleton(layout.win.document, layout.entry.body); layout.entry.root = layout.entry.body.querySelector(".abstractin-root");
-   layout.panelState.panel.classList.remove("abstractin-reader-panel-workspace"); layout.panelState.panel.style.width = (Number(this.getPref("readerPanelWidth")) || 380) + "px";
+   layout.panelState.panel.classList.remove("abstractin-reader-panel-workspace", "abstractin-reading-notes-hidden"); layout.panelState.panel.style.width = (Number(this.getPref("readerPanelWidth")) || 380) + "px";
    layout.entry.render = this.renderContent(layout.win.document, layout.entry.body, Zotero.Items.get(layout.reader.itemID), layout.reader); await layout.entry.render;
    const view = this._views.get(layout.entry.root); if (view) view.input.value = draft;
    await this.openReaderPanel(layout.reader);

@@ -48,6 +48,8 @@ test("reader toolbar uses the public append hook and toggles a panel outside ite
 	assert.equal(win.ZoteroContextPane.collapsed, true);
 	assert.equal(button.getAttribute("aria-pressed"), "true");
 	button.click();
+	assert.ok(doc.querySelector('#abstractin-workspace-menu'), 'the toolbar asks for a layout before changing the panel');
+	p.closeReadingLayoutMenu(win); p.closeReaderPanel(win);
 	assert.equal(panel.hidden, true);
 	assert.equal(win.ZoteroContextPane.collapsed, false, "closing restores the previously open native pane");
 });
@@ -64,7 +66,7 @@ test("cold startup restores the toolbar from a separate PDF iframe without using
 	await p.restoreReaderToolbarEntries();
 	const button = pdfDoc.querySelector(".abstractin-reader-toggle");
 	assert.ok(button, "restart must restore the entry before a selection is made");
-	button.click(); await new Promise(resolve => setTimeout(resolve, 0));
+	button.click(); win.document.querySelector('[data-layout="reading"]').click(); await new Promise(resolve => setTimeout(resolve, 0));
 	assert.equal(doc.querySelector(".abstractin-reader-panel").hidden, false);
 	p.removeAllReaderPanels();
 });
@@ -95,7 +97,7 @@ test("an observer setup error cannot hide the toolbar entry or prevent opening t
 	const button = toolbar.querySelector(".abstractin-reader-toggle");
 	assert.ok(button, "observer failure must not interrupt append");
 	win.MutationObserver = NativeObserver;
-	button.click(); await new Promise(resolve => setTimeout(resolve, 0));
+	button.click(); win.document.querySelector('[data-layout="reading"]').click(); await new Promise(resolve => setTimeout(resolve, 0));
 	assert.equal(doc.querySelector(".abstractin-reader-panel").hidden, false);
 	p.removeAllReaderPanels();
 });
@@ -328,7 +330,7 @@ test('toolbar restoration and delayed native append share one working button', a
  await new Promise(resolve => win.setTimeout(resolve, 0));
  assert.equal(toolbar.querySelectorAll('.abstractin-reader-toggle').length, 1);
  const button = toolbar.querySelector('.abstractin-reader-toggle');
- button.click(); await Promise.resolve();
+ button.click(); doc.querySelector('[data-layout="reading"]').click(); await Promise.resolve();
  assert.equal(doc.querySelector('.abstractin-reader-panel').hidden, false);
  assert.equal(button.getAttribute('aria-pressed'), 'true');
  p.removeAllReaderPanels();
@@ -360,7 +362,7 @@ test('rendering heals untracked buttons from an old plugin instance, including l
  await new Promise(resolve => win.setTimeout(resolve, 0));
  assert.equal(toolbar.querySelectorAll('.abstractin-reader-toggle').length, 1);
  assert.equal(late.isConnected, false); assert.ok(doc.getElementById('native-control'));
- toolbar.querySelector('.abstractin-reader-toggle').click(); await Promise.resolve();
+ toolbar.querySelector('.abstractin-reader-toggle').click(); doc.querySelector('[data-layout="reading"]').click(); await Promise.resolve();
  assert.equal(staleClicks, 0); assert.equal(doc.querySelector('.abstractin-reader-panel').hidden, false);
  p.removeAllReaderPanels();
 });

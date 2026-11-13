@@ -150,6 +150,7 @@ Object.assign(AbstractIn, {
 		button.append(icon);
 		button.addEventListener("click", () => {
 			if (generation !== this._readerToolbarGeneration) return;
+			if (this.openReadingLayoutMenu) { this.openReadingLayoutMenu(win, button, { reader }); return; }
 			this.openReaderPanel(reader, { toggle: true }).catch(e => {
 				this.logError("openReaderPanel", e);
 				button.title = "AbstractIn: " + (e.message || e);
@@ -199,7 +200,8 @@ Object.assign(AbstractIn, {
 
 	updateReaderPanelButtons(win) {
 		let state = this._readerPanelWindows.get(win);
-		win.document.getElementById("abstractin-main-toggle")?.setAttribute("aria-expanded", String(!!state?.active));
+		const launcher = win.document.getElementById("abstractin-main-toggle");
+		if (launcher?.getAttribute("aria-haspopup") !== "menu") launcher?.setAttribute("aria-expanded", String(!!state?.active));
 		for (let [reader, button] of this._readerToolbarButtons.get(win) || []) {
 			if (!this.readerPanelNodeAlive(button)) {
 				let pending = false;

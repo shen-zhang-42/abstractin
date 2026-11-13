@@ -30,7 +30,7 @@ function setup() {
 	return {...env,p,a,b,pdf,note,reader,ctx,loads,opens,searchedLibrary:()=>searchedLibrary,select:items=>{selectedItems=items;}};
 }
 
-test('independent Reading and NoteOut icons open their own workspaces without a dropdown',()=>{
+test('Reading and NoteOut icons show graphical layout choices before opening a workspace',()=>{
 	const {p,window:win,document:doc,reader}=setup();
 	p.addToWindow(win);p.addToWindow(win);
 	const button=doc.getElementById('abstractin-main-toggle'),separator=doc.getElementById('abstractin-main-separator');
@@ -39,9 +39,13 @@ test('independent Reading and NoteOut icons open their own workspaces without a 
 	const notes=doc.getElementById('abstractin-notes-toggle'); assert.ok(notes.querySelector('svg')); assert.equal(notes.textContent.trim(),'');
 	const dot=doc.getElementById('abstractin-workspace-dot'); assert.equal(dot.textContent,'·'); assert.equal(dot.getAttribute('aria-hidden'),'true');
 	assert.equal(notes.title,'NoteOut — open notes');assert.equal(button.nextElementSibling,dot);assert.equal(dot.nextElementSibling,notes);assert.equal(notes.nextElementSibling,separator);
-	let read=0,write=0;p.openLibraryLauncher=async()=>{read++;};p.openNoteOutHome=async()=>{write++;};
-	button.click();assert.equal(read,1);assert.equal(write,0);notes.click();assert.equal(read,1);assert.equal(write,1);
-	assert.equal(doc.getElementById('abstractin-workspace-menu'),null);
+	let chosen=[];p.startReadingLayout=async(win,layout)=>{chosen.push(layout);};
+	button.click();assert.equal(chosen.length,0);assert.equal(doc.querySelector('.abstractin-reader-panel'),null);
+	assert.equal(doc.querySelectorAll('#abstractin-workspace-menu button[data-layout]').length,4);
+	assert.equal(doc.querySelectorAll('.abstractin-layout-diagram .abstractin-layout-reader-box').length,4);
+	doc.querySelector('[data-layout="stacked"]').click();assert.deepEqual(chosen,['stacked']);
+	notes.click();assert.ok(doc.getElementById('abstractin-workspace-menu'));doc.querySelector('[data-layout="reading"]').click();
+	assert.deepEqual(chosen,['stacked','reading']);assert.equal(doc.getElementById('abstractin-workspace-menu'),null);
 	assert.equal(separator.nextElementSibling.id,'zotero-tb-tabs-menu');assert.equal(separator.getAttribute('aria-orientation'),'vertical');
 	assert.equal(doc.querySelectorAll('#abstractin-main-toggle').length,1);
 	assert.equal(doc.querySelectorAll('#abstractin-notes-toggle').length,1);

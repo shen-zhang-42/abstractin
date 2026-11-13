@@ -108,6 +108,19 @@
 }
 .abstractin-paper-guide > span { flex: 1 1 auto; font-size: 12px; }
 
+.abstractin-menu.abstractin-layout-launch-menu { position:fixed!important; z-index:2147483000; max-width:calc(100vw - 24px); max-height:calc(100vh - 24px); overflow:auto; padding:8px; border:1px solid #d3d4d8; border-radius:10px; background:#f5f5f6; color:#303135; font:13px/1.4 system-ui,sans-serif; box-shadow:0 10px 36px #0003; --abstractin-text:#303135; --abstractin-muted:#707178; --abstractin-hover:#e4e5e8; --abstractin-line:#d3d4d8; }
+.abstractin-layout-menu-heading { padding:4px 8px; font-weight:650; font-size:14px; }
+.abstractin-menu.abstractin-layout-launch-menu { box-sizing:border-box; }
+.abstractin-layout-menu-legend { padding:0 8px 8px; font-size:11px; color:var(--abstractin-muted); }
+.abstractin-layout-launch-menu .abstractin-layout-choice { display:flex; gap:14px; padding:10px; min-height:90px; border-radius:7px; text-align:left; }
+.abstractin-layout-choice .abstractin-menu-desc { white-space:normal; line-height:1.4; }
+.abstractin-layout-diagram { display:block; width:170px; height:66px; flex:0 0 170px; }
+.abstractin-layout-diagram .abstractin-layout-reader-box { fill:#d9e9fc; stroke:#6e96c4; stroke-width:1; }
+.abstractin-layout-diagram .abstractin-layout-plugin-box { fill:#e2e3e6; stroke:#a1a4ac; stroke-width:1; }
+.abstractin-layout-diagram text { fill:#343b48; font:9px system-ui,sans-serif; text-anchor:middle; }
+@media (prefers-color-scheme:dark) {
+ .abstractin-menu.abstractin-layout-launch-menu { background:#292a2d; color:#e5e5e8; border-color:#484a51; --abstractin-text:#e5e5e8; --abstractin-muted:#adb0ba; --abstractin-hover:#3b3d43; }
+}
 .abstractin-reader-panel {
 	display: flex;
 	flex: 0 0 auto;

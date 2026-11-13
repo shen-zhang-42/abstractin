@@ -19,15 +19,15 @@
 			const doc = win.document, anchor = doc.getElementById("zotero-tb-tabs-menu");
 			if (!anchor) return false;
 			const button = doc.getElementById("abstractin-main-toggle") || this.iconButton(doc, "abstractin-main-toggle zotero-tb-button", "AbstractIn — read and discuss", "app", () => {
-				this.openLibraryLauncher(win).catch(e => Zotero.alert(win, "AbstractIn", e.message || String(e)));
+				this.openReadingLayoutMenu(win, button);
 			});
 			button.id = "abstractin-main-toggle";
-			button.setAttribute("aria-controls", "abstractin-reader-panel");
+			button.setAttribute("aria-controls", "abstractin-workspace-menu");
 			button.setAttribute("aria-expanded", "false");
 			const notes = doc.getElementById("abstractin-notes-toggle") || this.iconButton(doc, "abstractin-main-toggle abstractin-notes-toggle zotero-tb-button", "NoteOut — open notes", "noteFull", () => {
-				this.openNoteOutHome(win).catch(e => Zotero.alert(win, "NoteOut", e.message || String(e)));
+				this.openReadingLayoutMenu(win, notes);
 			});
-			notes.id = "abstractin-notes-toggle"; notes.setAttribute("aria-haspopup", "dialog");
+			notes.id = "abstractin-notes-toggle"; notes.setAttribute("aria-haspopup", "menu"); button.setAttribute("aria-haspopup", "menu");
 			const dot = doc.getElementById("abstractin-workspace-dot") || this.el(doc, "span", "abstractin-workspace-dot", "·");
 			dot.id = "abstractin-workspace-dot"; dot.setAttribute("aria-hidden", "true");
 			const separator = doc.getElementById("abstractin-main-separator") || this.el(doc, "div", "zotero-tb-separator abstractin-main-separator");
