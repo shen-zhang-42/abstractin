@@ -19,6 +19,7 @@ import '../../../vendor/tshoot/media/webview-editor-theme.css';
 import '../../../vendor/tshoot/media/webview-ui.css';
 import { markdownShortcuts } from './markdown-shortcuts.js';
 import { noteToolbarControls } from './note-toolbar.js';
+import { noteReview, reviewRangesEffect, reviewRangesField } from './note-review.js';
 
 // The upstream library owns preview boundaries and pointer interactions. This
 // adapter supplies application commands, persistence and exact source selections.
@@ -79,6 +80,8 @@ export function createTshootNote(config) {
  root.append(toolbar);
  const publish = update => {
   if (syncing || destroyed) return;
+  if (update.docChanged || update.transactions.some(transaction => transaction.effects.some(effect => effect.is(reviewRangesEffect))))
+   config.onReviewChange?.(JSON.stringify(update.state.field(reviewRangesField)));
   const range = update.state.selection.main;
   if (update.docChanged) savedSelection = null;
   if (!range.empty) savedSelection = { from: range.from, to: range.to, markdown: update.state.sliceDoc(range.from, range.to), sourceSelection: { baseMarkdown: update.state.doc.toString() } };
@@ -90,7 +93,7 @@ export function createTshootNote(config) {
   livePreviewPlugin, blockDecorationsField, headingSpaceInputHandler, backtickInputHandler, headingFoldExtension, codeScrollExtension,
   tableHistoryRequest.of(type => { flush(); (type === 'undo' ? undo : redo)(view); }),
   createLinkClickHandler(href => { if (/^https?:\/\//i.test(href)) window.open(href, '_blank', 'noopener'); }),
-  noteFormulas(config.tokens), noteDiagrams, history(), drawSelection(), EditorView.lineWrapping, search({ top: true }),
+  noteFormulas(config.tokens), noteDiagrams, noteReview, history(), drawSelection(), EditorView.lineWrapping, search({ top: true }),
   enabled.of([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)]), hint.of(placeholder(currentHint)),
   Prec.highest(keymap.of(markdownShortcuts.map(binding => ({ key: binding.key, run: () => format(binding.action) })))),
   keymap.of([{ key: 'Backspace', run: backspaceBelowTable }, ...closeBracketsKeymap, ...searchKeymap, ...markdownKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]), EditorView.updateListener.of(publish),
@@ -115,8 +118,25 @@ export function createTshootNote(config) {
  };
  root.addEventListener('keydown', appKey, true);
  const flush = () => { if (!destroyed) commitActiveTableCell(view); };
+ const setReviewRanges = json => {
+  const ranges = JSON.parse(json || '[]');
+  if (!Array.isArray(ranges) || ranges.some(range => !Number.isInteger(range.from) || !Number.isInteger(range.to) || range.from < 0 || range.to < range.from || range.to > view.state.doc.length)) return false;
+  view.dispatch({ effects: reviewRangesEffect.of(ranges) }); return true;
+ };
+ setReviewRanges(config.reviewRanges || '[]');
  return {
   view, markdownShortcuts, flush, formatMarkdown: format,
+  setReviewRanges,
+  getReviewRanges() { return JSON.stringify(view.state.field(reviewRangesField)); },
+  applyReplacements(expected, json, ranges) {
+   if (destroyed || disabled) return false;
+   flush();
+   if (view.state.doc.toString() !== expected) return false;
+   const edits = JSON.parse(json).sort((a, b) => a.from - b.from);
+   view.dispatch({ changes: edits.map(edit => ({ from: edit.from, to: edit.to, insert: edit.text })),
+    effects: reviewRangesEffect.of(JSON.parse(ranges)), userEvent: 'input.ai' });
+   return true;
+  },
   toggleToolbar() { setToolbar(toolbar.hidden); },
   setFont(value) { if (controls.setFont(value)) view.requestMeasure(); },
   getMarkdown() { flush(); return view.state.doc.toString(); },
@@ -135,7 +155,7 @@ export function createTshootNote(config) {
    syncing = true;
    try {
     const replaced = text !== view.state.doc.toString();
-    if (replaced) { savedSelection = null; view.setState(EditorState.create({ doc: text, extensions })); }
+    if (replaced) { savedSelection = null; view.setState(EditorState.create({ doc: text, extensions })); config.onReviewChange?.('[]'); }
     const effects = [];
     if (replaced || disabled !== !!nextDisabled) { disabled = !!nextDisabled; effects.push(enabled.reconfigure([EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled)])); }
     if (replaced || currentHint !== (label || '')) { currentHint = label || ''; effects.push(hint.reconfigure(placeholder(currentHint))); }

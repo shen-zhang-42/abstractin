@@ -228,12 +228,12 @@
    } catch (_) {}
    return null;
   },
-  markdownNoteHTML(note, title, markdown, parent, updatedAt, documents = parent ? [this.noteDocumentRef(parent)] : [], workspace = null) {
+  markdownNoteHTML(note, title, markdown, parent, updatedAt, documents = parent ? [this.noteDocumentRef(parent)] : [], workspace = null, reviewRanges = []) {
    const doc = Zotero.getMainWindow().document, body = this.el(doc, "div");
    body.append(this.el(doc, "h1", null, title || "Untitled note"));
    const content = this.el(doc, "div"); this.renderMarkdown(doc, content, markdown); body.append(content);
    const data = this.el(doc, "pre", null, JSON.stringify({ format: "abstractin-markdown-note-v1", title, markdown,
-    itemKey: parent?.key || null, documents, noteKey: note.key || null, updatedAt, ...(workspace ? { workspace } : {}) }));
+    itemKey: parent?.key || null, documents, noteKey: note.key || null, updatedAt, ...(workspace ? { workspace } : {}), ...(reviewRanges.length ? { reviewRanges } : {}) }));
    data.style.display = "none"; data.setAttribute("data-abstractin-markdown", "true"); body.append(data);
    return body.outerHTML;
   },
@@ -330,9 +330,19 @@
   updateNoteSaveButton(state) {
    if (state.saveButton) state.saveButton.dataset.unsaved = String(state.revision !== state.savedRevision);
   },
+  noteReplacementReviewRanges(edits, previous = []) {
+   let ranges = previous.map(range => ({ ...range }));
+   for (const edit of [...edits].sort((a, b) => b.from - a.from)) {
+    const delta = edit.text.length - (edit.to - edit.from);
+    const map = (position, end) => position < edit.from ? position : position > edit.to ? position + delta : edit.from + (end ? edit.text.length : 0);
+    ranges = ranges.map(range => ({ from: map(range.from, false), to: map(range.to, true) }));
+    ranges.push({ from: edit.from, to: edit.from + edit.text.length });
+   }
+   return ranges.sort((a, b) => a.from - b.from);
+  },
   saveMarkdownNote(state) {
    state.input._composerEditor?.flush?.();
-   const snapshot = { title: state.title.value || "Untitled note", markdown: state.input.value, documents: (state.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : [])).slice(), workspace: state.readingWorkspace || this.markdownNoteData(state.note)?.workspace || null, revision: state.revision, updatedAt: Date.now() };
+   const snapshot = { title: state.title.value || "Untitled note", markdown: state.input.value, documents: (state.documents || (state.parent ? [this.noteDocumentRef(state.parent)] : [])).slice(), workspace: state.readingWorkspace || this.markdownNoteData(state.note)?.workspace || null, reviewRanges: (state.input._noteReviewRanges || []).map(range => ({ ...range })), revision: state.revision, updatedAt: Date.now() };
    const task = state.saveQueue.catch(() => {}).then(async () => {
     // Keep a recoverable source draft even if Zotero rejects a save or detects a conflict.
     await Zotero.File.putContentsAsync(OS.Path.join(state.dir, "draft.json"), JSON.stringify({ ...snapshot, format: "abstractin-note-draft-v1", noteKey: state.note.key }));
@@ -346,7 +356,7 @@
     }
     if (snapshot.workspace) parent = null;
     state.note.parentID = parent?.id || false;
-    state.note.setNote(this.markdownNoteHTML(state.note, snapshot.title, snapshot.markdown, parent, snapshot.updatedAt, snapshot.documents, snapshot.workspace));
+    state.note.setNote(this.markdownNoteHTML(state.note, snapshot.title, snapshot.markdown, parent, snapshot.updatedAt, snapshot.documents, snapshot.workspace, snapshot.reviewRanges));
     try { await state.note.saveTx(); }
     catch (e) { state.baseHTML = state.note.getNote(); throw e; }
     state.baseHTML = state.note.getNote(); state.parent = parent;
@@ -478,12 +488,18 @@
    moreActions.addEventListener("click", event => { if (event.target.closest("button")) more.open = false; });
    toolbar.append(save, more, closeDraft);
    const input = this.el(doc, "textarea", "abstractin-note-source"); input.value = data.markdown; input.placeholder = "Write Markdown and LaTeX here…"; input.setAttribute("aria-label", "Markdown note");
+   input._noteReviewRanges = (data.reviewRanges || []).filter(range => Number.isInteger(range.from) && Number.isInteger(range.to) && range.from >= 0 && range.to >= range.from && range.to <= input.value.length);
    const editHost = this.el(doc, "div", "abstractin-note-edit-host"); editHost.append(input);
    const preview = this.el(doc, "div", "abstractin-note-preview"); preview.hidden = true;
    const top = this.el(doc, "div", "abstractin-note-topline"), actions = this.el(doc, "div", "abstractin-note-file-actions");
    actions.append(status, save, more, closeDraft); top.append(title, actions);
    const header = this.el(doc, "header", "abstractin-note-editor-head"), notices = this.el(doc, "div", "abstractin-note-notices");
    header.append(top, toolbar); notices.append(preview); editor.append(header, editHost, notices); (state.dockHosts?.editor || host).append(editor);
+   const review = this.el(doc, "div", "abstractin-note-review"), confirm = this.el(doc, "button", null, "Confirm changes");
+   confirm.type = "button"; confirm.title = "Keep the changes and remove red highlighting";
+   review.append(this.el(doc, "span", null, "AI edits are shown in red."), confirm); header.append(review);
+   const updateReview = () => { review.hidden = !input._noteReviewRanges.length; };
+   updateReview(); state.reviewButton = confirm;
    Object.assign(state, { title, input, preview, status, editor, saveButton: save });
    this.updateNoteSaveButton(state);
    const report = e => { status.textContent = "Not saved: " + (e.message || e); closeDraft.hidden = false; this.logError("Markdown note", e); };
@@ -499,6 +515,7 @@
    const flush = () => { win.clearTimeout(state.timer); state.timer = null; return this.saveMarkdownNote(state); };
    state.flush = flush;
    const change = () => {
+    updateReview();
     state.revision++; status.textContent = "Unsaved changes…"; win.clearTimeout(state.timer);
     this.updateNoteSaveButton(state);
     state.timer = win.setTimeout(() => { state.timer = null; this.saveMarkdownNote(state).catch(report); }, 800);
@@ -512,8 +529,20 @@
     header.insertBefore(header.querySelector(".abstractin-note-documents"), toolbar);
    }
    title.addEventListener("input", change); input.addEventListener("input", change);
-   state.disposeEditor = this.installMathComposer(input, { note: true, compactToolbar: !!state.dockManaged,
+   state.disposeEditor = this.installMathComposer(input, { note: true, compactToolbar: !!state.dockManaged, onReviewChange: updateReview,
     onToolbarChange: visible => state.formatButton?.setAttribute("aria-expanded", String(visible)) });
+   confirm.onclick = async () => {
+    confirm.disabled = true;
+    const pendingReview = input._noteReviewRanges.map(range => ({ ...range }));
+    try {
+     input._composerEditor?.flush?.();
+     input._noteReviewRanges = []; input._composerEditor?.setReviewRanges?.("[]"); updateReview(); change(); await flush();
+    } catch (e) {
+     input._noteReviewRanges = pendingReview; input._composerEditor?.setReviewRanges?.(JSON.stringify(pendingReview)); updateReview();
+     state.revision++; this.updateNoteSaveButton(state); report(e);
+    }
+    finally { confirm.disabled = false; }
+   };
    save.onclick = () => flush().catch(report);
    const shortcut = event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); flush().catch(report); } };
    const scopedShortcut = event => { if (!state.home || state.home.active === state) shortcut(event); };
@@ -548,7 +577,7 @@
    if (draft?.format === "abstractin-note-draft-v1" && draft.noteKey === state.note.key && draft.updatedAt > (data.updatedAt || 0) &&
     (draft.markdown !== data.markdown || draft.title !== data.title || (Array.isArray(draft.documents) && JSON.stringify(draft.documents) !== JSON.stringify(state.documents)))) {
     const recover = this.el(doc, "button", null, "Recover unsaved draft"); toolbar.append(recover);
-    recover.onclick = () => { title.value = draft.title; input.value = draft.markdown; if (Array.isArray(draft.documents)) state.documents = draft.documents; redrawDocuments(); input._refreshMathPreview?.(); change(); recover.remove(); };
+    recover.onclick = () => { title.value = draft.title; input.value = draft.markdown; if (Array.isArray(draft.documents)) state.documents = draft.documents; redrawDocuments(); input._refreshMathPreview?.(); input._noteReviewRanges = draft.reviewRanges || []; input._composerEditor?.setReviewRanges?.(JSON.stringify(input._noteReviewRanges)); change(); recover.remove(); };
     status.textContent = "An unsaved local draft is available to recover.";
    }
    state.flush = flush;

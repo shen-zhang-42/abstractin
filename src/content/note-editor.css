@@ -183,6 +183,8 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 .abstractin-note-empty-heading { font-weight: 600; }
 .abstractin-note-proposal { margin: 20px 0; padding: 18px; border: 1px solid var(--note-accent); border-radius: 10px; background: var(--note-soft); }
 .abstractin-note-proposal h3 { margin: 0; font-size: 14px; }
+.abstractin-note-review { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12px; color: #bd3535; }
+.abstractin-note-review[hidden] { display: none; }
 .abstractin-note-proposal > p { color: var(--note-muted); font-size: 12px; }
 .abstractin-note-proposal .abstractin-note-preview { max-height: 350px; overflow: auto; margin: 14px 0; padding: 14px; border-radius: 7px; background: var(--note-paper); }
 .abstractin-note-proposal button { margin-right: 8px; }

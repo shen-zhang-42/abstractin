@@ -57,7 +57,7 @@
    "{\"tool\":\"searchNotes\",\"queries\":[\"literal keyword or phrase\"]}: local text matching across the listed notes, returns bounded matching snippets.\n" +
    "{\"tool\":\"readNote\",\"noteKey\":\"listed key\",\"offset\":0,\"length\":6000}: read just the relevant Markdown range (maximum 12000 characters), with a version and total length; continue only if needed.\n" +
    "{\"tool\":\"searchDocument\",\"documentKey\":\"listed key\",\"queries\":[\"distinctive source-language phrase\"],\"pageIndices\":[],\"imagePageIndices\":[]}: match locally across the entire document before reading bounded excerpts. Exact continuations may use zero-based physical pageIndices; up to four imagePageIndices request actual PDF images. Printed page labels are different. Papers have no lookup quota; books allow ceil(total pages/100) searches per turn.\n" +
-   "{\"tool\":\"editNote\",\"noteKey\":\"listed key\",\"version\":\"version from readNote\",\"edits\":[{\"oldText\":\"exact unique text already read\",\"newText\":\"replacement Markdown\"}]}: apply and save targeted edits only when the user requests a change. Read the target first. Preserve everything else. Empty oldText appends at the end, only after reading the end. If a note changed, reread before retrying. Do not silently remove material the user did not ask to remove. Tool results confirm whether changes were saved. Do not claim an unconfirmed save.\n" +
+   "{\"tool\":\"editNote\",\"noteKey\":\"listed key\",\"version\":\"version from readNote\",\"edits\":[{\"oldText\":\"exact unique text already read\",\"newText\":\"replacement Markdown\"}]}: apply and save targeted replacements only when the user requests a change. Read the target first. Use the smallest unique oldText for each change; never replace the entire note to change a few lines. Preserve everything else. Changed lines are red until the user clicks Confirm changes in the note editor. Empty oldText appends at the end, only after reading the end. If a note changed, reread before retrying. Do not silently remove material the user did not ask to remove. Tool results confirm whether changes were saved. Do not claim an unconfirmed save.\n" +
    "Answer directly when enough evidence is available. Cite note titles/keys and document identity with verified pageIndex for retrieved evidence. Never claim to have read an entire document or note from a partial excerpt. If a target is ambiguous, ask which note or document the user means.";
   },
   async sharedChatOperation(ctx, operation, turn) {
@@ -106,12 +106,18 @@
    for (let i = 1; i < edits.length; i++) if (edits[i].to > edits[i - 1].from || edits[i].from === edits[i - 1].from) throw new Error("Replacement ranges must not overlap.");
    let markdown = snapshot.markdown;
    for (const edit of edits) markdown = markdown.slice(0, edit.from) + edit.text + markdown.slice(edit.to);
-   if (markdown === snapshot.markdown) return { noteKey: entry.note.key, saved: true, unchanged: true };
+   if (markdown === snapshot.markdown) {
+    // A no-op must not claim that an unsaved live draft has reached Zotero.
+    if (snapshot.draft) await entry.state.flush();
+    return { noteKey: entry.note.key, saved: true, unchanged: true };
+   }
    if (entry.note.isEditable?.() === false) throw new Error("The note is read-only.");
    const state = entry.state || { note: entry.note, parent: entry.note.parentItem, documents: entry.documents, readingWorkspace: entry.data.workspace,
     dir: OS.Path.join(this.getDataDir(), "notes", entry.note.libraryID + "-" + entry.note.key), baseHTML: entry.note.getNote(), input: { value: snapshot.markdown }, title: { value: snapshot.title },
     revision: 0, savedRevision: 0, saveQueue: Promise.resolve() };
-   await state.saveQueue;
+   // A previous failure must not poison all subsequent edit requests. Current
+   // source/version checks below still protect drafts and external changes.
+   await state.saveQueue.catch(() => {});
    if (this.sharedNoteSnapshot(entry).version !== snapshot.version) throw new Error("The note changed while waiting to save. Read it again.");
    if (this._pending.get(ctx.dir)?.cancelled) throw new Error("The request was cancelled before editing.");
    await Zotero.File.createDirectoryIfMissingAsync(state.dir);
@@ -119,14 +125,25 @@
    const backup = OS.Path.join(state.dir, "edit-before-" + this.chatSyncID() + ".json");
    await Zotero.File.putContentsAsync(backup, JSON.stringify({ title: snapshot.title, markdown: snapshot.markdown, documents: entry.documents, workspace: entry.data.workspace || null }));
    if (this._pending.get(ctx.dir)?.cancelled || this.sharedNoteSnapshot(entry).version !== snapshot.version) throw new Error("The request was cancelled or the note changed. Read it again before editing.");
-   state.input.value = markdown;
+   const ranges = this.noteReplacementReviewRanges(edits, state.input._noteReviewRanges || entry.data.reviewRanges || []);
    if (entry.state) {
-    state.input._refreshMathPreview?.(); state.input.dispatchEvent(new state.win.Event("input", { bubbles: true }));
-    await state.flush();
-   } else { state.revision++; await this.saveMarkdownNote(state); }
+    const editor = state.input._composerEditor;
+    if (editor) {
+     if (!editor.applyReplacements?.(snapshot.markdown, JSON.stringify(edits), JSON.stringify(ranges))) throw new Error("The editor changed before the replacements could be applied. Read the note again.");
+    } else {
+     for (const edit of edits) state.input.setRangeText(edit.text, edit.from, edit.to, "preserve");
+     state.input._noteReviewRanges = ranges; state.input.dispatchEvent(new state.win.Event("input", { bubbles: true }));
+    }
+   } else { state.input.value = markdown; state.input._noteReviewRanges = ranges; state.revision++; }
+   try {
+    if (entry.state) await state.flush(); else await this.saveMarkdownNote(state);
+   } catch (error) {
+    if (state.status) state.status.textContent = "Not saved: " + (error.message || error);
+    throw new Error("The replacements were applied but could not be saved: " + (error.message || error) + ". The recovery draft and previous-source backup were kept. Retry saving; do not apply the same replacements again.");
+   }
    const change = { noteKey: entry.note.key, title: snapshot.title, backup, before: snapshot.markdown, after: markdown };
    turn.edits.push(change); turn.reads.delete(id);
-   return { noteKey: entry.note.key, title: snapshot.title, saved: true, backupAvailable: true };
+   return { noteKey: entry.note.key, title: snapshot.title, saved: true, reviewPending: true, backupAvailable: true };
   },
   async sharedDocumentSearch(ctx, scope, op, queries, turn) {
    const ref = scope.documents.find(doc => doc.key === op.documentKey);

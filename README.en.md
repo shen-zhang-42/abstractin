@@ -17,7 +17,7 @@ Use local **Codex, Claude Code, Gemini CLI, or Antigravity**, or connect an **AP
 
 ## Features at a glance
 
-This guide covers the features available in **v0.2.157**.
+This guide covers the features available in **v0.2.158**.
 
 | Feature | What it provides |
 |---|---|
@@ -236,6 +236,8 @@ Every chat can search the current document/workspace's literature and all associ
 
 Ask a question to receive an answer, or explicitly ask to change a named note to have it edited and saved. There is no Answer/Edit mode button. The assistant must read the target first; exact text, version, and scope checks prevent stale changes from overwriting newer edits. Each applied change keeps a local `edit-before-*.json` source backup in that note's directory. Plain explanation or improvement suggestions do not authorize changing the note.
 
+AI edits use exact text replacements. Open editors apply incremental transactions that preserve the cursor and undo history. Changed lines, including affected table rows, appear in red; click **Confirm changes** below the note title to keep the changes and restore normal display. Pending review marks are saved with the note and survive reopening, as display metadata separate from Markdown source. Save errors explain the cause and preserve the recovery draft and original-source backup; saving can be retried without applying the edits again.
+
 New chat windows use ordinary document/workspace discussion storage and the same Zotero sync policy. Earlier per-note conversations remain locally saved and searchable. All chats can search questions and answers in scoped histories, then read only the relevant turn, with repeated ranges omitted within the request. Historical answers are prior discussion, not verified document evidence. Document text and images use the same protocol for CLI and API agents. Papers have no fixed lookup quota; books allow ceil(physical PDF pages/100) lookups per user turn. Context only disables retrieval and editing.
 
 ### Independent note management and deletion
@@ -327,7 +329,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-These feature descriptions cover **v0.2.157**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+These feature descriptions cover **v0.2.158**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

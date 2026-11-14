@@ -91,6 +91,40 @@ test('live drafts are read on demand and repeated ranges are not included twice'
  state.input.value='New draft';const changed=await p.sharedChatOperation(ctx,{tool:'readNote',noteKey:'ONE'},t);assert.equal(changed.markdown,'New draft');assert.notEqual(changed.version,read.version);window.close();
 });
 
+test('live replacements recover from a previously rejected save queue and persist review marks',async()=>{
+ const {p,ctx,one,turn,window}=setup(),t=turn();
+ const state={key:'1:ONE',note:one,parent:ctx.paperItem,dir:'/data/notes/1-ONE',baseHTML:one.getNote(),revision:0,savedRevision:0,saveQueue:Promise.resolve()};
+ const host=window.document.createElement('main');host.id='abstractin-note-root';window.document.body.append(host);
+ p._markdownNoteWindows.set(state.key,state);await p.mountMarkdownNote(window,state);
+ const read=await p.sharedChatOperation(ctx,{tool:'readNote',noteKey:'ONE'},t);
+ state.saveQueue=Promise.reject(new Error('Previous database failure'));state.saveQueue.catch(()=>{});
+ let resets=0;state.input._refreshMathPreview=()=>resets++;
+ const result=await p.sharedChatOperation(ctx,{tool:'editNote',noteKey:'ONE',version:read.version,edits:[{oldText:'Unique chloroplast finding.',newText:'Updated finding.'}]},t);
+ assert.equal(result.saved,true);assert.equal(result.reviewPending,true);assert.equal(resets,0);
+ assert.equal(state.input.value,'Only note one. Updated finding.\n\nKeep this paragraph.');
+ assert.ok(p.markdownNoteData(one).reviewRanges.length);assert.equal(state.reviewButton.parentElement.hidden,false);
+ await state.reviewButton.onclick();assert.equal(state.reviewButton.parentElement.hidden,true);
+ assert.equal(p.markdownNoteData(one).reviewRanges,undefined);assert.match(p.markdownNoteData(one).markdown,/Updated finding/);
+ state.dispose();window.close();
+});
+
+test('a tool save failure reports applied versus saved honestly and permits a normal save retry',async()=>{
+ const {p,ctx,one,turn,window,files}=setup(),t=turn();
+ const state={key:'1:ONE',note:one,parent:ctx.paperItem,dir:'/data/notes/1-ONE',baseHTML:one.getNote(),revision:0,savedRevision:0,saveQueue:Promise.resolve()};
+ const host=window.document.createElement('main');host.id='abstractin-note-root';window.document.body.append(host);
+ p._markdownNoteWindows.set(state.key,state);await p.mountMarkdownNote(window,state);
+ const read=await p.sharedChatOperation(ctx,{tool:'readNote',noteKey:'ONE'},t);
+ one.saveTx=async()=>{throw new Error('Database busy');};
+ await assert.rejects(p.sharedChatOperation(ctx,{tool:'editNote',noteKey:'ONE',version:read.version,edits:[{oldText:'Unique',newText:'Updated'}]},t),/applied but could not be saved.*Database busy/);
+ assert.match(state.status.textContent,/Not saved.*Database busy/);assert.match(state.input.value,/Updated/);
+ assert.ok([...files.keys()].some(path=>path.endsWith('/draft.json')));
+ const retryRead=await p.sharedChatOperation(ctx,{tool:'readNote',noteKey:'ONE'},t);
+ const retry={tool:'editNote',noteKey:'ONE',version:retryRead.version,edits:[{oldText:'Updated',newText:'Updated'}]};
+ await assert.rejects(p.sharedChatOperation(ctx,retry,t),/Database busy/);
+ one.saveTx=async()=>one.id;assert.equal((await p.sharedChatOperation(ctx,retry,t)).saved,true);assert.equal(state.savedRevision,state.revision);
+ state.dispose();window.close();
+});
+
 test('the same retrieval protocol works through Claude, Gemini ACP and stateless API transports',async()=>{
  for(const backend of ['claude','gemini','fixture-api']){
   const {p,request,window}=setup(),registry=p.agentRegistry.bind(p);let calls=0;

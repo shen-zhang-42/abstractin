@@ -53,6 +53,44 @@ test('Live Markdown AI edits target exact source occurrences and reject stale pr
  env.close();
 });
 
+test('targeted AI replacements preserve editor state, map the cursor and mark only changed lines until confirmation', async () => {
+ const source = 'Keep first.\nOld second.\nKeep third.\nOld fourth.', reviews = [];
+ const env = await setup(source, { onReviewChange: value => reviews.push(JSON.parse(value)) }), { api, window } = env;
+ api.select(3, 3);
+ let resets = 0;
+ api.view.setState = () => { resets++; throw new Error('Full editor reset'); };
+ const first = source.indexOf('Old'), last = source.lastIndexOf('Old');
+ const edits = [{ from: first, to: first + 3, text: 'New' }, { from: last, to: last + 3, text: 'Updated' }];
+ assert.equal(api.applyReplacements(source, JSON.stringify(edits), JSON.stringify([{from:first,to:first+3},{from:last,to:last+7}])), true);
+ assert.equal(api.getMarkdown(), 'Keep first.\nNew second.\nKeep third.\nUpdated fourth.');
+ assert.equal(resets, 0); assert.equal(api.view.state.selection.main.head, 3);
+ assert.equal(window.document.querySelectorAll('.cm-line.note-ai-changed').length, 2);
+ assert.equal(api.applyReplacements(source, JSON.stringify(edits), '[]'), false);
+ const changed = api.getMarkdown(); api.setReviewRanges('[]');
+ assert.equal(window.document.querySelectorAll('.cm-line.note-ai-changed').length, 0);
+ assert.equal(api.getMarkdown(), changed); assert.deepEqual(reviews.at(-1), []);
+ api.view.contentDOM.dispatchEvent(new window.KeyboardEvent('keydown', {key:'z',code:'KeyZ',ctrlKey:true,bubbles:true,cancelable:true}));
+ assert.equal(api.getMarkdown(), source, 'one undo restores all targeted replacements');
+ env.close();
+});
+
+test('review highlights survive source edits, reopen, deletion and rendered table rows', async () => {
+ const source = '| A | B |\n| --- | --- |\n| old | y |\n\nKeep.';
+ const from = source.indexOf('old'), env = await setup(source), { api, window } = env;
+ const ranges = JSON.stringify([{ from, to: from + 3 }]);
+ assert.equal(api.applyReplacements(source, JSON.stringify([{from,to:from+3,text:'new'}]), ranges), true);
+ await new Promise(resolve => window.setTimeout(resolve, 50));
+ assert.equal(window.document.querySelectorAll('tr.note-ai-changed').length, 1);
+ api.view.dispatch({ changes: { from:0, insert:'Intro\n\n' } });
+ assert.equal(JSON.parse(api.getReviewRanges())[0].from, from + 7);
+ const saved = api.getMarkdown(), marks = api.getReviewRanges(); env.close();
+ const reopened = await setup(saved, { reviewRanges: marks });
+ assert.equal(reopened.api.getReviewRanges(), marks); reopened.api.setReviewRanges('[]'); reopened.close();
+ const deletion = await setup('First\nDelete\nLast');
+ assert.equal(deletion.api.applyReplacements('First\nDelete\nLast', JSON.stringify([{from:6,to:13,text:''}]), '[{"from":6,"to":6}]'), true);
+ assert.equal(deletion.window.document.querySelectorAll('.cm-line.note-ai-changed').length, 1); deletion.close();
+});
+
 test('Live Markdown flush commits table cells and read-only state disables cell editing and commands', async () => {
  const env = await setup('| A | B |\n| --- | --- |\n| x | y |'), { api, window } = env;
  const cell = window.document.querySelector('.mlp-table td');

@@ -114,6 +114,8 @@ Object.assign(AbstractIn, {
 					text: input.value, disabled: input.disabled, placeholder: input.placeholder,
 					font: options.note ? this.getPref("noteFont") || "system" : null, isMac: !!Zotero.isMac,
 					compactToolbar: !!options.compactToolbar, onToolbarChange: visible => options.onToolbarChange?.(visible),
+					reviewRanges: JSON.stringify(input._noteReviewRanges || []),
+					onReviewChange: json => { input._noteReviewRanges = JSON.parse(json); options.onReviewChange?.(); },
 					onFontChange: value => { if (options.note) this.setNoteDisplayFont(value); },
 					tokens: text => {
 						const tokens = this.composerMathTokens(text);
@@ -154,7 +156,7 @@ Object.assign(AbstractIn, {
 					// Only an AI edit snapshot crosses back into the content realm as an
 					// object; normal editor operations use strings, numbers and callbacks.
 					editor = {};
-					for (const name of ["sync", "select", "focus", "measure", "flush", "getMarkdown", "setFont", "toggleToolbar", "destroy"]) {
+					for (const name of ["sync", "select", "focus", "measure", "flush", "getMarkdown", "setFont", "toggleToolbar", "setReviewRanges", "getReviewRanges", "applyReplacements", "destroy"]) {
 						if (typeof nativeEditor[name] === "function") editor[name] = (...args) => nativeEditor[name](...args);
 					}
 					editor.getSelectionSnapshot = () => JSON.parse(JSON.stringify(nativeEditor.getSelectionSnapshot()));
