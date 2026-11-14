@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { loadPlugin } from './load-plugin.mjs';
 
-async function setup({ initialPreset = 'unified' } = {}) {
+async function setup({ initialPreset = 'unified', coldStart = false, beforeOpen = null } = {}) {
  const env = loadPlugin(), { plugin: p, window: win, document: doc } = env;
  win.focus = () => {};
  const files = new Map(), items = new Map(), collections = new Map(); let next = 10;
@@ -48,14 +48,63 @@ async function setup({ initialPreset = 'unified' } = {}) {
   const ctx = await p.readingLayoutContext(context(item), boundReader);
   p._views.set(root, { root, input, doc, logEl, ctx });
  };
- await p.openReaderPanel(reader);
- const panel = p.readerPanelState(win), entry = panel.views.get(reader); await entry.render;
+ beforeOpen?.({ ...env, p, win, reader, a });
  files.set('/data/source-' + a.pdf.key + '/chat.json', JSON.stringify([{ role: 'user', text: 'Explain A' }, { role: 'assistant', text: 'Original answer' }]));
+ if (!coldStart) {
+  await p.openReaderPanel(reader);
+  await p.readerPanelState(win).views.get(reader).render;
+ }
  if (initialPreset) await p.startReadingLayout(win, initialPreset, reader);
+ const panel = p.readerPanelState(win), entry = panel.views.get(reader);
  const layout = initialPreset ? entry.layout : await p.openReadingLayout(panel, entry, reader);
  const dispose = () => { if (layout) p.disposeReadingLayout(layout); win.close(); };
  return { ...env, p, win, doc, layout, files, items, collections, Item, Collection, a, b, reader, panel, dispose };
 }
+
+for (const preset of ['unified', 'reading']) test('cold '+preset+' launch never exposes the legacy panel while context, note and preset load', async()=>{
+ const stages=[];
+ const env=await setup({initialPreset:preset,coldStart:true,beforeOpen({p,win,reader}){
+  const assertPreparing=name=>{
+   const entry=p.readerPanelState(win).views.get(reader);
+   assert.equal(entry.body.style.visibility,'hidden',name);assert.equal(entry.body.getAttribute('aria-busy'),'true');
+   assert.equal(entry.openingLayout.loading.style.visibility,'visible');assert.equal(entry.globalToolbar,undefined);
+   stages.push(name);return entry;
+  };
+  const render=p.renderContent,mount=p.mountLayoutNote,apply=p.applyReadingLayoutPreset,reveal=p.revealReadingLayoutEntry;
+  p.renderContent=async(...args)=>{assertPreparing('context');await new Promise(resolve=>win.setTimeout(resolve,0));return render.apply(p,args);};
+  p.mountLayoutNote=async layout=>{assertPreparing('note');await mount.call(p,layout);assertPreparing('note-ready');};
+  p.applyReadingLayoutPreset=async(...args)=>{assertPreparing('preset');await apply.apply(p,args);assertPreparing('preset-ready');};
+  p.revealReadingLayoutEntry=entry=>{
+   if(entry?.openingLayout){assert.ok(entry.layout.shell);assert.ok(entry.layout.surfaces.get('reading').content.contains(entry.root));assert.equal(!!entry.layout.notesHidden,preset==='reading');}
+   return reveal.call(p,entry);
+  };
+ }});
+ assert.deepEqual(stages,['context','note','note-ready','preset','preset-ready']);
+ assert.equal(env.layout.entry.body.style.visibility,'');assert.equal(env.layout.entry.body.hasAttribute('aria-busy'),false);
+ assert.equal(env.doc.querySelector('.abstractin-layout-loading'),null);env.dispose();
+});
+
+test('failed layout preparation removes the loading cover and exposes the recoverable error state',async()=>{
+ let captured;
+ await assert.rejects(setup({coldStart:true,beforeOpen(env){captured=env;env.p.mountLayoutNote=async()=>{throw new Error('Simulated note load failure');};}}),/Simulated note load failure/);
+ const {p,win,reader}=captured,entry=p.readerPanelState(win).views.get(reader);
+ assert.equal(entry.openingLayout,undefined);assert.equal(entry.body.style.visibility,'');assert.equal(entry.body.hasAttribute('aria-busy'),false);
+ if(entry.layout)p.disposeReadingLayout(entry.layout);win.close();
+});
+
+test('a cold layout becomes visible without waiting for a resumed answer to finish',async()=>{
+ let finish;
+ const answer=new Promise(resolve=>{finish=resolve;});
+ const opened=setup({coldStart:true,beforeOpen({p}){
+  const render=p.renderContent;
+  p.renderContent=async(...args)=>{await render.apply(p,args);const root=args[1].querySelector('.abstractin-root');root._readingLayoutReady?.(p._views.get(root));await answer;};
+ }});
+ let timer;
+ try {
+  const env=await Promise.race([opened,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Layout waited for the answer')),1500);})]);
+  assert.equal(env.layout.entry.body.style.visibility,'');assert.ok(env.layout.shell);finish();env.dispose();
+ }finally{clearTimeout(timer);finish();}
+});
 
 test('the default layout has one shared discussion and restores it after hiding notes', async () => {
  const {p,layout,dispose}=await setup({initialPreset:null});

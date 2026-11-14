@@ -43,12 +43,12 @@
     if (existing) { await this.switchReadingNote(existing, options.note); existing.surfaces.get("editor").node.ownerDocument.defaultView.focus(); return existing; }
     const document = await this.resolveNoteDocument(workspaceNote.documents[0]);
     if (!document) throw new Error("The workspace's source document is unavailable.");
-    const reader = await this.startLibraryReading(win, document), state = this.readerPanelState(this.readerPanelWindow(reader));
+    const reader = await this.startLibraryReading(win, document, { layoutPreset: "unified" }), state = this.readerPanelState(this.readerPanelWindow(reader));
     return this.openReadingLayout(state, state.views.get(reader), reader, options.note);
    }
    const reader = win?.Zotero_Tabs?.selectedType === "reader" && Zotero.Reader.getByTabID(win.Zotero_Tabs.selectedID);
    if (reader && !options.documents && !options.create) {
-    await this.openReaderPanel(reader);
+    await this.openReaderPanel(reader, { layoutPreset: "unified" });
     const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state?.views.get(reader);
     if (entry) return this.openReadingLayout(state, entry, reader, options.note);
    }
@@ -79,7 +79,7 @@
    }
    await original.openReaderPanel.call(this, reader, options);
    const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state?.views.get(reader);
-   if (entry && !entry.layout && !entry.globalToolbar) {
+   if (entry && !entry.layout && !entry.openingLayout && !entry.globalToolbar) {
     this.installReadingLayoutStyle(entry.root.ownerDocument, "reading-layout.css");
     const bar = this.el(entry.root.ownerDocument, "header", "abstractin-layout-toolbar abstractin-reading-global-toolbar");
     const label = this.el(entry.root.ownerDocument, "span", "abstractin-layout-name", "AbstractIn");
@@ -89,17 +89,48 @@
     entry.body.prepend(bar); entry.globalToolbar = bar;
    }
   },
-  async openReadingLayout(panelState, entry, reader, note = null, { restore = true } = {}) {
-   if (entry.layout) {
-    if (note && note.key !== entry.layout.note.key) await this.switchReadingNote(entry.layout, note);
-    return entry.layout;
-   }
+  prepareReadingLayoutEntry(entry, reader, preset = "unified") {
+   if (entry.layout || entry.openingLayout) return;
+   const doc = entry.body.ownerDocument;
+   this.installReadingLayoutStyle(doc, "reading-layout.css");
+   const loading = this.el(doc, "section", "abstractin-reading-layout abstractin-layout-loading");
+   const header = this.el(doc, "header", "abstractin-layout-toolbar");
+   const choice = this.READING_LAYOUTS.find(value => value.id === preset);
+   header.append(this.el(doc, "span", "abstractin-layout-name", choice?.title || "AbstractIn"));
+   const status = this.el(doc, "div", "abstractin-notice", "Opening workspace…"); status.setAttribute("role", "status");
+   loading.append(header, status);
+   // Apply inline visibility before any asynchronous context/history read. The
+   // content remains laid out so the editor iframe can initialize normally.
+   entry.openingLayout = { loading, visibility: entry.body.style.visibility, position: entry.body.style.position };
+   entry.body.style.visibility = "hidden"; entry.body.style.position = "relative";
+   loading.style.cssText = "position:absolute;inset:0;visibility:visible;background:var(--material-toolbar,#f5f5f6);z-index:1";
+   entry.body.setAttribute("aria-busy", "true"); entry.body.append(loading);
+  },
+  revealReadingLayoutEntry(entry) {
+   if (!entry?.openingLayout) return;
+   const { loading, visibility, position } = entry.openingLayout;
+   loading.remove(); entry.body.style.visibility = visibility; entry.body.style.position = position;
+   entry.body.removeAttribute("aria-busy"); delete entry.openingLayout;
+  },
+  async openReadingLayout(panelState, entry, reader, note = null, options = {}) {
+   this.prepareReadingLayoutEntry(entry, reader);
+   try { return await this.mountReadingLayout(panelState, entry, reader, note, options); }
+   finally { if (options.reveal !== false) this.revealReadingLayoutEntry(entry); }
+  },
+  async waitReadingLayoutView(entry) {
    if (!this._views.get(entry.root) && entry.render) {
     let ready, failed; const mounted = new Promise((resolve, reject) => { ready = resolve; failed = reject; });
     entry.root._readingLayoutReady = ready; entry.render.then(ready, failed);
     try { await mounted; } finally { delete entry.root._readingLayoutReady; }
    }
-   const view = this._views.get(entry.root);
+   return this._views.get(entry.root);
+  },
+  async mountReadingLayout(panelState, entry, reader, note = null, { restore = true } = {}) {
+   if (entry.layout) {
+    if (note && note.key !== entry.layout.note.key) await this.switchReadingNote(entry.layout, note);
+    return entry.layout;
+   }
+   const view = await this.waitReadingLayoutView(entry);
    if (!view) throw new Error("Wait for the document discussion to load.");
    const parent = view.ctx.paperItem, documents = [this.noteDocumentRef(parent)];
    if (!note) {

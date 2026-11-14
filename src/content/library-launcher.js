@@ -126,7 +126,7 @@
 			});
 			draw();
 		},
-		async startLibraryReading(win, item) {
+		async startLibraryReading(win, item, options = {}) {
 			if (!item?.isRegularItem?.() || item.deleted) throw new Error("Choose a document to read.");
 			// Load the owned notes before the existing recovery code reads their tags.
 			await Zotero.Items.loadDataTypes([item], ["childItems"]);
@@ -153,9 +153,12 @@
 			}
 			if (!reader) throw new Error("The PDF tab could not be loaded. Try Start Reading again.");
 			if (reader._initPromise) await reader._initPromise;
-			await this.openReaderPanel(reader);
+			await this.openReaderPanel(reader, options);
 			const entry = this.readerPanelState(this.readerPanelWindow(reader))?.views.get(reader);
-			if (entry?.render) await entry.render;
+			// A resumed answer may keep renderContent pending for minutes. A new
+			// layout only needs the registered view, not the completed AI response.
+			if (entry?.openingLayout) await this.waitReadingLayoutView(entry);
+			else if (entry?.render) await entry.render;
 			const view = entry && this._views.get(entry.root);
 			if (view && !view.ctx.reading && !this.needsAgentSetup()) await this.openReadingSetup(view.root);
 			return reader;

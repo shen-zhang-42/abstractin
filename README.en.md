@@ -17,7 +17,7 @@ Use local **Codex, Claude Code, Gemini CLI, or Antigravity**, or connect an **AP
 
 ## Features at a glance
 
-This guide covers the features available in **v0.2.158**.
+This guide covers the features available in **v0.2.159**.
 
 | Feature | What it provides |
 |---|---|
@@ -45,6 +45,8 @@ Linked PDFs in Dropbox or another external folder use Zotero's resolved paths an
 ## Layouts, windows, and sources
 
 The single AbstractIn launcher offers three presets, illustrated with different colors for the native reader and plugin panels:
+
+Choosing a layout opens the new loading shell directly, then reveals the requested layout once its context and note are ready, without briefly exposing the legacy discussion interface. A resumed answer can continue streaming without delaying layout startup.
 
 | Layout | Arrangement |
 |---|---|
@@ -329,7 +331,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-These feature descriptions cover **v0.2.158**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+These feature descriptions cover **v0.2.159**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

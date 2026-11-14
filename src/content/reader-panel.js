@@ -316,7 +316,7 @@ Object.assign(AbstractIn, {
 		return state;
 	},
 
-	async openReaderPanel(reader, { toggle = false } = {}) {
+	async openReaderPanel(reader, { toggle = false, layoutPreset = null } = {}) {
 		if (reader.type !== "pdf") throw new Error("Open a PDF to use the AbstractIn reading panel.");
 		let win = this.readerPanelWindow(reader);
 		let state = this.readerPanelState(win);
@@ -364,6 +364,8 @@ Object.assign(AbstractIn, {
 			root.querySelector(".abstractin-header").append(this.iconButton(win.document, "abstractin-reader-close", "Close AbstractIn panel", "close", () => this.closeReaderPanel(win)));
 			entry = { body, root, itemID: item.id };
 			state.views.set(reader, entry);
+			const openingPreset = layoutPreset || this._pendingReadingLayouts?.get(win);
+			if (openingPreset) this.prepareReadingLayoutEntry(entry, reader, openingPreset);
 			// renderContent attaches to an existing pending request; never await that
 			// request here, so a panel can close or switch while an answer streams.
 			entry.render = this.renderContent(win.document, body, item, reader).catch(e => {
@@ -372,6 +374,7 @@ Object.assign(AbstractIn, {
 				this.renderReadingRecovery(win.document, body, item, reader, e);
 			});
 		}
+		if (layoutPreset && !entry.layout) this.prepareReadingLayoutEntry(entry, reader, layoutPreset);
 		entry.body.hidden = false;
 		this.updateReaderPanelButtons(win);
 		this.fitWideContent(entry.root);

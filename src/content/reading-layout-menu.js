@@ -61,18 +61,30 @@
    reader ||= win.Zotero_Tabs?.selectedType === "reader" && Zotero.Reader.getByTabID(win.Zotero_Tabs.selectedID);
    if (!reader) { this._pendingReadingLayouts.set(win, preset); await this.openLibraryLauncher(win); return; }
    let layout = this._readingLayoutReaders.get(reader.itemID);
-   await this.openReaderPanel(reader);
-   if (layout) { await this.applyReadingLayoutPreset(layout, preset); return; }
-   // Reading-only uses the same shell and discussion header as every preset.
-   const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state?.views.get(reader);
-   if (!entry) throw new Error("Open the PDF in Zotero before choosing this layout.");
-   layout = await this.openReadingLayout(state, entry, reader, null, { restore: false });
-   await this.applyReadingLayoutPreset(layout, preset);
+   let entry;
+   try {
+    await this.openReaderPanel(reader, { layoutPreset: preset });
+    const state = this.readerPanelState(this.readerPanelWindow(reader)); entry = state?.views.get(reader);
+    if (layout) { await this.applyReadingLayoutPreset(layout, preset); return; }
+    // Keep preparation covered through the final preset (including reading-only).
+    if (!entry) throw new Error("Open the PDF in Zotero before choosing this layout.");
+    layout = await this.openReadingLayout(state, entry, reader, null, { restore: false, reveal: false });
+    await this.applyReadingLayoutPreset(layout, preset);
+   } finally {
+    entry ||= this.readerPanelState(this.readerPanelWindow(reader))?.views.get(reader);
+    this.revealReadingLayoutEntry(entry);
+   }
   },
-  async startLibraryReading(win, item) {
-   const reader = await startLibraryReading.call(this, win, item), preset = this._pendingReadingLayouts.get(win);
-   if (preset) { this._pendingReadingLayouts.delete(win); await this.startReadingLayout(win, preset, reader); }
-   return reader;
+  async startLibraryReading(win, item, options = {}) {
+   try {
+    const reader = await startLibraryReading.call(this, win, item, options), preset = this._pendingReadingLayouts.get(win);
+    if (preset) { this._pendingReadingLayouts.delete(win); await this.startReadingLayout(win, preset, reader); }
+    return reader;
+   } catch (error) {
+    const state = this.readerPanelState(win);
+    for (const entry of state?.views.values() || []) this.revealReadingLayoutEntry(entry);
+    throw error;
+   }
   },
   removeFromWindow(win) { this.closeReadingLayoutMenu(win); this._pendingReadingLayouts.delete(win); return removeFromWindow.call(this, win); }
  });
