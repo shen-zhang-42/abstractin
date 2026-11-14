@@ -136,11 +136,14 @@
   },
   readingArtifactNotes(ctx, kind) { const note = this.noteSaveMode(ctx) !== 'full' && this._noteArtifacts.get(this.noteArtifactKey(ctx, kind)); return note ? [note] : previous.readingArtifactNotes.call(this, ctx, kind); },
   readingArtifactData(note) { return note?.volatileReadingArtifact ? note.data : previous.readingArtifactData.call(this, note); },
-  endNoteSession(dir) {
+  endNoteSession(dir, { onlyChat = false } = {}) {
    if (!dir || this.noteSaveMode(dir) === 'full') return;
    const ctx = this._chatContexts.get(dir), documentDir = ctx && this.discussionRoot(ctx), documentKey = this.noteDocumentKey(dir);
-   const dirs = new Set([dir]), roots = new Set(documentDir ? [documentDir] : []);
-   if (documentDir) for (const candidate of this._noteLiveHistories.keys()) {
+   const live = this.noteStorageViews().filter(view => view.ctx && !view.disposed && view.root?.isConnected && this.noteDocumentKey(view.ctx) === documentKey);
+   if (live.filter(view => view.ctx.dir === dir).length > 1) return;
+   onlyChat ||= live.some(view => view.ctx.dir !== dir);
+   const dirs = new Set([dir]), roots = new Set(documentDir && !onlyChat ? [documentDir] : []);
+   if (documentDir && !onlyChat) for (const candidate of this._noteLiveHistories.keys()) {
     const other = this._chatContexts.get(candidate); if (other && this.noteDocumentKey(other) === documentKey) { dirs.add(candidate); roots.add(this.discussionRoot(other)); }
    }
    for (const candidate of dirs) {

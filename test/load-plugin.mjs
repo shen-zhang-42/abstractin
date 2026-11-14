@@ -50,6 +50,8 @@ export function loadPlugin({ prefs = {} } = {}) {
 	window.eval(read("src/content/reading-layout-menu.js"));
 	window.eval(read("src/content/reading-notes.js"));
 	window.eval(read("src/content/scoped-chat.js"));
+	window.eval(read("src/content/chat-windows.js"));
+	window.eval(read("src/content/chat-history-tools.js"));
 	const plugin = window.AbstractIn;
 	plugin.rootURI = "./";
 	return { window, document: window.document, plugin, prefs };

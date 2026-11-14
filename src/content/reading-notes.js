@@ -6,7 +6,7 @@ Object.assign(AbstractIn, {
  async readingScopeNotes(layout) {
   const finder = new Zotero.Search(); finder.libraryID = layout.note.libraryID;
   finder.addCondition("itemType", "is", "note"); finder.addCondition("tag", "is", "AbstractIn:Markdown");
-  const candidates = await Zotero.Items.getAsync(await finder.search());
+  const candidates = await this.loadMarkdownNoteItems(await Zotero.Items.getAsync(await finder.search()));
   if (!candidates.some(note => note?.key === layout.note.key)) candidates.push(layout.note);
   return candidates.map(note => ({ note, data: this.markdownNoteData(note) })).filter(({note,data}) => {
    if (!data || note.libraryID !== layout.note.libraryID) return false;

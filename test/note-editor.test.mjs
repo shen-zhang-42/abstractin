@@ -42,6 +42,7 @@ async function setup() {
 
 test('note discussion shortcuts fill a question and quote one reviewed answer without changing history', async () => {
  const {p,window,state}=await setup(); await p.mountMarkdownNote(window,state);
+ state.editor.parentElement.append(state.chatHost);state.chatHost.hidden=false;await p.mountMarkdownNoteChat(state,state.chatHost);
  const view=state.chatView,row=view.root.querySelector('.abstractin-composer-shortcuts');
  const quick=row.querySelector('.abstractin-prompt-menu'),quote=row.querySelector('.abstractin-result-picker');
  assert.ok(quick && quote); assert.equal(quick.closest('.abstractin-quick').hidden,false);
@@ -51,7 +52,8 @@ test('note discussion shortcuts fill a question and quote one reviewed answer wi
  assert.equal(view.root.querySelector('.abstractin-menu'),null);
  const history=[{role:'user',text:'Question'}, {role:'assistant',text:'Keep **this answer** and $x^2$.'}];
  await p.saveHistory(view.ctx.dir,history); view.input.value='Follow-up';
- quote.click(); await new Promise(resolve=>setTimeout(resolve,20));
+ quote.click();
+ for(let i=0;i<100&&![...view.root.querySelectorAll('.abstractin-result-menu button')].some(button=>button.textContent.includes('Answer 1'));i++)await new Promise(resolve=>setTimeout(resolve,10));
  const menu=view.root.querySelector('.abstractin-result-menu');
  assert.equal(menu.querySelector('.abstractin-result-menu-heading strong').textContent,'Quote');
  [...menu.querySelectorAll('button')].find(button=>button.textContent.includes('Answer 1')).click();
@@ -197,6 +199,7 @@ test('explicit editor selections provide focused context without preloading the 
 
 test('a plain instruction edits the open note through shared tools, saves it, and records the change',async()=>{
  const {p,window,state,note}=await setup();await p.mountMarkdownNote(window,state);
+ await p.mountMarkdownNoteChat(state,state.chatHost);
  state.input.value='Original sentence. Preserve this.';state.input.setSelectionRange(0,0);
  let calls=0;
  const operation=op=>({text:'<abstractin-tools>'+JSON.stringify({operations:[op]})+'</abstractin-tools>'});
@@ -317,7 +320,7 @@ test('changing one-document notes to shared notes and back moves the source and 
  const { p, window, note, state, parent, items } = await setup();
  const second = new window.Zotero.Item('book'); second.title = 'Another document'; await second.saveTx();
  await p.mountMarkdownNote(window, state);
- assert.equal(state.chatHost.hidden, false); assert.ok(state.chatView); assert.equal(state.assistantMode, undefined);
+ assert.equal(state.chatHost.hidden, true); assert.equal(state.chatView,undefined); assert.equal(state.assistantMode, undefined);
  state.documents = [parent, second].map(item => p.noteDocumentRef(item)); state.revision++; await state.flush();
  assert.equal(!!note.parentID, false); assert.equal(p.markdownNoteData(note).documents.length, 2);
  const count = items.size;
@@ -369,22 +372,13 @@ test('linked document selection resolves child attachments and rejects other lib
  await assert.rejects(p.selectedNoteDocuments(2), /same library/);
 });
 
-test('the divider supports pointer dragging, bounded widths, keyboard adjustment and persisted sizing', async () => {
+test('notes open without an embedded chat and expose a new independent window action', async () => {
  const { p, window, document, state } = await setup(); await p.mountMarkdownNote(window, state);
- const host = state.editor.parentElement; host.getBoundingClientRect = () => ({ left: 0, width: 1008 });
- const pointer = (target, type, clientX) => {
-  const event = new window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX });
-  Object.defineProperty(event, 'pointerId', { value: 7 }); target.dispatchEvent(event);
- };
- pointer(state.splitter, 'pointerdown', 580); pointer(document, 'pointermove', 650);
- assert.equal(state.splitter.getAttribute('aria-valuenow'), '65'); assert.ok(document.querySelector('.abstractin-note-resize-shield'));
- pointer(document, 'pointerup', 650); assert.equal(p.getPref('noteEditorRatio'), 65); assert.equal(document.querySelector('.abstractin-note-resize-shield'), null);
- state.splitter.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })); assert.equal(p.getPref('noteEditorRatio'), 63);
- pointer(state.splitter, 'pointerdown', 630); pointer(document, 'pointermove', 9999); pointer(document, 'pointercancel', 9999);
- assert.equal(state.splitter.getAttribute('aria-valuenow'), '70');
- state.splitter.dispatchEvent(new window.MouseEvent('dblclick')); assert.equal(p.getPref('noteEditorRatio'), 58);
- const toggle = [...document.querySelectorAll('button')].find(button => button.textContent === 'Hide discussion'); await toggle.onclick();
- assert.equal(state.splitter.hidden, true); assert.ok(host.classList.contains('abstractin-note-chat-hidden'));
+ assert.equal(state.chatView,undefined);assert.equal(document.querySelector('.abstractin-note-chat'),null);
+ assert.equal(state.splitter,undefined);assert.ok(state.editor.parentElement.classList.contains('abstractin-note-chat-hidden'));
+ let opened;p.openNewChatWindow=async options=>{opened=options;};
+ const action=[...document.querySelectorAll('button')].find(button=>button.textContent==='New chat window');await action.onclick();
+ assert.equal(opened.noteState,state);assert.equal(opened.win,window);
  state.dispose(); window.close();
 });
 
@@ -428,11 +422,11 @@ test('trashing a shared note removes source links and reopening after native res
  home.active.dispose(); window.close();
 });
 
-test('the persistent three-column workspace keeps its list visible and remembers both divider widths independently', async () => {
+test('the note workspace keeps its file list and editor with one resizable sidebar', async () => {
  const { p, window, document, note } = await setup(); p._markdownNoteWindows.clear();
  const home = { key: '1', libraryID: 1, states: new Map() }; await p.mountNoteOutHome(window, home);
  assert.equal(home.active.note, note); assert.equal(home.sidebar.hidden, false);
- const visible = [...document.querySelectorAll('.abstractin-note-splitter')].filter(node => !node.closest('[hidden]')); assert.equal(visible.length, 2);
+ const visible = [...document.querySelectorAll('.abstractin-note-splitter')].filter(node => !node.closest('[hidden]')); assert.equal(visible.length, 1);
  const host = document.getElementById('abstractin-note-root'); host.getBoundingClientRect = () => ({ left: 0, width: 1408 });
  home.active.host.getBoundingClientRect = () => ({ left: 288, width: 1120 });
  const drag = (splitter, clientX) => {
@@ -441,10 +435,10 @@ test('the persistent three-column workspace keeps its list visible and remembers
   }
  };
  drag(home.sidebarSplitState.splitter, 280); assert.equal(p.getPref('noteSidebarRatio'), 20);
- drag(home.active.splitter, 955.2); assert.equal(p.getPref('noteEditorRatio'), 60); assert.equal(p.getPref('noteSidebarRatio'), 20);
+ assert.equal(home.active.splitter,undefined);assert.equal(home.active.chatView,undefined);
  home.active.input.value = 'Draft remains while browsing';
  await p.openMarkdownNote({ win: window, home });
- assert.equal(home.sidebar.hidden, false); assert.equal(home.active.splitter.getAttribute('aria-valuenow'), '60');
+ assert.equal(home.sidebar.hidden, false);assert.equal(p.getPref('noteSidebarRatio'),20);
  const original = [...home.states.values()].find(state => state.note.key === note.key); assert.equal(original.input.value, 'Draft remains while browsing');
  assert.equal(document.querySelectorAll('.abstractin-note-file-actions .abstractin-note-source-button').length > 0, true);
  for (const state of home.states.values()) state.dispose(); window.close();

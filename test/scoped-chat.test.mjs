@@ -4,7 +4,7 @@ import { loadPlugin } from './load-plugin.mjs';
 
 function setup() {
  const env = loadPlugin(), {plugin:p,window:w}=env, files=new Map(), items=new Map(); let serial=0;
- w.OS={Path:{join:(...parts)=>parts.join('/')}};
+ w.OS={Path:{join:(...parts)=>parts.join('/')},File:{exists:async path=>files.has(path)}};
  w.Zotero.File={createDirectoryIfMissingAsync:async()=>{},putContentsAsync:async(path,text)=>files.set(path,text),getContentsAsync:async path=>files.get(path)||''};
  w.Zotero.Search=class{addCondition(){} async search(){return [...items.keys()];}};
  w.Zotero.Items={get:id=>items.get(id),getAsync:async ids=>Array.isArray(ids)?ids.map(id=>items.get(id)):items.get(ids),getByLibraryAndKey:(lib,key)=>[...items.values()].find(item=>item.libraryID===lib&&item.key===key)};
@@ -38,6 +38,17 @@ test('every chat has the same scope, without leaking other documents, workspaces
  const workspace={id:'mine'};note('W1','Workspace one',[p.noteDocumentRef(a)],workspace);note('W2','Workspace two',[p.noteDocumentRef(b)],workspace);
  const shared=await p.sharedChatScope({...ctx,readingWorkspace:workspace,workspaceDocuments:[a,b].map(item=>p.noteDocumentRef(item))});
  assert.deepEqual([...shared.notes.map(entry=>entry.note.key)],['W1','W2']);window.close();
+});
+
+test('an independent window cannot borrow the scope of another workspace using the same PDF',async()=>{
+ const {p,a,b,one,ctx,note,window}=setup(),workspace={id:'original'};
+ note('W1','Original workspace note',[p.noteDocumentRef(a)],workspace);
+ p._readingLayoutReaders.set(a.pdf.id,{note:one,workspace:{id:'other'},documents:[p.noteDocumentRef(b)]});
+ const single=await p.sharedChatScope({...ctx,chatWindowID:'single-window'});
+ assert.deepEqual([...single.documents.map(ref=>ref.key)],[a.key]);assert.deepEqual([...single.notes.map(entry=>entry.note.key)],['ONE','TWO']);
+ p._readingLayouts.set('original',{note:one,workspace,documents:[p.noteDocumentRef(a)]});
+ const shared=await p.sharedChatScope({...ctx,chatWindowID:'workspace-window',readingWorkspace:workspace,workspaceDocuments:[p.noteDocumentRef(a)]});
+ assert.deepEqual([...shared.documents.map(ref=>ref.key)],[a.key]);assert.deepEqual([...shared.notes.map(entry=>entry.note.key)],['W1']);window.close();
 });
 
 for(const mode of ['reading','note']) test(mode+' chat retrieves and edits another note through the real shared backend wrapper',async()=>{
@@ -130,4 +141,36 @@ test('explicit context-only mode blocks retrieval and editing and cancellation s
  p._pending.set(ctx.dir,{cancelled:false});p.runCodex=async()=>{calls++;p._pending.get(ctx.dir).cancelled=true;return tools([{tool:'readNote',noteKey:'ONE'}]);};
  assert.equal((await p.runBackend('codex',request())).cancelled,true);
  assert.equal(calls,1);assert.equal(p._pending.get(ctx.dir).sharedChatTurn.reads.size,0);window.close();
+});
+
+test('history tools match locally, read just one turn, reject out-of-scope chats and avoid repeated context',async()=>{
+ const {p,ctx,turn,window}=setup(),t=turn();
+ const records=new Map([
+  ['chat-a',[{role:'user',text:'How do we analyse chloroplast images?'},{role:'assistant',text:'Use segmentation and count chloroplasts.'},{role:'user',text:'Unrelated question'},{role:'assistant',text:'Private unrelated text'}]],
+  ['chat-b',[{role:'user',text:'What did we decide about segmentation?'},{role:'assistant',text:'Check the segmentation threshold using a control.'}]]
+ ]);
+ p.discussionIndex=async()=>({chats:[...records.keys()].map((id,i)=>({id,topic:id,number:i+1,chapterID:null})),chapters:[]});
+ p.refreshSyncedDiscussionIndex=async()=>{};p.loadHistory=async dir=>records.get(dir.split('/').at(-1))||[];
+ const found=await p.sharedChatOperation(ctx,{tool:'searchChats',queries:['chloroplast']},t);
+ assert.equal(found.matches.length,1);assert.equal(found.matches[0].chatID,'chat-a');assert.equal(found.matches[0].turnID,'turn:0');
+ assert.doesNotMatch(found.matches[0].snippet,/Private unrelated text/);
+ const target=found.matches[0],read=await p.sharedChatOperation(ctx,{tool:'readChatTurn',chatID:target.chatID,turnID:target.turnID,version:target.version},t);
+ assert.match(read.text,/Use segmentation and count chloroplasts/);assert.doesNotMatch(read.text,/Private unrelated text/);
+ const again=await p.sharedChatOperation(ctx,{tool:'readChatTurn',chatID:target.chatID,turnID:target.turnID,version:target.version},t);
+ assert.equal(again.alreadySupplied,true);assert.equal(again.text,undefined);
+ await assert.rejects(p.sharedChatOperation(ctx,{tool:'readChatTurn',chatID:'outside',turnID:'turn:0'},t),/outside/);
+ records.get('chat-a')[1].text='Changed assistant answer';
+ await assert.rejects(p.sharedChatOperation(ctx,{tool:'readChatTurn',chatID:target.chatID,turnID:target.turnID,version:target.version},t),/changed/);
+ window.close();
+});
+
+test('old per-note discussions remain searchable only for notes in the current scope',async()=>{
+ const {p,ctx,turn,files,one,two,b,note,window}=setup(),t=turn();
+ const other=note('OTHER','Other source note',[p.noteDocumentRef(b)]);
+ p.discussionIndex=async()=>({chats:[],chapters:[]});p.refreshSyncedDiscussionIndex=async()=>{};
+ for(const item of [one,two,other])files.set('/data/notes/1-'+item.key+'/discussion/chat.json',JSON.stringify([{role:'user',text:'Historical keyword'},{role:'assistant',text:'Chloroplast answer from '+item.key}]));
+ const found=await p.sharedChatOperation(ctx,{tool:'searchChats',queries:['Chloroplast']},t);
+ assert.deepEqual([...found.matches.map(hit=>hit.chatID)].sort(),['note:1:ONE','note:1:TWO']);
+ const read=await p.sharedChatOperation(ctx,{tool:'readChatTurn',chatID:'note:1:TWO',turnID:'turn:0'},t);assert.match(read.text,/answer from TWO/);
+ await assert.rejects(p.sharedChatOperation(ctx,{tool:'readChatTurn',chatID:'note:1:OTHER',turnID:'turn:0'},t),/outside/);window.close();
 });

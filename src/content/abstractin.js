@@ -797,6 +797,7 @@ AbstractIn = {
 			if (state.win && !state.win.closed) windows.add(state.win);
 			const chatWindow = state.chatView?.doc.defaultView; if (chatWindow && !chatWindow.closed) windows.add(chatWindow);
 		}
+		for (const state of this._chatWindows?.values() || []) if (state.win && !state.win.closed) windows.add(state.win);
 		for (let win of windows) {
 			for (let root of win.document.querySelectorAll(".abstractin-root")) {
 				this.refreshRoot(root);
@@ -1254,6 +1255,10 @@ AbstractIn = {
 			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "abstractin-header-icon"),
 			identity,
 			this.iconButton(doc, "abstractin-history abstractin-chats", "Chats", "chatManager", () => this.openHistoryMenu(root)),
+			this.iconButton(doc, "abstractin-new-chat-window", "New chat window", "newChat", () => {
+				const view = this._views.get(root);
+				if (view) this.openNewChatWindow({ view }).catch(error => this.appendError(view, error.message || String(error)));
+			}),
 			this.iconButton(doc, "abstractin-initialize-contents", "Initialize contents", "book", () => this.initializeBookContents(root)),
 			this.iconButton(doc, "abstractin-export-reading", "Export reading summary", "save", () => this.openReadingExport(root)),
 			this.iconButton(doc, "abstractin-open-settings", "Settings", "settings", () => this.openSettings()),
@@ -3886,12 +3891,13 @@ AbstractIn = {
 			pending.listeners.delete(listener);
 		}
 
-		if (!logEl.isConnected) {
+		if (view.disposed || win.closed || !logEl.isConnected) {
 			// The pane re-rendered meanwhile; the new view shows the saved answer.
 			return;
 		}
 
 		let history = await this.loadHistory(view.ctx.dir);
+		if (view.disposed || win.closed || !logEl.isConnected) return;
 		// Replacing the streamed reply calls append helpers that scroll to the end.
 		// Keep the reader's latest position, including scrolling during history I/O.
 		let readingScrollTop = logEl.scrollTop;

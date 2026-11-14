@@ -186,7 +186,7 @@
     try {
      const search = new Zotero.Search(); search.libraryID = home.libraryID;
      search.addCondition("itemType", "is", "note"); search.addCondition("tag", "is", "AbstractIn:Markdown");
-     const items = await Zotero.Items.getAsync(await search.search());
+     const items = await this.loadMarkdownNoteItems(await Zotero.Items.getAsync(await search.search()));
      if (win.closed) return;
      notes = items.map(note => ({ note, data: this.markdownNoteData(note) })).filter(value => value.data)
       .sort((a, b) => (b.data.updatedAt || 0) - (a.data.updatedAt || 0)); draw(); status.textContent = "";
@@ -213,6 +213,11 @@
    if (home.pendingOpen) { const options = home.pendingOpen; home.pendingOpen = null; await this.openMarkdownNote({ win, home, ...options }); }
    else if (home.initialNote) await this.openMarkdownNote({ win, note: home.initialNote, home, sourceView: home.sourceView });
    else await list.querySelector(".abstractin-note-list-item")?.onclick();
+  },
+  async loadMarkdownNoteItems(items) {
+   const notes = items.filter(item => item?.isNote?.());
+   if (notes.length) await Zotero.Items.loadDataTypes?.(notes, ["note", "tags"]);
+   return items;
   },
   markdownNoteData(note) {
    if (!note?.isNote?.() || note.deleted || !note.getTags().some(t => t.tag === "AbstractIn:Markdown")) return null;
@@ -248,10 +253,12 @@
   },
   async openSelectedMarkdownNote(win) {
    const notes = (win.ZoteroPane?.itemsView?.getSelectedItems() || []).filter(n => n.isNote?.() && !n.deleted);
+   await this.loadMarkdownNoteItems(notes);
    if (notes.length !== 1 || !this.markdownNoteData(notes[0])) throw new Error("Select one AbstractIn Markdown note to open. Existing native notes are not converted.");
    return this.openNoteOutHome(win, { note: notes[0] });
   },
   async openMarkdownNote({ win = Zotero.getMainWindow(), parent = null, documents = null, note = null, sourceView = null, home = null } = {}) {
+   if (note) await this.loadMarkdownNoteItems([note]);
    if (note && !this.markdownNoteData(note)) throw new Error("This is not an AbstractIn Markdown note.");
    if (!note) {
     const libraryID = parent?.libraryID ?? home?.libraryID ?? documents?.[0]?.libraryID ?? win.ZoteroPane?.getSelectedLibraryIDs?.()[0] ?? Zotero.Libraries.userLibraryID;
@@ -457,13 +464,13 @@
    title.value = data.title; title.setAttribute("aria-label", "Note title");
    const toolbar = this.el(doc, "div", "abstractin-note-toolbar"), status = this.el(doc, "span", "abstractin-note-status", "Saved to Zotero");
    status.setAttribute("role", "status");
-   const save = this.el(doc, "button", null, "Save"), chatToggle = this.el(doc, "button", null, "Discuss note");
+   const save = this.el(doc, "button", null, "Save"), chatToggle = this.el(doc, "button", null, "New chat window");
    save.className = "abstractin-note-save";
    save.title = "Save note"; save.setAttribute("aria-label", "Save note"); save.replaceChildren(this.svgIcon(doc, "noteSave"));
    const closeDraft = this.el(doc, "button", null, "Close keeping local draft"); closeDraft.hidden = true;
    const append = this.el(doc, "button", null, "Append last answer"), toDiscussion = this.el(doc, "button", null, "Use in document discussion");
    toDiscussion.hidden = !state.sourceView || !!state.sourceView.ctx.noteWorkspace;
-   chatToggle.hidden = !!state.home;
+   append.hidden = true;
    const more = this.el(doc, "details", "abstractin-note-more"), moreLabel = this.el(doc, "summary", null, "···"), moreActions = this.el(doc, "div", "abstractin-note-more-actions");
    moreLabel.setAttribute("aria-label", "Note actions"); moreLabel.title = "Note actions";
    const trash = this.el(doc, "button", "abstractin-note-danger", "Move to Trash…"); trash.onclick = () => this.confirmTrashMarkdownNote(state);
@@ -512,15 +519,12 @@
    const scopedShortcut = event => { if (!state.home || state.home.active === state) shortcut(event); };
    win.addEventListener("keydown", scopedShortcut);
    const chat = state.dockHosts?.chat || this.el(doc, "section", "abstractin-note-chat");
-   if (!state.dockHosts) host.append(chat);
-   chat.classList.add("abstractin-note-chat"); state.chatHost = chat; chatToggle.textContent = "Hide discussion";
-   if (!state.dockManaged) this.installNoteSplitter(state, host, editor, chat);
-   if (state.dockManaged) { chatToggle.hidden = true; toDiscussion.hidden = true; closeDraft.hidden = true; }
+   chat.classList.add("abstractin-note-chat"); chat.hidden = true; state.chatHost = chat;
+   host.classList.add("abstractin-note-chat-hidden");
+   if (state.dockManaged) { toDiscussion.hidden = true; closeDraft.hidden = true; }
    chatToggle.onclick = async () => {
-    chat.hidden = !chat.hidden; chatToggle.textContent = chat.hidden ? "Discuss note" : "Hide discussion";
-    state.splitter.hidden = chat.hidden;
-    host.classList.toggle("abstractin-note-chat-hidden", chat.hidden);
-    if (!state.chatView) try { await this.mountMarkdownNoteChat(state, chat); } catch (e) { status.textContent = "Discussion unavailable: " + (e.message || e); }
+    try { await this.openNewChatWindow({ noteState: state, win }); }
+    catch (e) { status.textContent = "Could not open discussion: " + (e.message || e); }
    };
    append.onclick = async () => {
     try {
@@ -567,7 +571,6 @@
     this._markdownNoteWindows.delete(state.key);
    };
    if (!state.dockManaged) win.addEventListener("unload", state.dispose, { once: true });
-   try { await this.mountMarkdownNoteChat(state, chat); } catch (e) { status.textContent = "Discussion unavailable: " + (e.message || e); }
    if (!state.dockManaged) doc.title = "NoteOut — " + (data.title || "Note"); input.focus();
   },
   async mountMarkdownNoteChat(state, host) {

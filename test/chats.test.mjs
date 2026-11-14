@@ -49,11 +49,12 @@ async function setup(type = "book") {
  p._views.set(root, view); p.renderMessages(view, []);
  const requests = []; let threads = 0;
  const showPending = p.showPending.bind(p);
- p.showPending = (...args) => { p._testPendingRender = showPending(...args); return p._testPendingRender; };
+ p.showPending = (...args) => { p._testPendingAnswer = args[1].promise; p._testPendingRender = showPending(...args); return p._testPendingRender; };
  p.runBackend = async (_, request) => { requests.push(request); return { text: "Answer: " + request.question.split("\n")[0], sessionId: request.session?.id || "thread-" + ++threads }; };
  async function send(question, options = {}) {
   await p.startRequest(view, question, [], [], options);
   const pending = p._pending.get(view.ctx.dir); if (pending) assert.equal((await pending.promise).error,undefined);
+  if (p._testPendingAnswer) assert.equal((await p._testPendingAnswer).error,undefined);
   await p._testPendingRender;
  }
  return { ...env, p, ctx, view, dir, notes, parent, attachment, toc, requests, send, setLocation: value => { location = value; } };

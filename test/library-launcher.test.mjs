@@ -41,11 +41,11 @@ test('one shared icon shows graphical layout choices and removes obsolete separa
 	assert.equal(button.nextElementSibling,separator);
 	let chosen=[];p.startReadingLayout=async(win,layout)=>{chosen.push(layout);};
 	button.click();assert.equal(chosen.length,0);assert.equal(doc.querySelector('.abstractin-reader-panel'),null);
-	assert.equal(doc.querySelectorAll('#abstractin-workspace-menu button[data-layout]').length,5);
-	assert.equal(doc.querySelectorAll('.abstractin-layout-diagram .abstractin-layout-reader-box').length,5);
-	doc.querySelector('[data-layout="stacked"]').click();assert.deepEqual(chosen,['stacked']);
+	assert.equal(doc.querySelectorAll('#abstractin-workspace-menu button[data-layout]').length,3);
+	assert.equal(doc.querySelectorAll('.abstractin-layout-diagram .abstractin-layout-reader-box').length,3);
+	doc.querySelector('[data-layout="unified"]').click();assert.deepEqual(chosen,['unified']);
 	button.click();assert.ok(doc.getElementById('abstractin-workspace-menu'));doc.querySelector('[data-layout="reading"]').click();
-	assert.deepEqual(chosen,['stacked','reading']);assert.equal(doc.getElementById('abstractin-workspace-menu'),null);
+	assert.deepEqual(chosen,['unified','reading']);assert.equal(doc.getElementById('abstractin-workspace-menu'),null);
 	assert.equal(separator.nextElementSibling.id,'zotero-tb-tabs-menu');assert.equal(separator.getAttribute('aria-orientation'),'vertical');
 	assert.equal(doc.querySelectorAll('#abstractin-main-toggle').length,1);
 	assert.equal(doc.querySelectorAll('#abstractin-notes-toggle').length,0);

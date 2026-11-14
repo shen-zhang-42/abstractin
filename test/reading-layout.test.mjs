@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { loadPlugin } from './load-plugin.mjs';
 
-async function setup({ initialPreset = 'stacked' } = {}) {
+async function setup({ initialPreset = 'unified' } = {}) {
  const env = loadPlugin(), { plugin: p, window: win, document: doc } = env;
  win.focus = () => {};
  const files = new Map(), items = new Map(), collections = new Map(); let next = 10;
@@ -32,6 +32,7 @@ async function setup({ initialPreset = 'stacked' } = {}) {
    field === 'itemType' ? item.itemType === value : field === 'tag' ? item.tags.includes(value) : true)).map(item => item.id); }
  };
  p.getDataDir = () => '/data'; p.checkInstalledBackends = async () => {};
+ p.prepareReadingSkills = async ctx => ({...ctx.reading,skillPath:'/bundled/reading/SKILL.md'});
  p.installMathComposer = () => () => {};
  doc.createXULElement = name => doc.createElement(name);
  win.MozXULElement = { insertFTLIfNeeded() {} };
@@ -59,16 +60,72 @@ async function setup({ initialPreset = 'stacked' } = {}) {
 test('the default layout has one shared discussion and restores it after hiding notes', async () => {
  const {p,layout,dispose}=await setup({initialPreset:null});
  assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)],['editor','reading']);
- assert.equal(layout.surfaces.get('notes').node.hidden,true);
+ assert.equal(layout.surfaces.has('notes'),false);assert.equal(layout.noteState.chatView,null);
  assert.equal(p.READING_LAYOUTS[0].id,'unified');
  await p.toggleReadingNotes(layout,false); await p.toggleReadingNotes(layout,true);
  assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)],['editor','reading']);
- assert.equal(layout.surfaces.get('notes').node.hidden,true);
+ assert.equal(layout.surfaces.has('notes'),false);
  assert.equal(layout.surfaces.get('reading').label.textContent,'Discussion');
  p.saveReadingDockLayout(layout);
  assert.deepEqual([...p.readingLayoutPanels(p.getJSONPref('readingDockLayout',null))],['editor','reading']);
  assert.equal(p.getJSONPref('readingDockGroups',null).flatMap(group=>p.readingLayoutPanels(group.tree)).length,2);
  dispose();
+});
+
+test('new chat windows share the source store but start with empty histories, sessions and drafts',async()=>{
+ const {p,layout,win,a,dispose}=await setup();
+ const original=p._views.get(layout.entry.root);original.ctx=await p.ensureDiscussion(original.ctx);layout.readingContext=original.ctx;
+ await p.saveHistory(original.ctx.dir,[{role:'user',text:'Original private question'},{role:'assistant',text:'Original private answer'}]);
+ await p.saveSessions(original.ctx.dir,{codex:{id:'original-agent-thread'}});original.input.value='Unsent original draft';
+ original.ctx.reading.knowledgeContext='Transient original context';original.ctx.reading.sourceSearchHistory=['old search'];
+ const windows=[],mounts=[];
+ win.openDialog=(url,name,features,args)=>{
+  assert.ok(url.endsWith('chat-window.xhtml'));
+  const dom=new JSDOM('<main id="abstractin-chat-window-root"></main>'),w=dom.window;w.focus=()=>{};windows.push(w);
+  queueMicrotask(()=>mounts.push(p.mountChatWindow(p._chatWindows.get(args.chatWindowID),w)));return w;
+ };
+ try{
+  const first=await p.openNewChatWindow({view:original}),second=await p.openNewChatWindow({view:original});await Promise.all(mounts);
+  assert.notEqual(first.view.ctx.dir,second.view.ctx.dir);assert.notEqual(first.view.ctx.dir,original.ctx.dir);
+  assert.equal(p.discussionRoot(first.view.ctx),p.discussionRoot(original.ctx));assert.equal(first.view.ctx.paperItem.key,a.key);
+  for(const state of [first,second]){
+   assert.equal((await p.loadHistory(state.view.ctx.dir)).length,0);assert.equal(Object.keys(await p.loadSessions(state.view.ctx.dir)).length,0);
+   assert.equal(state.view.input.value,'');assert.equal(state.view.ctx.reading.knowledgeContext,undefined);assert.equal(state.view.ctx.reading.sourceSearchHistory,undefined);
+  }
+  const firstID=first.view.ctx.discussion.id,secondID=second.view.ctx.discussion.id,originalID=original.ctx.discussion.id;
+  await p.newChat(first.view.root);
+  assert.notEqual(first.view.ctx.discussion.id,firstID);assert.equal(original.ctx.discussion.id,originalID);assert.equal(second.view.ctx.discussion.id,secondID);
+  assert.equal((await p.discussionIndex(original.ctx)).active,originalID);
+  assert.equal(p._activeDiscussionDirs.get(p.discussionRoot(original.ctx)),original.ctx.dir);
+  assert.equal(original.input.value,'Unsent original draft');
+  await p.newChat(original.root);assert.equal(second.view.ctx.discussion.id,secondID);
+  let cancelled=0;p._pending.set(original.ctx.dir,{cancel(){throw new Error('Another window was cancelled');}});
+  p.setPref('documentNoteSaveModes',JSON.stringify({[p.noteDocumentKey(first.view.ctx)]:'none'}));
+  p._noteLiveHistories.set(first.view.ctx.dir,[{role:'assistant',text:'First volatile answer'}]);p._noteLiveHistories.set(second.view.ctx.dir,[{role:'assistant',text:'Second volatile answer'}]);
+  p._pending.set(first.view.ctx.dir,{cancel(){cancelled++;}});first.dispose();assert.equal(cancelled,1);assert.ok(p._views.has(second.view.root));
+  assert.equal(p._noteLiveHistories.has(first.view.ctx.dir),false);assert.equal(p._noteLiveHistories.has(second.view.ctx.dir),true);
+  p._pending.clear();second.dispose();
+ }finally{for(const state of [...p._chatWindows.values()])state.dispose?.();for(const w of windows)w.close();dispose();}
+});
+
+test('a new workspace conversation keeps workspace membership and cannot auto-route into another chat',async()=>{
+ const {p,layout,win,a,b,dispose}=await setup();
+ await p.updateReadingSources(layout,[p.noteDocumentRef(a),p.noteDocumentRef(b)],{name:'Workspace chats'});
+ const original=p._views.get(layout.entry.root),windows=[],mounts=[];
+ win.openDialog=(url,name,features,args)=>{const dom=new JSDOM('<main id="abstractin-chat-window-root"></main>'),w=dom.window;w.focus=()=>{};windows.push(w);queueMicrotask(()=>mounts.push(p.mountChatWindow(p._chatWindows.get(args.chatWindowID),w)));return w;};
+ try{
+  const fresh=await p.openNewChatWindow({view:original});await Promise.all(mounts);
+  assert.equal(fresh.view.ctx.readingWorkspace.id,layout.workspace.id);
+  assert.equal(p.discussionRoot(fresh.view.ctx),p.discussionRoot(original.ctx));
+  assert.deepEqual([...fresh.view.ctx.workspaceDocuments.map(ref=>ref.key)],[a.key,b.key]);
+  const id=fresh.view.ctx.discussion.id;
+  p.resolveDiscussionChapter=()=>({chapterID:'another-chapter'});
+  let answered;p.ask=async(ctx,question)=>{answered={dir:ctx.dir,id:ctx.discussion.id,question};p._pending.delete(ctx.dir);return {};};
+  await p.startRequest(fresh.view,'Chapter 99: discuss this independently');
+  const pending=p._pending.get(fresh.view.ctx.dir);if(pending)await pending.promise;
+  assert.equal(answered.id,id);assert.equal(answered.dir,fresh.view.ctx.dir);assert.equal(fresh.view.ctx.discussion.id,id);
+  fresh.dispose();p._pending.clear();
+ }finally{for(const state of [...p._chatWindows.values()])state.dispose?.();for(const w of windows)w.close();dispose();}
 });
 
 test('moving the default note into a window does not open a second chat',async()=>{
@@ -77,15 +134,15 @@ test('moving the default note into a window does not open a second chat',async()
  layout.groups.set('float',{id:'float',win:floating.window,host:floating.window.document.getElementById('float'),tree:null});
  await p.moveReadingSurface(layout,'editor','float');
  assert.equal(layout.surfaces.get('editor').group,'float');assert.equal(layout.surfaces.get('reading').group,'main');
- assert.equal(layout.surfaces.get('notes').node.hidden,true);
+ assert.equal(layout.surfaces.has('notes'),false);
  assert.equal(p.getJSONPref('readingDockGroups',[]).flatMap(group=>p.readingLayoutPanels(group.tree)).length,2);
- await p.moveReadingSurface(layout,'editor','main');assert.equal(layout.surfaces.get('notes').node.hidden,true);
+ await p.moveReadingSurface(layout,'editor','main');assert.equal(layout.surfaces.has('notes'),false);
  dispose();floating.window.close();
 });
 
-test('opening two panels directly matches switching from four panels to reading-only', async () => {
+test('opening reading-only directly matches hiding the editor in the shared layout', async () => {
  const direct = await setup({ initialPreset: 'reading' });
- const switched = await setup({ initialPreset: 'columns' });
+ const switched = await setup({ initialPreset: 'unified' });
  try {
   assert.ok(direct.layout, 'reading-only startup must mount the shared panel layout');
   await switched.p.applyReadingLayoutPreset(switched.layout, 'reading');
@@ -107,15 +164,15 @@ test('opening two panels directly matches switching from four panels to reading-
  } finally { direct.dispose(); switched.dispose(); }
 });
 
-test('one-source docking preserves native reader and both independent discussion scopes', async () => {
+test('one-source docking preserves the native reader and does not create a note chat', async () => {
  const { p, layout, doc, a, collections, files, dispose } = await setup();
  assert.ok(doc.querySelector('#native-reader'));
  assert.equal(layout.note.parentID, a.id); assert.equal(collections.size, 0);
  assert.ok(![...files.keys()].some(path => path.includes('/workspaces/')));
- assert.equal(layout.surfaces.size, 3);
- assert.notEqual(layout.noteState.chatView.ctx.dir, layout.readingContext.dir);
+ assert.equal(layout.surfaces.size, 2);
+ assert.equal(layout.noteState.chatView, null);
  assert.equal(layout.surfaces.get('editor').content.contains(layout.noteState.editor), true);
- assert.equal(p.readingLayoutPanels(layout.groups.get('main').tree).join(','), 'editor,reading,notes');
+ assert.equal(p.readingLayoutPanels(layout.groups.get('main').tree).join(','), 'editor,reading');
  assert.equal(layout.noteState.editor.querySelector('.abstractin-note-source-control'), null, 'a docked note cannot maintain a separate source list');
  dispose();
 });
@@ -123,12 +180,12 @@ test('one-source docking preserves native reader and both independent discussion
 test('drag docking rearranges panels without rebuilding editor or losing its input', async () => {
  const { p, layout, dispose } = await setup();
  const input = layout.noteState.input; input.value = 'Unsaved text';
- await p.moveReadingSurface(layout, 'notes', 'main', 'reading', 'bottom');
+ await p.moveReadingSurface(layout, 'editor', 'main', 'reading', 'bottom');
  assert.equal(layout.noteState.input, input); assert.equal(input.value, 'Unsaved text');
- assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)].sort(), ['editor', 'notes', 'reading']);
+ assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)].sort(), ['editor', 'reading']);
  const reading = layout.surfaces.get('reading').node;
  assert.equal(reading.style.width, '100%');
- assert.equal(layout.surfaces.get('editor').node.style.top, layout.surfaces.get('notes').node.style.top);
+ assert.notEqual(layout.surfaces.get('editor').node.style.top, reading.style.top);
  dispose();
 });
 
@@ -138,22 +195,19 @@ test('cross-window panels can join, retain note and chat drafts, and dock back',
  const group = { id: 'float', win: floating.window, host: floating.window.document.getElementById('float'), tree: null };
  layout.groups.set(group.id, group);
  layout.noteState.input.value = '# Exact **Markdown**'; layout.noteState.input.dispatchEvent(new win.Event('input'));
- layout.noteState.chatView.input.value = 'Unsent note question';
+ p._views.get(layout.entry.root).input.value = 'Unsent question';
  await p.moveReadingSurface(layout, 'editor', 'float');
- assert.equal(layout.surfaces.get('notes').group, 'float', 'note discussion follows the editor into the same window');
+ assert.equal(layout.surfaces.get('reading').group, 'main', 'moving a note leaves the discussion in place');
  assert.equal(layout.noteState.input.value, '# Exact **Markdown**');
- assert.equal(layout.noteState.chatView.input.value, 'Unsent note question');
+ assert.equal(p._views.get(layout.entry.root).input.value, 'Unsent question');
  assert.equal(layout.noteState.input.ownerDocument, floating.window.document);
- await p.moveReadingSurface(layout, 'notes', 'float', 'editor', 'right');
- assert.equal(layout.noteState.chatView.doc, floating.window.document);
- await p.moveReadingSurface(layout, 'reading', 'float', 'notes', 'bottom');
+ await p.moveReadingSurface(layout, 'reading', 'float', 'editor', 'bottom');
  assert.equal(layout.entry.root.ownerDocument, floating.window.document);
  await p.moveReadingSurface(layout, 'editor', 'main');
- await p.moveReadingSurface(layout, 'notes', 'main');
  await p.moveReadingSurface(layout, 'reading', 'main');
  assert.equal(layout.groups.has('float'), false);
  assert.equal(layout.noteState.input.value, '# Exact **Markdown**');
- assert.equal(layout.noteState.chatView.input.value, 'Unsent note question');
+ assert.equal(p._views.get(layout.entry.root).input.value, 'Unsent question');
  dispose();
 });
 
@@ -182,7 +236,7 @@ test('second source creates a child collection and shared history without changi
  assert.equal(layout.readingContext.readingWorkspace.id, layout.workspace.id);
  assert.equal((await p.loadHistory(layout.readingContext.dir))[1].text, 'Original answer');
  assert.equal(layout.noteState.documents.length, 2);
- assert.equal(layout.noteState.chatView.ctx.noteState.documents.length, 2);
+ assert.equal(layout.noteState.chatView, null);
  const readerB = { ...layout.reader, itemID: b.pdf.id, tabID: 'tab-b' };
  const sharedDir = layout.readingContext.dir;
  await p.openReaderPanel(readerB);
@@ -227,15 +281,15 @@ test('source validation runs before collection creation or note migration', asyn
  dispose();
 });
 
-test('reading-only and four-panel presets hide and restore the note pair without changing its history', async () => {
+test('reading-only and shared presets hide and restore the editor without changing its history', async () => {
  const { p, layout, dispose } = await setup();
- const input = layout.noteState.input, discussion = layout.noteState.chatView.ctx.dir;
+ const input = layout.noteState.input, discussion = layout.readingContext.dir;
  await p.applyReadingLayoutPreset(layout, 'reading');
- assert.equal(layout.surfaces.get('editor').node.hidden, true); assert.equal(layout.surfaces.get('notes').node.hidden, true);
+ assert.equal(layout.surfaces.get('editor').node.hidden, true); assert.equal(layout.surfaces.has('notes'), false);
  assert.equal(layout.surfaces.get('reading').node.hidden, false);
- await p.applyReadingLayoutPreset(layout, 'stacked');
- assert.equal(layout.surfaces.get('editor').node.hidden, false); assert.equal(layout.surfaces.get('notes').node.hidden, false);
- assert.equal(layout.noteState.input, input); assert.equal(layout.noteState.chatView.ctx.dir, discussion);
+ await p.applyReadingLayoutPreset(layout, 'unified');
+ assert.equal(layout.surfaces.get('editor').node.hidden, false); assert.equal(layout.surfaces.has('notes'), false);
+ assert.equal(layout.noteState.input, input); assert.equal(layout.readingContext.dir, discussion);
  dispose();
 });
 
@@ -268,10 +322,10 @@ test('docked note stylesheet cannot target native html/body or the document root
  assert.doesNotMatch(css, /^\[hidden\]/m);
 });
 
-test('four columns place reading discussion before the linked note and note discussion', async () => {
- const {p,layout,dispose}=await setup();await p.applyReadingLayoutPreset(layout,'columns');
- assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)],['reading','editor','notes']);
- assert.deepEqual([...p.READING_LAYOUTS.find(preset=>preset.id==='columns').boxes.map(box=>box[4])],['PDF','Read','Note','Chat']);
+test('all four-panel presets are removed and cannot be selected programmatically', async () => {
+ const {p,layout,dispose}=await setup();
+ assert.deepEqual([...p.READING_LAYOUTS.map(preset=>preset.id)],['unified','reading','separate']);
+ for(const name of ['columns','stacked'])await assert.rejects(p.applyReadingLayoutPreset(layout,name),/Unknown/);
  dispose();
 });
 
@@ -282,20 +336,18 @@ test('Save is followed by New note and Open note and each note retains its own t
  assert.deepEqual(buttons.slice(0,3).map(button=>button.getAttribute('aria-label')),['Save note','New note','Open note']);
  assert.ok(!buttons.some(button=>/Sources?/.test(button.textContent)));
  firstState.input.value='# First note';firstState.input.dispatchEvent(new win.Event('input'));
- firstState.chatView.input.value='Unsent first question';
- const firstDir=firstState.chatView.ctx.dir;await p.saveHistory(firstDir,[{role:'user',text:'First question'},{role:'assistant',text:'First answer'}]);
- const second=await p.newReadingNote(layout),secondState=layout.noteState,secondDir=secondState.chatView.ctx.dir;
+ const firstDir=firstState.dir+'/discussion';await p.saveHistory(firstDir,[{role:'user',text:'First question'},{role:'assistant',text:'First answer'}]);
+ const second=await p.newReadingNote(layout),secondState=layout.noteState,secondDir=secondState.dir+'/discussion';
  assert.notEqual(second.key,first.key);assert.equal(second.parentID,a.id);assert.equal(secondState.input.value,'');
  assert.equal(p.markdownNoteData(first).markdown,'# First note');assert.notEqual(secondDir,firstDir);
  assert.equal((await p.loadHistory(secondDir)).length,0);
  secondState.input.value='# Second note';secondState.input.dispatchEvent(new win.Event('input'));
- secondState.chatView.input.value='Unsent second question';
  await p.saveHistory(secondDir,[{role:'user',text:'Second question'},{role:'assistant',text:'Second answer'}]);
  await p.switchReadingNote(layout,first);
- assert.equal(layout.noteState.input.value,'# First note');assert.equal(layout.noteState.chatView.input.value,'Unsent first question');
- assert.equal((await p.loadHistory(layout.noteState.chatView.ctx.dir))[1].text,'First answer');
+ assert.equal(layout.noteState.input.value,'# First note');assert.equal(layout.noteState.chatView,null);
+ assert.equal((await p.loadHistory(firstDir))[1].text,'First answer');
  await p.switchReadingNote(layout,second);
- assert.equal(layout.noteState.input.value,'# Second note');assert.equal(layout.noteState.chatView.input.value,'Unsent second question');
+ assert.equal(layout.noteState.input.value,'# Second note');assert.equal(layout.noteState.chatView,null);
  assert.equal((await p.loadHistory(secondDir))[1].text,'Second answer');
  assert.equal(layout.entry.root,readingRoot);assert.equal(layout.readingContext.dir,readingDir);
  dispose();
@@ -317,7 +369,7 @@ test('workspace notes share sources and collection while their discussion direct
  const {p,layout,a,b,Item,files,dispose}=await setup();
  await p.updateReadingSources(layout,[p.noteDocumentRef(a),p.noteDocumentRef(b)],{name:'Shared problem'});
  const first=layout.note,workspaceID=layout.workspace.id,readingDir=layout.readingContext.dir;
- const second=await p.newReadingNote(layout),secondDir=layout.noteState.chatView.ctx.dir;
+ const second=await p.newReadingNote(layout),secondDir=layout.noteState.dir;
  assert.ok(second.collections.includes(layout.workspace.collectionID));assert.ok(!second.parentID);
  assert.equal(p.markdownNoteData(second).workspace.id,workspaceID);
  const c=new Item('book');c.title='Source C';c.pdf=new Item('attachment');c.pdf.parentItem=c;c.pdf.parentID=c.id;
@@ -326,7 +378,7 @@ test('workspace notes share sources and collection while their discussion direct
  const manifest=JSON.parse(files.get(p.readingWorkspaceDir(first.libraryID,workspaceID)+'/workspace.json'));
  assert.equal(manifest.noteKey,workspaceID);assert.ok(manifest.noteKeys.includes(first.key)&&manifest.noteKeys.includes(second.key));
  await p.switchReadingNote(layout,first);
- assert.notEqual(layout.noteState.chatView.ctx.dir,secondDir);assert.equal(layout.readingContext.dir,readingDir);
+ assert.notEqual(layout.noteState.dir,secondDir);assert.equal(layout.readingContext.dir,readingDir);
  assert.equal(layout.workspace.id,workspaceID);
  dispose();
 });
@@ -351,7 +403,7 @@ test('panel actions share their title row and settings appear only in the global
  }
  assert.ok(layout.surfaces.get('editor').header.contains(layout.noteState.saveButton));
  assert.ok(layout.surfaces.get('editor').header.contains(layout.noteState.title));
- for(const root of [layout.entry.root,layout.noteState.chatView.root]) {
+ for(const root of [layout.entry.root]) {
   p.renderPaperChip(root,{label:'Duplicate source'});
   assert.equal(root.querySelector('.abstractin-context').hidden,true);
   assert.equal(root.querySelector('.abstractin-context').children.length,0);
@@ -364,16 +416,16 @@ test('panel actions share their title row and settings appear only in the global
 
 test('Hide and Show notes restore custom split ratios and sidebar width without remounting docked input', async () => {
  const {p,layout,dispose}=await setup();
- await p.applyReadingLayoutPreset(layout,'columns');layout.groups.get('main').tree.ratio=.37;
+ await p.applyReadingLayoutPreset(layout,'unified');layout.groups.get('main').tree.ratio=.37;
  layout.panelState.panel.style.width='1123px';
  const tree=JSON.stringify(layout.groups.get('main').tree),input=layout.noteState.input;
- layout.noteState.chatView.input.value='Keep this draft';
+ p._views.get(layout.entry.root).input.value='Keep this draft';
  await p.toggleReadingNotes(layout,false);
  assert.equal(layout.noteToggle.title,'Show notes');assert.equal(layout.surfaces.get('editor').node.hidden,true);
  await p.toggleReadingNotes(layout,true);
  assert.equal(layout.noteToggle.title,'Hide notes');assert.equal(JSON.stringify(layout.groups.get('main').tree),tree);
  assert.equal(layout.panelState.panel.style.width,'1123px');assert.equal(layout.noteState.input,input);
- assert.equal(layout.noteState.chatView.input.value,'Keep this draft');
+ assert.equal(p._views.get(layout.entry.root).input.value,'Keep this draft');
  dispose();
 });
 
@@ -389,7 +441,7 @@ test('Formatting keeps iframe controls clickable when Gecko forwards their mouse
   state.formatButton.click();assert.equal(open,true);
   forwarded(command);command.click();assert.equal(open,true);assert.equal(executed,1);
   forwarded(frame);assert.equal(open,true,'a retargeted iframe hit is also inside the editor');
-  layout.noteState.chatView.root.dispatchEvent(new win.MouseEvent('mousedown',{bubbles:true,button:0}));
+  layout.entry.root.dispatchEvent(new win.MouseEvent('mousedown',{bubbles:true,button:0}));
   assert.equal(open,false,'a click outside the note editor still dismisses Formatting');
  } finally { delete state.input._composerEditor;dispose(); }
 });
@@ -400,7 +452,7 @@ test('Hide and Show notes restore floating geometry, linked panels and unsent di
  floating.window.outerWidth=930;floating.window.outerHeight=720;floating.window.screenX=100;floating.window.screenY=80;
  layout.groups.set('float',{id:'float',win:floating.window,host:floating.window.document.getElementById('float'),tree:null});
  await p.moveReadingSurface(layout,'editor','float');
- layout.groups.get('float').tree.ratio=.67;layout.noteState.chatView.input.value='A floating draft';
+ layout.groups.get('float').tree.ratio=.67;p._views.get(layout.entry.root).input.value='A floating draft';
  const tree=JSON.stringify(layout.groups.get('float').tree);
  await p.toggleReadingNotes(layout,false);assert.equal(layout.groups.has('float'),false);
  const windows=[];
@@ -413,10 +465,10 @@ test('Hide and Show notes restore floating geometry, linked panels and unsent di
  for(let i=0;i<60&&layout.restoring;i++) await new Promise(resolve=>setTimeout(resolve,5));
  assert.equal(layout.restoring,false);
  const group=layout.groups.get(layout.surfaces.get('editor').group);
- assert.notEqual(group.id,'main');assert.equal(layout.surfaces.get('notes').group,group.id);
+ assert.notEqual(group.id,'main');assert.equal(layout.surfaces.get('reading').group,'main');
  assert.equal(JSON.stringify(group.tree),tree);
  assert.deepEqual([group.win.outerWidth,group.win.outerHeight,group.win.screenX,group.win.screenY],[930,720,100,80]);
- assert.equal(layout.noteState.chatView.input.value,'A floating draft');
+ assert.equal(p._views.get(layout.entry.root).input.value,'A floating draft');
  assert.ok(layout.surfaces.get('editor').header.contains(layout.noteState.saveButton));
  dispose();for(const w of windows) w.close();
 });

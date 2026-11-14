@@ -11,18 +11,18 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
 </p>
 
-AbstractIn brings Zotero's native PDF reader, reading discussion, Markdown notes, and note discussion into one reading workflow. Work with one document or add several papers and books to a shared workspace, organize discussions, and save editable Zotero notes.
+AbstractIn brings Zotero's native PDF reader, Markdown notes, and independent AI conversations into one reading workflow. Work with one document or add several papers and books to a shared workspace, organize discussions, and save editable Zotero notes.
 
 Use local **Codex, Claude Code, Gemini CLI, or Antigravity**, or connect an **API** provided by your institution or another service. CLIs use your local installation and sign-in; APIs use your configured endpoint, authentication, and model. Model processing takes place through the selected service.
 
 ## Features at a glance
 
-This guide covers the features available in **v0.2.156**.
+This guide covers the features available in **v0.2.157**.
 
 | Feature | What it provides |
 |---|---|
 | Single- and multi-document reading | Start with one document, add sources later, and create a workspace beneath an existing Zotero collection. |
-| Composable panels | Choose two panels, four panels, four columns, or a separate note window; rearrange and resize plugin panels. |
+| Composable panels | Read and write with one chat, read with a chat, or detach the note editor; open additional independent chat windows. |
 | Source verification | Search text within progressively wider scopes, read matching passages, and inspect relevant PDF page images. |
 | Paper summaries and figure guides | Summarize with the paper-reading skill, or explain each subfigure's construction, analysis, and results. |
 | NoteOut writing | Markdown live preview, tables, KaTeX, commutative diagrams, fonts, and formatting shortcuts. |
@@ -44,17 +44,17 @@ Linked PDFs in Dropbox or another external folder use Zotero's resolved paths an
 
 ## Layouts, windows, and sources
 
-The single AbstractIn launcher offers five presets, illustrated with different colors for the native reader and plugin panels:
+The single AbstractIn launcher offers three presets, illustrated with different colors for the native reader and plugin panels:
 
 | Layout | Arrangement |
 |---|---|
 | **Read and write** (default) | Literature, note editor, and one shared chat for reading and writing. |
-| **Read literature** | Literature and reading discussion side by side; direct startup uses the same interface as switching back from four panels. |
-| **Four panels** | Literature, a full-height note, and vertically stacked reading and note discussions on the right. |
-| **Four columns** | Literature, reading discussion, note editor, and note discussion, from left to right. |
-| **Separate note window** | Literature and reading discussion remain in the main window; the note and its discussion float together. |
+| **Read literature** | Literature and discussion side by side. |
+| **Separate note window** | Literature and discussion remain in the main window; the note editor opens separately. |
 
-Zotero's native reader stays in place. The default layout has one chat that handles both literature and notes. Optional four-panel layouts retain separate conversation histories, with identical access and editing capabilities. Drag panels, use **Move** to change their dock position, or move them into independent windows. Dividers resize the panels. In dual-chat layouts the note editor and its discussion are linked for showing, hiding, and detaching. **Hide notes / Show notes** restores the previous placement, sizes, and floating layout. Opening another native Zotero PDF window does not automatically relocate existing panels.
+Zotero's native reader stays in place. The default layout has one chat that handles both literature and notes, and notes open as editors without a built-in chat. Drag panels, use **Move** to change their dock position, or detach them. Dividers resize the panels. **Hide notes / Show notes** restores the editor's placement, sizes, and floating layout. Opening another native Zotero PDF window does not automatically relocate existing panels.
+
+Use **New chat window** in a discussion header, or in the note editor's **More** menu, to start a fresh conversation in the same document/workspace. It has its own empty history, model session, and draft; switching chats or closing the window does not switch or close other conversations. These chats use the same discussion index, history directory, and Zotero saving policy as **New chat** in the original window.
 
 Panel headers share a gray style and icon commands; secondary actions collapse when space is limited. Global settings, layout, and source management sit above the workspace. The header follows the native reader toolbar's height and background, and sidebar width respects the space needed by the native reader.
 
@@ -66,7 +66,7 @@ Panel headers share a gray style and icon commands; secondary actions collapse w
 - **Storage:** multi-document notes and workspace reading records belong in the workspace collection. Each linked document's NoteOut entry can open the same note. Adding collection membership preserves other existing collection memberships.
 - **Multiple notes:** use **New note** after **Save** to create and name a note, and **Open note** to switch among notes in the current document or workspace. Each note retains its own text, draft, and discussion history.
 
-Sources must be editable documents with readable PDFs in the same library. Source titles identify scope rather than supplying evidence; adding documents does not mean the model has read all of them. Existing conversation histories remain separate and are shared only through explicit quotation. Associated note bodies are available to every chat through on-demand retrieval.
+Sources must be editable documents with readable PDFs in the same library. Source titles identify scope rather than supplying evidence; adding documents does not mean the model has read all of them. Conversations remain separate. Every chat can search associated notes and saved discussion history on demand, using locally matched keywords before reading a selected turn; entire histories are not automatically added to new conversations.
 
 ## Reading and asking questions
 
@@ -110,7 +110,7 @@ The former Knowledge discussion setting maps to Balanced. Existing Source verifi
 
 ### English vocabulary and usage tutoring
 
-A fixed header and icon back control keep navigation clear. Chapter rows show discussion counts; discussion rows show topics, and results separate numbers, titles, and excerpts. Review and edit the quotation before inserting it; nothing is sent automatically. Note discussion can also select its own saved answers or explicitly browse linked reading discussion, while preserving both histories.
+A fixed header and icon back control keep navigation clear. Chapter rows show discussion counts; discussion rows show topics, and results separate numbers, titles, and excerpts. Review and edit the quotation before inserting it; nothing is sent automatically. The same source scope's saved conversations can also be searched by the assistant when needed.
 
 Questions about English word meanings, pronunciation, IPA, collocations, grammar, differences between expressions, or sentence naturalness automatically activate [`english-vocabulary-tutor`](skills/english-vocabulary-tutor/SKILL.md). No additional mode switch is needed. Sending a single English word can also generate a learning card.
 
@@ -192,7 +192,7 @@ Each batch previews and saves `exports/summary-state.json` for decisions, proven
 
 ## NoteOut: writing and AI discussion
 
-A note can dock alongside the source or float with its discussion. Both arrangements use the same Markdown text and per-note history. The title and file commands share one row; **Save, New note, and Open note** have distinct icons, with additional actions under **More**.
+A note can dock alongside the source or open in a standalone editor. Both arrangements use the same Markdown text. The title and file commands share one row; **Save, New note, and Open note** have distinct icons, with **New chat window** and additional actions under **More**.
 
 ### Live preview editor
 
@@ -232,11 +232,11 @@ Leaving the block compiles its diagram; **Edit source** returns to editing. The 
 
 Every chat can search the current document/workspace's literature and all associated NoteOut notes. The initial prompt contains only source identities and a note index, rather than every note's full text. The assistant matches keywords locally and reads relevant passages or Markdown ranges only when needed. Explicit editor selections can accompany a question. Other documents, workspaces, libraries, and trashed notes are excluded; histories are not automatically combined.
 
-**Quick questions** and **Quote** sit at the upper left of the composer. Note questions offer summarizing, explaining the reasoning, and suggesting improvements. Quote can select saved answers from this note or explicitly browse results from linked reading discussion. Review the excerpt before inserting it; nothing is sent automatically and the two histories remain separate.
+**Quick questions** and **Quote** sit at the upper left of the composer. Quote selects saved discussion results for review before inserting them into a question. You can also directly ask any chat to summarize, explain, or improve a named note, or search earlier discussions for a specific topic.
 
-Ask a question to receive an answer, or explicitly ask to change a named note to have it edited and saved. There is no Answer/Edit mode button. The assistant must read the target first; exact text, version, and scope checks prevent stale changes from overwriting newer edits. Each applied change keeps a local `edit-before-*.json` source backup in that note's directory. Plain explanation or improvement suggestions do not authorize changing the note. **More → Append last answer** remains available, and old saved edit proposals remain reviewable.
+Ask a question to receive an answer, or explicitly ask to change a named note to have it edited and saved. There is no Answer/Edit mode button. The assistant must read the target first; exact text, version, and scope checks prevent stale changes from overwriting newer edits. Each applied change keeps a local `edit-before-*.json` source backup in that note's directory. Plain explanation or improvement suggestions do not authorize changing the note.
 
-Existing per-note discussions remain in their local working directories and do not currently synchronize across devices with the note body. All chats can request bounded document text and PDF images through the same plugin protocol, including API agents. Papers have no fixed lookup quota; a book's quota is its physical PDF page count divided by 100, rounded up, per user turn. Context only still disables retrieval and editing.
+New chat windows use ordinary document/workspace discussion storage and the same Zotero sync policy. Earlier per-note conversations remain locally saved and searchable. All chats can search questions and answers in scoped histories, then read only the relevant turn, with repeated ranges omitted within the request. Historical answers are prior discussion, not verified document evidence. Document text and images use the same protocol for CLI and API agents. Papers have no fixed lookup quota; books allow ceil(physical PDF pages/100) lookups per user turn. Context only disables retrieval and editing.
 
 ### Independent note management and deletion
 
@@ -278,7 +278,7 @@ Synchronization scope differs by data type:
 |---|---|
 | Reading notes, full reading transcripts, and metadata | Zotero notes under the document or in the workspace collection; synchronized through data sync. |
 | NoteOut bodies and source links | Native Zotero notes and links; synchronized through data sync. |
-| Per-note discussion history, layouts, and local drafts | Local only; not currently synchronized with note bodies. |
+| Earlier per-note discussion history, layouts, and local drafts | Local only; existing per-note conversations remain searchable. |
 | PDF attachments | Availability depends on Zotero file sync or local attachments. |
 | Plugin settings, assistant sign-in and thread IDs, extracted text cache, image attachments | Stored locally; not synchronized through chat notes. |
 
@@ -327,7 +327,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-These feature descriptions cover **v0.2.156**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+These feature descriptions cover **v0.2.157**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

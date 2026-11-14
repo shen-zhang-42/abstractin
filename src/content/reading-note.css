@@ -171,11 +171,12 @@
 .abstractin-note-home-empty h2 { margin: 12px 0 0; font-size: clamp(28px, 4vw, 40px); font-weight: 600; letter-spacing: -.045em; }
 .abstractin-note-home-empty p { max-width: 320px; margin: 14px 0 24px; color: var(--note-muted); line-height: 1.8; }
 .abstractin-note-document { display: flex; width: 100%; height: 100%; min-width: 0; }
-.abstractin-dock-host.abstractin-note-home { flex-direction: row; height: 100%; min-height: 0; min-width: 900px; }
+.abstractin-dock-host.abstractin-note-home { flex-direction: row; height: 100%; min-height: 0; min-width: 0; }
 .abstractin-note-home .abstractin-note-list { flex: 0 0 calc((100% - 8px) * var(--note-sidebar-ratio, 18) / 100); width: auto; min-width: 180px; max-width: 40%; height: 100%; max-height: none; border: 0; }
-.abstractin-note-home .abstractin-note-home-workspace { min-width: 520px; height: 100%; }
+.abstractin-note-home .abstractin-note-home-workspace { min-width: 0; height: 100%; }
 .abstractin-note-home .abstractin-note-document { flex-direction: row; height: 100%; min-height: 0; }
 .abstractin-note-home .abstractin-note-editor { flex: 0 0 calc((100% - 8px) * var(--note-editor-ratio, 58) / 100); min-height: 0; padding: 22px 24px 0; }
+.abstractin-note-home .abstractin-note-chat-hidden .abstractin-note-editor { flex: 1 1 0; }
 .abstractin-note-home .abstractin-note-chat { flex: 1 1 0; width: auto; height: 100%; border: 0; }
 .abstractin-note-home .abstractin-note-splitter { display: block; }
 .abstractin-note-home .abstractin-note-home-empty { align-items: stretch; justify-content: normal; text-align: left; padding: 0; }

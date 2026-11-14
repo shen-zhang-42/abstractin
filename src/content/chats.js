@@ -350,21 +350,24 @@
    chat = index.chats.find(c => c.id === chat?.id);
    if (!chat || chat.deletedAt || chat.supersededBy) throw new Error("This discussion is unavailable.");
    if (this._pending.has(view.ctx.dir)) throw new Error("Stop the current answer before changing discussions.");
-   index.active = chat.id;
-   const chapter = index.chapters.find(c => c.id === chat.chapterID); if (chapter) chapter.activeChat = chat.id;
-   await this.writeDiscussionIndex(view.ctx, index);
+   if (!view.ctx.chatWindowID) {
+    index.active = chat.id;
+    const chapter = index.chapters.find(c => c.id === chat.chapterID); if (chapter) chapter.activeChat = chat.id;
+    await this.writeDiscussionIndex(view.ctx, index);
+   }
    const oldDir = view.ctx.dir;
    const ctx = this.discussionContext(view.ctx, chat);
-   this._activeDiscussionDirs.set(documentDir, ctx.dir);
+   if (!view.ctx.chatWindowID) this._activeDiscussionDirs.set(documentDir, ctx.dir);
    // Views for the same document follow the active discussion, without ever
    // copying another discussion's history into its working directory.
    const roots = new Set([view.root]);
    for (const win of new Set([...(Zotero.getMainWindows?.() || [Zotero.getMainWindow()]), ...this._readerPanelWindows.keys()])) {
     for (const root of win.document.querySelectorAll(".abstractin-root")) roots.add(root);
    }
+   for (const state of this._chatWindows?.values() || []) if (state.view?.root) roots.add(state.view.root);
    for (const root of roots) {
     const other = this._views.get(root);
-    if (other?.ctx.dir !== oldDir) continue;
+    if (other?.ctx.dir !== oldDir || other.ctx.chatWindowID !== view.ctx.chatWindowID) continue;
     other.ctx = { ...ctx, reader: other.ctx.reader };
     other.pageImageSource = null;
     this.renderMessages(other, await this.loadHistory(ctx.dir)); this.renderAttachments(other); this.updateReadingControls(other);
@@ -390,13 +393,17 @@
     const vocabularyTutor = !options.readingAction && !options.paperGuide && (options.vocabularyTutor || this.isVocabularyQuestion(question, selection) ||
      this.isVocabularyFollowUp(question, (await this.loadSessions(view.ctx.dir))[this.readingAgent()]?.vocabularyTutor));
     let route = options.readingAction ? { chapterID: this.INITIALIZATION_CHAPTER } : vocabularyTutor ? { chapterID: view.ctx.discussion.chapterID } : this.resolveDiscussionChapter(view.ctx, index, question, selection, location);
+    // A standalone conversation never jumps into another window's thread due
+    // to its page/chapter routing, including dedicated initialization chats.
+    if (view.ctx.chatWindowID) route = { chapterID: view.ctx.discussion.chapterID };
     if (route.ambiguous) {
      const chapterID = await this.chooseDiscussionChapter(view, index);
      if (chapterID === undefined) return;
      route = { chapterID };
     }
     let chat = index.chats.find(c => c.id === view.ctx.discussion.id);
-    if (options.readingAction) {
+    if (!chat || chat.deletedAt || chat.supersededBy) throw new Error("This discussion is no longer available. Open another chat or create a new one.");
+    if (options.readingAction && !view.ctx.chatWindowID) {
      chat = await this.initializationDiscussion(view.ctx, index);
      if (chat.id !== view.ctx.discussion.id) await this.switchDiscussion(view, chat, index, { locked: true });
     }
@@ -424,7 +431,10 @@
    this._discussionLocks.add(dir);
    try {
     const index = await this.discussionIndex(view.ctx);
-    const chat = await this.createDiscussion(view.ctx, index, view.ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? this.chapterAtPage(index, this.currentReadingLocation(view.ctx)?.pageIndex) : view.ctx.discussion.chapterID, "discussion", seed);
+    const chapterID = view.ctx.discussion.chapterID === this.INITIALIZATION_CHAPTER ? this.chapterAtPage(index, this.currentReadingLocation(view.ctx)?.pageIndex) : view.ctx.discussion.chapterID;
+    const active = index.active, chapter = index.chapters.find(entry => entry.id === chapterID), activeChat = chapter?.activeChat;
+    const chat = await this.createDiscussion(view.ctx, index, chapterID, "discussion", seed, {}, { persist: !view.ctx.chatWindowID });
+    if (view.ctx.chatWindowID) { index.active = active; if (chapter) chapter.activeChat = activeChat; await this.writeDiscussionIndex(view.ctx, index); }
     await this.switchDiscussion(view, chat, index, { locked: true }); view.input.value = ""; view.input.focus();
    } finally { this._discussionLocks.delete(dir); }
   },

@@ -6,9 +6,7 @@
   READING_LAYOUTS: [
    { id: "unified", title: "Read and write", description: "Reader, note and one shared discussion (default)", boxes: [[0,0,62,66,"PDF",true],[66,0,60,66,"Note"],[130,0,46,66,"Chat"]] },
    { id: "reading", title: "Read literature", description: "Native reader and reading discussion", boxes: [[0,0,96,66,"PDF",true],[100,0,76,66,"Read"]] },
-   { id: "stacked", title: "Four panels", description: "Full-height note, discussions stacked", boxes: [[0,0,65,66,"PDF",true],[69,0,52,66,"Note"],[125,0,51,31,"Read"],[125,35,51,31,"Chat"]] },
-   { id: "columns", title: "Four columns", description: "Reader, reading discussion, note and note discussion", boxes: [[0,0,56,66,"PDF",true],[60,0,35,66,"Read"],[99,0,43,66,"Note"],[146,0,30,66,"Chat"]] },
-   { id: "separate", title: "Separate note window", description: "Note and its discussion float together", boxes: [[0,0,54,66,"PDF",true],[58,0,40,66,"Read"],[108,7,33,52,"Note"],[145,7,31,52,"Chat"]] }
+   { id: "separate", title: "Separate note window", description: "A standalone note editor, with discussion kept in the main window", boxes: [[0,0,65,66,"PDF",true],[69,0,46,66,"Chat"],[125,7,51,52,"Note"]] }
   ],
   readingLayoutDiagram(doc, preset) {
    const ns = "http://www.w3.org/2000/svg", svg = doc.createElementNS(ns, "svg");

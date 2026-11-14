@@ -5,11 +5,11 @@
 (() => {
  const original = {};
  for (const name of ["openReaderPanel", "releaseReaderPanelView", "openNoteOutHome", "closeMarkdownNoteWindows", "runBackend", "refreshSyncedDiscussionIndex", "refreshDiscussionChapters", "hydrateChatHistory", "saveChatNotes", "noteDocumentKey", "appendHistory", "noteStorageViews", "visibleReaderSelectionView", "activateReading", "saveReadingRecord"]) original[name] = AbstractIn[name];
- const names = { editor: "Note", reading: "Discussion", notes: "Note discussion" };
+ const names = { editor: "Note", reading: "Discussion" };
  const leaf = panel => ({ panel });
  const split = (axis, a, b, ratio = .5) => ({ axis, ratio, children: [a, b] });
  const panels = tree => tree ? tree.panel ? [tree.panel] : tree.children.flatMap(panels) : [];
- const completePanels = ids => [2, 3].includes(ids.length) && new Set(ids).size === ids.length && ids.includes("reading") && ids.includes("editor");
+ const completePanels = ids => ids.length === 2 && new Set(ids).size === 2 && ids.includes("reading") && ids.includes("editor");
  const without = (tree, id) => {
   if (!tree || tree.panel === id) return null;
   if (tree.panel) return tree;
@@ -33,11 +33,10 @@
   readingLayoutRemove: without,
   readingLayoutInsert: insert,
   readingLayoutPreset(name) {
-   return name === "unified" ? split("x", leaf("editor"), leaf("reading"), .58)
-    : name === "columns" ? split("x", leaf("reading"), split("x", leaf("editor"), leaf("notes"), .6), .28)
-    : split("x", leaf("editor"), split("y", leaf("reading"), leaf("notes")), .52);
+   return split("x", leaf("editor"), leaf("reading"), .58);
   },
   async openNoteOutHome(win, options = {}) {
+   if (options.note) await this.loadMarkdownNoteItems([options.note]);
    const workspaceNote = options.note && this.markdownNoteData(options.note);
    if (workspaceNote?.workspace) {
     const existing = [...this._readingLayouts.values()].find(layout => layout.note.libraryID === options.note.libraryID && layout.workspace?.id === workspaceNote.workspace.id);
@@ -105,12 +104,12 @@
    const parent = view.ctx.paperItem, documents = [this.noteDocumentRef(parent)];
    if (!note) {
     if (parent.loadChildItems) await parent.loadChildItems();
-    const children = await Zotero.Items.getAsync(parent.getNotes?.() || []);
+    const children = await this.loadMarkdownNoteItems(await Zotero.Items.getAsync(parent.getNotes?.() || []));
     note = children.find(item => this.markdownNoteData(item) && !this.markdownNoteData(item).workspace) || null;
     if (!note) {
      const search = new Zotero.Search(); search.libraryID = parent.libraryID;
      search.addCondition("itemType", "is", "note"); search.addCondition("tag", "is", "AbstractIn:Markdown");
-     const linked = await Zotero.Items.getAsync(await search.search());
+     const linked = await this.loadMarkdownNoteItems(await Zotero.Items.getAsync(await search.search()));
      note = linked.find(item => this.markdownNoteData(item)?.documents?.some(ref => ref.key === parent.key)) || null;
     }
    }
@@ -626,15 +625,13 @@
    return view?.ctx.attachmentItem?.id === reader.itemID && this.readerPanelNodeAlive(view.root) ? view : original.visibleReaderSelectionView.call(this, reader);
   },
   async mountLayoutNote(layout) {
-   const state = layout.noteState, editor = layout.surfaces.get("editor"), chat = layout.surfaces.get("notes");
-   state.dockHosts = { editor: editor.content, chat: chat.content }; state.disposed = false; state.forceClose = false; state.chatView = null;
-   editor.content.replaceChildren(); chat.content.replaceChildren();
+   const state = layout.noteState, editor = layout.surfaces.get("editor");
+   state.dockHosts = { editor: editor.content }; state.disposed = false; state.forceClose = false; state.chatView = null;
+   editor.content.replaceChildren();
    this._markdownNoteWindows.set(state.key, state);
    await this.mountMarkdownNote(editor.node.ownerDocument.defaultView, state, editor.content);
    this.integrateReadingNoteHeader(layout);
-   if (layout.noteDraft && state.chatView) {
-    state.chatView.input.value = layout.noteDraft.text; this.autoGrow(state.chatView.input);
-    state.chatView.input.dispatchEvent(new state.chatView.doc.defaultView.Event("input", { bubbles: true }));
+   if (layout.noteDraft) {
     state.input.setSelectionRange(layout.noteDraft.start, layout.noteDraft.end);
     delete layout.noteDraft;
    }
@@ -659,22 +656,10 @@
    if (view) { view.input.value = draft; this.autoGrow(view.input); layout.readingContext = view.ctx; layout.noteState.sourceView = view; }
   },
   async moveReadingNoteGroup(layout, groupID, target, edge = "right") {
-   if (["editor", "notes"].includes(target)) return;
-   const editor = layout.surfaces.get("editor"), notes = layout.surfaces.get("notes"), group = layout.groups.get(groupID);
-   if (!group?.host) throw new Error("The destination window is still opening.");
-   const source = layout.groups.get(editor.group);
-   const bundle = editor.group === notes.group ? without(source.tree, "reading") : split("x", leaf("editor"), leaf("notes"));
-   target ||= panels(group.tree).find(id => id === "reading");
-   layout.bundling = true;
-   try {
-    for (const id of ["editor", "notes"]) await this.moveReadingSurface(layout, id, groupID, target, edge, { single: true });
-    const remainder = without(without(group.tree, "editor"), "notes");
-    group.tree = insert(remainder, target, bundle || split("x", leaf("editor"), leaf("notes")), edge);
-    this.drawReadingLayout(layout);
-   } finally { layout.bundling = false; this.saveReadingDockLayout(layout); }
+   return this.moveReadingSurface(layout, "editor", groupID, target, edge, { single: true });
   },
   async moveReadingSurface(layout, id, groupID, target, edge = "right", { single = false } = {}) {
-   if (!single && ["editor", "notes"].includes(id) && !layout.surfaces.get("notes").node.hidden) return this.moveReadingNoteGroup(layout, groupID, target, edge);
+   if (!Object.hasOwn(names, id)) throw new Error("Unknown panel.");
    if (layout.moving) throw new Error("Wait for the previous panel move to finish.");
    const surface = layout.surfaces.get(id), source = layout.groups.get(surface.group), group = layout.groups.get(groupID);
    surface.destination._closeMenu?.();
@@ -704,10 +689,7 @@
   },
   async floatReadingSurface(layout, id, { tree = null, bounds = null } = {}) {
    const restoreRequested = !!tree;
-   if (["editor", "notes"].includes(id)) {
-    id = "editor";
-    tree ||= layout.surfaces.get("notes").node.hidden ? leaf("editor") : split("x", leaf("editor"), leaf("notes"), .6);
-   }
+   if (id === "editor") tree ||= leaf("editor");
    const groupID = this.chatSyncID();
    const group = { id: groupID, tree: null, pendingPanel: id, restoreTree: tree, restoreRequested, bounds }; layout.groups.set(groupID, group);
    try { group.win = layout.win.openDialog((this.resourceURI || "chrome://abstractin/content/") + "reading-window.xhtml", "abstractin-panel-" + groupID,
@@ -758,6 +740,7 @@
    win.addEventListener("unload", () => { win.removeEventListener("resize", resized); group.splitDisposers?.forEach(dispose => dispose()); }, { once: true });
   },
   async applyReadingLayoutPreset(layout, name) {
+   if (!["reading", "unified", "separate"].includes(name)) throw new Error("Unknown reading layout.");
    if (name === "reading") return this.toggleReadingNotes(layout, false);
    layout.notesHidden = false; this.updateReadingNoteToggle(layout);
    for (const id of Object.keys(names)) if (layout.surfaces.get(id).group !== "main") await this.moveReadingSurface(layout, id, "main");
@@ -784,7 +767,7 @@
     if (!show) {
      this.saveReadingDockLayoutSnapshot(layout);
      // Reuse the normal transfer path, retaining dirty notes and unsent drafts.
-     for (const id of ["editor", "notes"]) if (layout.surfaces.get(id).group !== "main") await this.moveReadingSurface(layout, id, "main");
+     for (const id of ["editor"]) if (layout.surfaces.get(id).group !== "main") await this.moveReadingSurface(layout, id, "main");
      for (const group of layout.groups.values()) group.tree = without(without(group.tree, "editor"), "notes");
      layout.notesHidden = true;
     } else {
@@ -796,7 +779,7 @@
      if (floating.length) {
       layout.restoring = true; layout.restoreMain = layout.groups.get("main").tree; layout.restoreRemaining = floating.length;
       // All panels need a temporary home until the floating documents mount.
-      layout.groups.get("main").tree = this.readingLayoutPreset("stacked");
+      layout.groups.get("main").tree = this.readingLayoutPreset("unified");
       for (const group of floating) await this.floatReadingSurface(layout, panels(group.tree)[0], { tree: group.tree, bounds: group.bounds });
      }
     }

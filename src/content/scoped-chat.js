@@ -12,14 +12,19 @@
  };
  Object.assign(AbstractIn, {
   async sharedChatScope(ctx) {
-   const state = ctx.noteState, layout = state?.readingLayout || this._readingLayoutReaders.get(ctx.attachmentItem?.id);
+   const state = ctx.noteState;
+   // An independent window keeps its original scope even when the same PDF
+   // is later opened in a different workspace or promoted from one document.
+   const layout = state?.readingLayout || (ctx.chatWindowID ? [...this._readingLayouts.values()].find(candidate =>
+    candidate.note.libraryID === ctx.paperItem.libraryID && (ctx.readingWorkspace ? candidate.workspace?.id === ctx.readingWorkspace.id : !candidate.workspace && candidate.documents.some(ref => ref.key === ctx.paperItem.key))) :
+    this._readingLayoutReaders.get(ctx.attachmentItem?.id));
    const workspace = ctx.readingWorkspace || state?.readingWorkspace || layout?.workspace || this.markdownNoteData(state?.note)?.workspace;
    const refs = layout?.documents || ctx.workspaceDocuments || state?.documents || (ctx.paperItem?.isRegularItem?.() ? [this.noteDocumentRef(ctx.paperItem)] : []);
    const libraryID = ctx.paperItem?.libraryID;
    const documents = refs.filter(ref => ref.libraryID === libraryID);
    const finder = new Zotero.Search(); finder.libraryID = libraryID;
    finder.addCondition("itemType", "is", "note"); finder.addCondition("tag", "is", "AbstractIn:Markdown");
-   const candidates = await Zotero.Items.getAsync(await finder.search());
+   const candidates = await this.loadMarkdownNoteItems(await Zotero.Items.getAsync(await finder.search()));
    if (state?.note && !candidates.some(note => note?.key === state.note.key)) candidates.push(state.note);
    const notes = [];
    for (const note of candidates) {
@@ -33,7 +38,7 @@
     if (!belongs) continue;
     notes.push({ note, data, state: active, title: active?.title?.value || data.title, documents: linked });
    }
-   return { libraryID, workspace, documents, notes, activeNote: state?.note?.key || layout?.note?.key || null };
+   return { libraryID, workspace, documents, notes, activeNote: ctx.activeNoteKey || state?.note?.key || layout?.note?.key || null };
   },
   sharedNoteSnapshot(entry) {
    entry.state?.input._composerEditor?.flush?.();
@@ -215,7 +220,7 @@
     if (!Array.isArray(operations) || !operations.length || operations.length > 4) results.push({ error: "Return 1 to 4 operations as a JSON array." });
     else for (const operation of operations) {
      if (cancelled()) return { cancelled: true, noteEdits: turn.edits };
-     progress({ status: operation.tool === "editNote" ? "updating the requested note" : "finding relevant document and note context", text: "" });
+     progress({ status: operation.tool === "editNote" ? "updating the requested note" : ["searchChats", "readChatTurn"].includes(operation.tool) ? "finding relevant saved discussion turns" : "finding relevant document and note context", text: "" });
      try { results.push({ tool: operation.tool, result: await this.sharedChatOperation(request.ctx, operation, turn) }); }
      catch (error) { results.push({ tool: operation.tool, error: error.message || String(error) }); }
     }
