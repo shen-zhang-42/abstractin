@@ -17,7 +17,7 @@ Use local **Codex, Claude Code, Gemini CLI, or Antigravity**, or connect an **AP
 
 ## Features at a glance
 
-This guide covers the features available in **v0.2.154**.
+This guide covers the features available in **v0.2.156**.
 
 | Feature | What it provides |
 |---|---|
@@ -44,16 +44,17 @@ Linked PDFs in Dropbox or another external folder use Zotero's resolved paths an
 
 ## Layouts, windows, and sources
 
-The single AbstractIn launcher offers four presets, illustrated with different colors for the native reader and plugin panels:
+The single AbstractIn launcher offers five presets, illustrated with different colors for the native reader and plugin panels:
 
 | Layout | Arrangement |
 |---|---|
+| **Read and write** (default) | Literature, note editor, and one shared chat for reading and writing. |
 | **Read literature** | Literature and reading discussion side by side; direct startup uses the same interface as switching back from four panels. |
 | **Four panels** | Literature, a full-height note, and vertically stacked reading and note discussions on the right. |
 | **Four columns** | Literature, reading discussion, note editor, and note discussion, from left to right. |
 | **Separate note window** | Literature and reading discussion remain in the main window; the note and its discussion float together. |
 
-Zotero's native reader stays in place. Drag the other panels, use **Move** to change their dock position, or move them into independent windows and combine them again. Dividers resize the panels. The note editor and its discussion are linked for showing, hiding, and detaching. **Hide notes / Show notes** restores their previous placement, sizes, and floating layout. Opening another native Zotero PDF window does not automatically relocate existing discussion or note panels.
+Zotero's native reader stays in place. The default layout has one chat that handles both literature and notes. Optional four-panel layouts retain separate conversation histories, with identical access and editing capabilities. Drag panels, use **Move** to change their dock position, or move them into independent windows. Dividers resize the panels. In dual-chat layouts the note editor and its discussion are linked for showing, hiding, and detaching. **Hide notes / Show notes** restores the previous placement, sizes, and floating layout. Opening another native Zotero PDF window does not automatically relocate existing panels.
 
 Panel headers share a gray style and icon commands; secondary actions collapse when space is limited. Global settings, layout, and source management sit above the workspace. The header follows the native reader toolbar's height and background, and sidebar width respects the space needed by the native reader.
 
@@ -65,7 +66,7 @@ Panel headers share a gray style and icon commands; secondary actions collapse w
 - **Storage:** multi-document notes and workspace reading records belong in the workspace collection. Each linked document's NoteOut entry can open the same note. Adding collection membership preserves other existing collection memberships.
 - **Multiple notes:** use **New note** after **Save** to create and name a note, and **Open note** to switch among notes in the current document or workspace. Each note retains its own text, draft, and discussion history.
 
-Sources must be editable documents with readable PDFs in the same library. Source titles identify scope rather than supplying evidence; adding documents does not mean the model has read all of them. Reading and note discussion histories remain separate. Content crosses between them only when explicitly quoted or supplied.
+Sources must be editable documents with readable PDFs in the same library. Source titles identify scope rather than supplying evidence; adding documents does not mean the model has read all of them. Existing conversation histories remain separate and are shared only through explicit quotation. Associated note bodies are available to every chat through on-demand retrieval.
 
 ## Reading and asking questions
 
@@ -227,15 +228,15 @@ C \arrow[r, "k"'] & D
 
 Leaving the block compiles its diagram; **Edit source** returns to editing. The engine and fonts ship locally, and unchanged diagrams reuse cached results. Errors and timeouts preserve the source with a visible message. Formula rendering inside table cells is not currently supported.
 
-### Discussing, quoting, and proposing edits
+### Shared chat, on-demand context, and note editing
 
-Note discussion uses the existing model settings and the same composer style as reading discussion. Choose **Answer questions** or **Edit note**, with either the full note or **Use editor selection only** as context. Sending captures that version of the note; later edits do not change previously submitted context.
+Every chat can search the current document/workspace's literature and all associated NoteOut notes. The initial prompt contains only source identities and a note index, rather than every note's full text. The assistant matches keywords locally and reads relevant passages or Markdown ranges only when needed. Explicit editor selections can accompany a question. Other documents, workspaces, libraries, and trashed notes are excluded; histories are not automatically combined.
 
 **Quick questions** and **Quote** sit at the upper left of the composer. Note questions offer summarizing, explaining the reasoning, and suggesting improvements. Quote can select saved answers from this note or explicitly browse results from linked reading discussion. Review the excerpt before inserting it; nothing is sent automatically and the two histories remain separate.
 
-**Edit note** produces a preview: **Apply edit** applies and saves it, while **Discard** rejects it. If the note changed during generation, an outdated proposal cannot overwrite it. **More → Append last answer** adds the latest answer to the note. Where available, **Use in document discussion** fills the reading composer with selected text or the full note for review before sending.
+Ask a question to receive an answer, or explicitly ask to change a named note to have it edited and saved. There is no Answer/Edit mode button. The assistant must read the target first; exact text, version, and scope checks prevent stale changes from overwriting newer edits. Each applied change keeps a local `edit-before-*.json` source backup in that note's directory. Plain explanation or improvement suggestions do not authorize changing the note. **More → Append last answer** remains available, and old saved edit proposals remain reviewable.
 
-Each note's discussion is stored in its local working directory and does not currently synchronize across devices with the note body. Models can discuss supplied note text and quoted passages; linked document titles do not establish access to their full text.
+Existing per-note discussions remain in their local working directories and do not currently synchronize across devices with the note body. All chats can request bounded document text and PDF images through the same plugin protocol, including API agents. Papers have no fixed lookup quota; a book's quota is its physical PDF page count divided by 100, rounded up, per user turn. Context only still disables retrieval and editing.
 
 ### Independent note management and deletion
 
@@ -326,7 +327,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-These feature descriptions cover **v0.2.154**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+These feature descriptions cover **v0.2.156**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

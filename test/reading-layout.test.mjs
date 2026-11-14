@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { loadPlugin } from './load-plugin.mjs';
 
-async function setup({ initialPreset = null } = {}) {
+async function setup({ initialPreset = 'stacked' } = {}) {
  const env = loadPlugin(), { plugin: p, window: win, document: doc } = env;
  win.focus = () => {};
  const files = new Map(), items = new Map(), collections = new Map(); let next = 10;
@@ -55,6 +55,33 @@ async function setup({ initialPreset = null } = {}) {
  const dispose = () => { if (layout) p.disposeReadingLayout(layout); win.close(); };
  return { ...env, p, win, doc, layout, files, items, collections, Item, Collection, a, b, reader, panel, dispose };
 }
+
+test('the default layout has one shared discussion and restores it after hiding notes', async () => {
+ const {p,layout,dispose}=await setup({initialPreset:null});
+ assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)],['editor','reading']);
+ assert.equal(layout.surfaces.get('notes').node.hidden,true);
+ assert.equal(p.READING_LAYOUTS[0].id,'unified');
+ await p.toggleReadingNotes(layout,false); await p.toggleReadingNotes(layout,true);
+ assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)],['editor','reading']);
+ assert.equal(layout.surfaces.get('notes').node.hidden,true);
+ assert.equal(layout.surfaces.get('reading').label.textContent,'Discussion');
+ p.saveReadingDockLayout(layout);
+ assert.deepEqual([...p.readingLayoutPanels(p.getJSONPref('readingDockLayout',null))],['editor','reading']);
+ assert.equal(p.getJSONPref('readingDockGroups',null).flatMap(group=>p.readingLayoutPanels(group.tree)).length,2);
+ dispose();
+});
+
+test('moving the default note into a window does not open a second chat',async()=>{
+ const {p,layout,dispose}=await setup({initialPreset:null});
+ const floating=new JSDOM('<main id="float"></main>',{url:'http://localhost/'});
+ layout.groups.set('float',{id:'float',win:floating.window,host:floating.window.document.getElementById('float'),tree:null});
+ await p.moveReadingSurface(layout,'editor','float');
+ assert.equal(layout.surfaces.get('editor').group,'float');assert.equal(layout.surfaces.get('reading').group,'main');
+ assert.equal(layout.surfaces.get('notes').node.hidden,true);
+ assert.equal(p.getJSONPref('readingDockGroups',[]).flatMap(group=>p.readingLayoutPanels(group.tree)).length,2);
+ await p.moveReadingSurface(layout,'editor','main');assert.equal(layout.surfaces.get('notes').node.hidden,true);
+ dispose();floating.window.close();
+});
 
 test('opening two panels directly matches switching from four panels to reading-only', async () => {
  const direct = await setup({ initialPreset: 'reading' });
@@ -330,10 +357,8 @@ test('panel actions share their title row and settings appear only in the global
   assert.equal(root.querySelector('.abstractin-context').children.length,0);
   assert.ok(root.querySelector('.abstractin-composer .abstractin-model-btn'));
  }
- const select=layout.noteState.assistantMode;
- select.parentElement.querySelector('.abstractin-panel-choice').click();
- const edit=[...doc.querySelectorAll('.abstractin-panel-choice-menu button')].find(button=>button.textContent==='Edit note');
- edit.click();assert.equal(select.value,'edit');assert.equal(doc.querySelector('.abstractin-panel-choice-menu'),null);
+ assert.equal(layout.noteState.assistantMode,undefined);
+ assert.equal(doc.querySelector('[aria-label="Note assistant action"]'),null);
  dispose();
 });
 

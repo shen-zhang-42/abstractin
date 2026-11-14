@@ -162,35 +162,56 @@ test('serialized saves keep the latest text and recover after a failed Zotero sa
  state.disposeEditor(); window.close();
 });
 
-test('note discussion sends an immutable note snapshot through the existing model transport', async () => {
+test('note discussion does not preload the full note or save hidden snapshots in history', async () => {
  const { p, window, note, state } = await setup(); await p.mountMarkdownNote(window, state);
  const dir = join(state.dir, 'discussion'); await mkdir(dir, { recursive: true });
  const ctx = p.registerChatContext({ dir, paperItem: note, attachmentItem: null, noteWorkspace: true, noteState: state });
- state.input.value = 'Version at send'; state.contextScope = { value: 'full' };
+ state.input.value = 'Version at send';
  let release; p.assertAgentReadingReady = () => new Promise(resolve => { release = resolve; });
  const progress = []; const pending = { backend: 'codex', model: 'fixture', effort: 'low', progress: e => progress.push(e), cancelled: false };
  p.runBackend = async (backend, request) => {
   assert.equal(backend, 'codex'); assert.equal(request.summaryOnly, true); assert.equal(request.files && Object.keys(request.files).length, 0);
-  assert.match(request.question, /Version at send/); assert.doesNotMatch(request.question, /Version after send/);
+  assert.equal(request.commonChat, true); assert.doesNotMatch(request.question, /Version at send|Version after send/);
   request.onProgress({ text: 'Streaming reply' }); return { text: 'Final reply', sessionId: 'note-session' };
  };
  const task = p.ask(ctx, 'Explain the note', pending); state.input.value = 'Version after send'; release();
  const result = await task; assert.equal(result.text, 'Final reply'); assert.equal(progress[0].text, 'Streaming reply');
- const history = await p.loadHistory(dir); assert.equal(history[0].noteSnapshot.markdown, 'Version at send'); assert.equal(history[1].text, 'Final reply');
+ const history = await p.loadHistory(dir); assert.equal(history[0].noteSnapshot, undefined); assert.equal(history[1].text, 'Final reply');
  assert.equal(p.markdownNoteData(note).markdown, '# Heading\n\n$x^2$\n\n**Important**');
  state.disposeEditor(); window.close();
 });
 
-test('selection-only context excludes the rest of the note and reports empty selections', async () => {
+test('explicit editor selections provide focused context without preloading the rest', async () => {
  const { p, window, note, state } = await setup(); await p.mountMarkdownNote(window, state);
- state.input.value = 'PRIVATE selected OTHER'; state.input.setSelectionRange(8, 16); state.contextScope = { value: 'selection' };
+ state.input.value = 'PRIVATE selected OTHER'; state.input.setSelectionRange(8, 16);
  const dir = join(state.dir, 'discussion'); await mkdir(dir, { recursive: true });
  const ctx = p.registerChatContext({ dir, paperItem: note, noteWorkspace: true, noteState: state });
  p.runBackend = async (_, request) => { assert.match(request.question, /selected/); assert.doesNotMatch(request.question, /PRIVATE|OTHER/); return { text: 'A reply' }; };
  const pending = { backend: 'codex', model: 'fixture', progress() {}, cancelled: false };
  assert.equal((await p.ask(ctx, 'Q', pending)).text, 'A reply');
- state.input.setSelectionRange(0, 0); assert.match((await p.ask(ctx, 'Q', pending)).error, /Select text/);
+ state.input.setSelectionRange(0, 0);
+ p.runBackend = async (_, request) => { assert.equal(request.question, 'Q'); return { text: 'Answer without preloaded text' }; };
+ assert.equal((await p.ask(ctx, 'Q', pending)).text, 'Answer without preloaded text');
  state.disposeEditor(); window.close();
+});
+
+test('a plain instruction edits the open note through shared tools, saves it, and records the change',async()=>{
+ const {p,window,state,note}=await setup();await p.mountMarkdownNote(window,state);
+ state.input.value='Original sentence. Preserve this.';state.input.setSelectionRange(0,0);
+ let calls=0;
+ const operation=op=>({text:'<abstractin-tools>'+JSON.stringify({operations:[op]})+'</abstractin-tools>'});
+ p.runCodex=async request=>{
+  if(++calls===1){assert.doesNotMatch(request.question,/Original sentence/);return operation({tool:'readNote',noteKey:note.key});}
+  const rows=JSON.parse(request.question.match(/<shared-tool-results>([\s\S]*?)<\/shared-tool-results>/)[1]);
+  if(calls===2)return operation({tool:'editNote',noteKey:note.key,version:rows[0].result.version,edits:[{oldText:'Original sentence.',newText:'Improved sentence.'}]});
+  assert.equal(rows[0].result.saved,true);return {text:'Updated the requested sentence.'};
+ };
+ const pending={backend:'codex',model:'fixture',progress(){},cancelled:false};p._pending.set(state.chatView.ctx.dir,pending);
+ const result=await p.ask(state.chatView.ctx,'Improve the first sentence in my note.',pending);
+ assert.equal(result.error,undefined);assert.equal(calls,3);assert.equal(state.input.value,'Improved sentence. Preserve this.');
+ assert.equal(p.markdownNoteData(note).markdown,state.input.value);
+ const history=await p.loadHistory(state.chatView.ctx.dir);assert.equal(history.length,2);assert.equal(history[1].noteEdits[0].before,'Original sentence. Preserve this.');
+ assert.equal(state.assistantMode,undefined);state.dispose();window.close();
 });
 
 test('ordinary native notes are not silently converted and a document can own multiple editable notes', async () => {
@@ -296,7 +317,7 @@ test('changing one-document notes to shared notes and back moves the source and 
  const { p, window, note, state, parent, items } = await setup();
  const second = new window.Zotero.Item('book'); second.title = 'Another document'; await second.saveTx();
  await p.mountMarkdownNote(window, state);
- assert.equal(state.chatHost.hidden, false); assert.ok(state.chatView); assert.equal(state.assistantMode.value, 'answer');
+ assert.equal(state.chatHost.hidden, false); assert.ok(state.chatView); assert.equal(state.assistantMode, undefined);
  state.documents = [parent, second].map(item => p.noteDocumentRef(item)); state.revision++; await state.flush();
  assert.equal(!!note.parentID, false); assert.equal(p.markdownNoteData(note).documents.length, 2);
  const count = items.size;
@@ -323,26 +344,21 @@ test('opening NoteOut from either linked document finds the same shared note', a
  home.active.disposeEditor(); window.close();
 });
 
-test('edit mode previews a scoped change and applies it only to the unchanged source snapshot', async () => {
+test('previously saved edit proposals can still apply a scoped change', async () => {
  const { p, window, state } = await setup(); await p.mountMarkdownNote(window, state);
- state.input.value = 'Before selected after'; state.input.setSelectionRange(7, 15); state.contextScope.value = 'selection'; state.assistantMode.value = 'edit';
- p.runBackend = async (_, request) => { assert.match(request.question, /complete replacement Markdown/); assert.match(request.question, /selected/); assert.doesNotMatch(request.question, /Before selected after/); return { text: JSON.stringify({ explanation: 'Improved wording', markdown: '**replacement**' }) }; };
- const pending = { backend: 'codex', model: 'fixture', progress() {}, cancelled: false };
- const answer = await p.ask(state.chatView.ctx, 'Improve this selection', pending); assert.ok(!answer.error);
+ state.input.value = 'Before selected after';
+ p.showNoteEditProposal(state, { explanation: 'Improved wording', markdown: '**replacement**', baseMarkdown: state.input.value, baseTitle: state.title.value, scope: 'selection', start: 7, end: 15, id: 'legacy-selection' });
  assert.equal(state.input.value, 'Before selected after'); assert.match(state.proposalHost.textContent, /Improved wording/);
  await state.proposalHost.querySelector('button').onclick();
  assert.equal(state.input.value, 'Before **replacement** after'); assert.equal(p.markdownNoteData(state.note).markdown, state.input.value);
  state.disposeEditor(); window.close();
 });
 
-test('stale and malformed model edits cannot overwrite a newer note', async () => {
- const { p, window, state } = await setup(); await p.mountMarkdownNote(window, state); state.assistantMode.value = 'edit';
- const pending = { backend: 'codex', model: 'fixture', progress() {}, cancelled: false };
- p.runBackend = async () => ({ text: '{"explanation":"Rewrite","markdown":"Replacement"}' });
- await p.ask(state.chatView.ctx, 'Rewrite', pending); state.input.value = 'Newer manual version';
+test('legacy edit proposals cannot overwrite newer manual changes', async () => {
+ const { p, window, state } = await setup(); await p.mountMarkdownNote(window, state);
+ p.showNoteEditProposal(state, { explanation: 'Rewrite', markdown: 'Replacement', baseMarkdown: state.input.value, baseTitle: state.title.value, scope: 'full', id: 'legacy-full' });
+ state.input.value = 'Newer manual version';
  await state.proposalHost.querySelector('button').onclick(); assert.equal(state.input.value, 'Newer manual version'); assert.match(state.proposalHost.textContent, /note has changed/);
- p.runBackend = async () => ({ text: 'Invalid edit' });
- assert.match((await p.ask(state.chatView.ctx, 'Retry', pending)).error, /invalid edit proposal/); assert.equal(state.input.value, 'Newer manual version');
  state.disposeEditor(); window.close();
 });
 

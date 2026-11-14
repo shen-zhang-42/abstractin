@@ -5,10 +5,11 @@
 (() => {
  const original = {};
  for (const name of ["openReaderPanel", "releaseReaderPanelView", "openNoteOutHome", "closeMarkdownNoteWindows", "runBackend", "refreshSyncedDiscussionIndex", "refreshDiscussionChapters", "hydrateChatHistory", "saveChatNotes", "noteDocumentKey", "appendHistory", "noteStorageViews", "visibleReaderSelectionView", "activateReading", "saveReadingRecord"]) original[name] = AbstractIn[name];
- const names = { editor: "Note", reading: "Reading discussion", notes: "Note discussion" };
+ const names = { editor: "Note", reading: "Discussion", notes: "Note discussion" };
  const leaf = panel => ({ panel });
  const split = (axis, a, b, ratio = .5) => ({ axis, ratio, children: [a, b] });
  const panels = tree => tree ? tree.panel ? [tree.panel] : tree.children.flatMap(panels) : [];
+ const completePanels = ids => [2, 3].includes(ids.length) && new Set(ids).size === ids.length && ids.includes("reading") && ids.includes("editor");
  const without = (tree, id) => {
   if (!tree || tree.panel === id) return null;
   if (tree.panel) return tree;
@@ -32,7 +33,8 @@
   readingLayoutRemove: without,
   readingLayoutInsert: insert,
   readingLayoutPreset(name) {
-   return name === "columns" ? split("x", leaf("reading"), split("x", leaf("editor"), leaf("notes"), .6), .28)
+   return name === "unified" ? split("x", leaf("editor"), leaf("reading"), .58)
+    : name === "columns" ? split("x", leaf("reading"), split("x", leaf("editor"), leaf("notes"), .6), .28)
     : split("x", leaf("editor"), split("y", leaf("reading"), leaf("notes")), .52);
   },
   async openNoteOutHome(win, options = {}) {
@@ -141,7 +143,7 @@
    const source = this.iconButton(doc, "abstractin-layout-add-source", "Manage sources", "sourceManage", () => this.showReadingSources(layout));
    const chooser = this.iconButton(doc, "abstractin-layout-choose", "Layout", "patternGrid", () => this.openReadingLayoutMenu(layout.win, chooser, { layout }));
    chooser.setAttribute("aria-haspopup", "menu");
-   const reset = this.iconButton(doc, "abstractin-layout-reset", "Reset layout", "retry", () => this.applyReadingLayoutPreset(layout, "stacked").catch(error => this.layoutError(layout, error)));
+   const reset = this.iconButton(doc, "abstractin-layout-reset", "Reset layout", "retry", () => this.applyReadingLayoutPreset(layout, "unified").catch(error => this.layoutError(layout, error)));
    const exit = this.iconButton(doc, "abstractin-layout-toggle-notes", "Hide notes", "notesHide", () => this.toggleReadingNotes(layout).catch(error => this.layoutError(layout, error)));
    toolbar.append(title, separator, sources, source, chooser, reset, exit, this.iconButton(doc, "abstractin-global-settings", "Plugin settings", "settings", () => this.openSettings()));
    const status = this.el(doc, "div", "abstractin-layout-status"); status.setAttribute("role", "status");
@@ -149,13 +151,14 @@
    entry.body.append(shell); Object.assign(layout, { shell, toolbar, title, sources, status, noteToggle: exit });
    this.updateReadingNoteToggle(layout);
    layout.showSources = () => { layout.win.focus(); return this.showReadingSources(layout); };
-   const saved = this.getJSONPref("readingDockLayout", null);
+   const initialized = !!this.getPref("sharedChatLayoutInitialized");
+   const saved = initialized ? this.getJSONPref("readingDockLayout", null) : null;
+   this.setPref("sharedChatLayoutInitialized", true);
    const valid = tree => tree && (tree.panel ? Object.hasOwn(names, tree.panel) : ["x", "y"].includes(tree.axis) && tree.children?.length === 2 && tree.children.every(valid));
-   const tree = valid(saved) && new Set(panels(saved)).size === 3 && panels(saved).length === 3 ? saved : this.readingLayoutPreset("stacked");
-   const savedGroups = this.getJSONPref("readingDockGroups", null);
+   const tree = valid(saved) && new Set(panels(saved)).size === panels(saved).length && panels(saved).includes("reading") && panels(saved).includes("editor") ? saved : this.readingLayoutPreset("unified");
+   const savedGroups = initialized ? this.getJSONPref("readingDockGroups", null) : null;
    const restoreGroups = restore && Array.isArray(savedGroups) && savedGroups.every(group => !group.tree || valid(group.tree)) &&
-    savedGroups.filter(group => group.main).length === 1 && savedGroups.flatMap(group => panels(group.tree)).length === 3 &&
-    new Set(savedGroups.flatMap(group => panels(group.tree))).size === 3 ? savedGroups : null;
+    savedGroups.filter(group => group.main).length === 1 && completePanels(savedGroups.flatMap(group => panels(group.tree))) ? savedGroups : null;
    layout.groups.set("main", { id: "main", win: layout.win, host, tree });
    for (const id of Object.keys(names)) this.createReadingSurface(layout, id, layout.groups.get("main"));
    const reading = layout.surfaces.get("reading"); reading.content.append(entry.root); reading.root = entry.root;
@@ -322,6 +325,8 @@
   },
   clearReadingDropHints(layout) { for (const surface of layout.surfaces.values()) delete surface.node.dataset.dropEdge; },
   drawReadingLayout(layout) {
+   const visible = new Set([...layout.groups.values()].flatMap(group => panels(group.tree)));
+   for (const surface of layout.surfaces.values()) surface.node.hidden = !visible.has(surface.id);
    for (const group of layout.groups.values()) {
     if (!group.host) continue;
     if (group.id !== "main") group.win.document.title = "AbstractIn — " + panels(group.tree).map(id => names[id]).join(" + ");
@@ -384,10 +389,10 @@
   saveReadingDockLayout(layout) {
    if (layout.restoring || layout.disposed || layout.bundling || layout.notesHidden || layout.togglingNotes) return;
    const main = layout.groups.get("main");
-   if (panels(main.tree).length === 3) this.setPref("readingDockLayout", JSON.stringify(main.tree));
+   if (completePanels(panels(main.tree))) this.setPref("readingDockLayout", JSON.stringify(main.tree));
    const groups = [...layout.groups.values()].filter(group => group.id === "main" || group.tree).map(group => ({ main: group.id === "main", tree: group.tree,
     bounds: group.win ? { width: group.win.outerWidth, height: group.win.outerHeight, left: group.win.screenX, top: group.win.screenY } : null }));
-   if (groups.flatMap(group => panels(group.tree)).length === 3) this.setPref("readingDockGroups", JSON.stringify(groups));
+   if (completePanels(groups.flatMap(group => panels(group.tree)))) this.setPref("readingDockGroups", JSON.stringify(groups));
   },
   showReadingSources(layout, added = []) {
    if (layout.sourceDialog?.isConnected) { layout.sourceDialog.querySelector("input").focus(); return; }
@@ -600,7 +605,7 @@
   runBackend(backend, request) {
    const ctx = request.ctx, state = ctx?.noteState;
    const documents = ctx?.workspaceDocuments || state?.readingLayout?.documents;
-   if (documents?.length) request = { ...request, question: request.question + "\n\n<reading-scope>" + JSON.stringify({
+   if (documents?.length && !request.commonChat) request = { ...request, question: request.question + "\n\n<reading-scope>" + JSON.stringify({
     documents, activeDocument: ctx.noteWorkspace ? null : ctx.paperItem.key,
     instruction: "These documents are the shared reading and note sources. Titles are not source evidence. Only the active document's supplied excerpts have been read; do not claim access to the other documents without retrieving their evidence. Reading and note conversations are separate; no other conversation history is automatically included."
    }) + "</reading-scope>" };
@@ -669,7 +674,7 @@
    } finally { layout.bundling = false; this.saveReadingDockLayout(layout); }
   },
   async moveReadingSurface(layout, id, groupID, target, edge = "right", { single = false } = {}) {
-   if (!single && ["editor", "notes"].includes(id)) return this.moveReadingNoteGroup(layout, groupID, target, edge);
+   if (!single && ["editor", "notes"].includes(id) && !layout.surfaces.get("notes").node.hidden) return this.moveReadingNoteGroup(layout, groupID, target, edge);
    if (layout.moving) throw new Error("Wait for the previous panel move to finish.");
    const surface = layout.surfaces.get(id), source = layout.groups.get(surface.group), group = layout.groups.get(groupID);
    surface.destination._closeMenu?.();
@@ -701,7 +706,7 @@
    const restoreRequested = !!tree;
    if (["editor", "notes"].includes(id)) {
     id = "editor";
-    tree ||= split("x", leaf("editor"), leaf("notes"), .6);
+    tree ||= layout.surfaces.get("notes").node.hidden ? leaf("editor") : split("x", leaf("editor"), leaf("notes"), .6);
    }
    const groupID = this.chatSyncID();
    const group = { id: groupID, tree: null, pendingPanel: id, restoreTree: tree, restoreRequested, bounds }; layout.groups.set(groupID, group);
@@ -786,7 +791,7 @@
      const snapshot = layout.hiddenNoteLayout;
      for (const id of Object.keys(names)) if (layout.surfaces.get(id).group !== "main") await this.moveReadingSurface(layout, id, "main");
      layout.notesHidden = false;
-     layout.groups.get("main").tree = snapshot?.groups.find(group => group.main)?.tree || this.readingLayoutPreset("stacked");
+     layout.groups.get("main").tree = snapshot?.groups.find(group => group.main)?.tree || this.readingLayoutPreset("unified");
      const floating = snapshot?.groups.filter(group => !group.main && group.tree) || [];
      if (floating.length) {
       layout.restoring = true; layout.restoreMain = layout.groups.get("main").tree; layout.restoreRemaining = floating.length;

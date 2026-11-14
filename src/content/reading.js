@@ -71,8 +71,8 @@ Object.assign(AbstractIn, {
 	},
 
 	readingRetrievalInstruction(ctx) {
-		const used = ctx.reading.sourceLookupAttempts || 0, limit = this.readingRetrievalLimit(ctx);
-		if (limit !== null) return "Additional retrieval rounds used: " + used + "/" + limit + ". This book's limit is one round per 100 physical PDF pages, rounded up (" + ctx.reading.pdfSource.totalPages + " pages). When the limit is reached, explain precisely what evidence remains missing; do not claim the book omits it.";
+		const used = (ctx.reading.sourceLookupAttempts || 0) + (this._pending.get(ctx.dir)?.sharedChatTurn?.documentSearches.get(ctx.paperItem.key) || 0), limit = this.readingRetrievalLimit(ctx);
+		if (limit !== null) return "Additional retrieval rounds used: " + used + "/" + limit + ". This book's limit is one round per 100 physical PDF pages, rounded up. When the limit is reached, explain precisely what evidence remains missing; do not claim the book omits it.";
 		return "Additional retrieval rounds used: " + used + ". " + (ctx.reading.type === "paper" ? "Papers have no fixed retrieval-count limit. " : "The book's page count is unverified, so a proportional retrieval limit cannot yet be applied. ") + "Continue targeted local text searches when evidence is needed, read only relevant passages, and stop once the question is adequately answered or the evidence cannot be located. The user may stop at any time.";
 	},
 
@@ -718,7 +718,7 @@ Object.assign(AbstractIn, {
 
 	readingVisibleText(text) {
 		text = String(text);
-		for (let marker of ["<abstractin-record>", "<abstractin-workspace>", "<abstractin-source-needed>", "<abstractin-guide>"]) {
+		for (let marker of ["<abstractin-record>", "<abstractin-workspace>", "<abstractin-source-needed>", "<abstractin-guide>", "<abstractin-tools>"]) {
 			let index = text.indexOf(marker);
 			if (index >= 0) text = text.slice(0, index);
 			for (let length = marker.length - 1; length > 0; length--) {

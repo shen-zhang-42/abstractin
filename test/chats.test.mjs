@@ -48,11 +48,13 @@ async function setup(type = "book") {
  const root = body.querySelector(".abstractin-root"), view = { doc: document, root, ctx, input: root.querySelector(".abstractin-input"), logEl: root.querySelector(".abstractin-log") };
  p._views.set(root, view); p.renderMessages(view, []);
  const requests = []; let threads = 0;
+ const showPending = p.showPending.bind(p);
+ p.showPending = (...args) => { p._testPendingRender = showPending(...args); return p._testPendingRender; };
  p.runBackend = async (_, request) => { requests.push(request); return { text: "Answer: " + request.question.split("\n")[0], sessionId: request.session?.id || "thread-" + ++threads }; };
  async function send(question, options = {}) {
   await p.startRequest(view, question, [], [], options);
   const pending = p._pending.get(view.ctx.dir); if (pending) assert.equal((await pending.promise).error,undefined);
-  await new Promise(resolve => setTimeout(resolve, 20));
+  await p._testPendingRender;
  }
  return { ...env, p, ctx, view, dir, notes, parent, attachment, toc, requests, send, setLocation: value => { location = value; } };
 }
@@ -272,8 +274,8 @@ test('source mode finds unnumbered concepts beyond the current pages', async () 
 test('source mode lets the model reformulate a query and request further pages', async () => {
  const { p, send, window, view } = await setup();
  p.setPref('readingEvidenceMode', 'source');
- window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 15, extractedPages: 15,
-  text: Array.from({ length: 15 }, (_, i) => i === 13 ? 'Compactness: every open cover has a finite subcover.' : i === 14 ? 'A necessary qualification to the preceding argument.' : 'Unrelated page ' + i).join('\f') }) };
+ window.Zotero.PDFWorker = { getFullText: async () => ({ totalPages: 115, extractedPages: 115,
+  text: Array.from({ length: 115 }, (_, i) => i === 13 ? 'Compactness: every open cover has a finite subcover.' : i === 14 ? 'A necessary qualification to the preceding argument.' : 'Unrelated page ' + i).join('\f') }) };
  let calls = 0;
  p.runBackend = async (_, request) => {
   calls++;
@@ -764,7 +766,7 @@ test("papers keep a topic discussion across pages and long chats require a user 
  p.renderMessages(view, history); assert.ok(view.root.querySelector(".abstractin-discussion-budget")); assert.equal(view.ctx.discussion.id, id);
  p.chooseDiscussionTransfer(view, history); const checks = view.root.querySelectorAll(".abstractin-discussion-transfer input");
  assert.ok([...checks].every(c => !c.checked)); checks[1].checked = true;
- view.root.querySelector(".abstractin-discussion-transfer button").click(); await new Promise(r => setTimeout(r, 50));
+ await view.root.querySelector(".abstractin-discussion-transfer button").onclick();
  assert.notEqual(view.ctx.discussion.id, id); const copied = await p.loadHistory(view.ctx.dir);
  assert.equal(copied.length, 1); assert.equal(copied[0].text, "Keep this result"); assert.equal(copied[0].carriedFrom, id);
  assert.equal(Object.keys(await p.loadSessions(view.ctx.dir)).length, 0);
@@ -1648,7 +1650,7 @@ test('an explicitly chosen chapter is reused for unmapped selections and local f
  const first=p.startRequest(view,'Explain this page',[],[],{selection});
  for(let i=0;i<60 && !view.root.querySelector('.abstractin-chapter-choice');i++)await new Promise(resolve=>setTimeout(resolve,5));
  const choice=[...view.root.querySelectorAll('.abstractin-chapter-choice button')].find(button=>button.textContent.includes('2 Continuity'));
- assert.ok(choice);choice.click();await first;const pending=p._pending.get(view.ctx.dir);if(pending)await pending.promise;
+ assert.ok(choice);choice.click();await first;const pending=p._pending.get(view.ctx.dir);if(pending)await pending.promise;await p._testPendingRender;
  const chatID=view.ctx.discussion.id,thread=(await p.loadSessions(view.ctx.dir)).codex.id;
  assert.equal(view.ctx.discussion.chapterID,'ch-02');
  p.chooseDiscussionChapter=async()=>{throw new Error('The chapter must not be requested again');};

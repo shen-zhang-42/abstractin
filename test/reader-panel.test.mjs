@@ -24,6 +24,12 @@ function setup({ detached = false } = {}) {
 	win.Zotero.Items = { get: id => items.get(id) };
 	win.Zotero.Reader = { getByTabID: id => id === a.tabID ? a : id === b.tabID ? b : null };
 	p.checkInstalledBackends = async () => {};
+	// These fixtures model native panel placement, without Zotero items/notes.
+	// Full workspace startup and presets are covered in reading-layout.test.mjs.
+	p.startReadingLayout = async (window, preset, reader = null) => {
+		assert.equal(preset, 'reading');
+		await p.openReaderPanel(reader || window.Zotero.Reader.getByTabID(window.Zotero_Tabs.selectedID));
+	};
 	p.renderContent = async (doc, body, item) => {
 		let root = body.querySelector(".abstractin-root");
 		p._views.set(root, { doc, root, ctx: { dir: "reading-" + item.id, attachmentItem: item }, input: root.querySelector(".abstractin-input") });

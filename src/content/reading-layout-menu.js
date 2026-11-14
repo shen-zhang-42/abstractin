@@ -4,6 +4,7 @@
  Object.assign(AbstractIn, {
   _readingLayoutMenus: new Map(), _pendingReadingLayouts: new Map(),
   READING_LAYOUTS: [
+   { id: "unified", title: "Read and write", description: "Reader, note and one shared discussion (default)", boxes: [[0,0,62,66,"PDF",true],[66,0,60,66,"Note"],[130,0,46,66,"Chat"]] },
    { id: "reading", title: "Read literature", description: "Native reader and reading discussion", boxes: [[0,0,96,66,"PDF",true],[100,0,76,66,"Read"]] },
    { id: "stacked", title: "Four panels", description: "Full-height note, discussions stacked", boxes: [[0,0,65,66,"PDF",true],[69,0,52,66,"Note"],[125,0,51,31,"Read"],[125,35,51,31,"Chat"]] },
    { id: "columns", title: "Four columns", description: "Reader, reading discussion, note and note discussion", boxes: [[0,0,56,66,"PDF",true],[60,0,35,66,"Read"],[99,0,43,66,"Note"],[146,0,30,66,"Chat"]] },
@@ -55,7 +56,7 @@
    Object.assign(menu.style, { width: width + "px", left: Math.max(12, Math.min(rect.right - width, win.innerWidth - width - 12)) + "px", top: Math.max(8, Math.min(rect.bottom + 5, win.innerHeight - menu.offsetHeight - 12)) + "px" });
    anchor.setAttribute("aria-expanded", "true"); this._readingLayoutMenus.set(win, { anchor, close });
    doc.addEventListener("mousedown", outside, true); doc.addEventListener("keydown", keyboard, true); win.addEventListener("unload", close, { once: true });
-   menu.querySelector('button[data-layout="reading"]').focus();
+   menu.querySelector('button[data-layout="unified"]').focus();
   },
   async startReadingLayout(win, preset, reader = null) {
    if (!this.READING_LAYOUTS.some(value => value.id === preset)) throw new Error("Unknown reading layout.");
