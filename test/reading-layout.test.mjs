@@ -106,6 +106,14 @@ test('a cold layout becomes visible without waiting for a resumed answer to fini
  }finally{clearTimeout(timer);finish();}
 });
 
+test('direct PDF opening mounts the current workspace without legacy identity or fallback toolbar',async()=>{
+ const {p,layout,dispose}=await setup({initialPreset:null});
+ assert.equal(layout.entry.layout,layout);assert.equal(layout.entry.globalToolbar,undefined);
+ assert.equal(layout.entry.root.querySelector('.abstractin-header-title').textContent,'Discussion');
+ assert.equal(layout.entry.root.querySelector('.abstractin-header-icon,.abstractin-header-identity,.abstractin-reader-close'),null);
+ assert.equal(layout.surfaces.size,2);dispose();
+});
+
 test('the default layout has one shared discussion and restores it after hiding notes', async () => {
  const {p,layout,dispose}=await setup({initialPreset:null});
  assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)],['editor','reading']);

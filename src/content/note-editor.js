@@ -237,20 +237,6 @@
    data.style.display = "none"; data.setAttribute("data-abstractin-markdown", "true"); body.append(data);
    return body.outerHTML;
   },
-  openMarkdownNoteMenu(root) {
-   const view = this._views.get(root); if (!view) return;
-   const button = root.querySelector(".abstractin-write-note"), parent = view.ctx.noteWorkspace ? view.ctx.paperItem.parentItem : view.ctx.paperItem;
-   this.openMenu(root, button, menu => {
-    this.menuSection(view.doc, menu, "NoteOut — your Markdown notes");
-    const open = note => { this.closeMenu(root); this.openMarkdownNote({ win: view.doc.defaultView, parent, note, sourceView: view })
-     .catch(e => this.appendError(view, e.message || String(e))); };
-    this.menuItem(view.doc, menu, { label: "New note", desc: "Open a separate editor alongside this discussion.", onSelect: () => open(null) });
-    for (const id of parent?.getNotes?.() || []) {
-     const note = Zotero.Items.get(id), data = this.markdownNoteData(note);
-     if (data) this.menuItem(view.doc, menu, { label: data.title || "Untitled note", onSelect: () => open(note) });
-    }
-   });
-  },
   async openSelectedMarkdownNote(win) {
    const notes = (win.ZoteroPane?.itemsView?.getSelectedItems() || []).filter(n => n.isNote?.() && !n.deleted);
    await this.loadMarkdownNoteItems(notes);
@@ -362,7 +348,7 @@
   },
   noteReviewCancellation(source, ranges) {
    const rollback = ranges.find(range => Array.isArray(range.rollback))?.rollback;
-   if (!rollback?.length) throw new Error("These changes predate Cancel changes. Restore them from the saved source backup instead.");
+   if (!rollback?.length) throw new Error("These changes predate Discard changes. Restore them from the saved source backup instead.");
    let end = -1;
    for (const patch of rollback) {
     if (!Number.isInteger(patch.from) || !Number.isInteger(patch.to) || patch.from < 0 || patch.from < end || patch.to < patch.from || patch.to > source.length ||
@@ -530,13 +516,10 @@
    save.className = "abstractin-note-save";
    save.title = "Save note"; save.setAttribute("aria-label", "Save note"); save.replaceChildren(this.svgIcon(doc, "noteSave"));
    const closeDraft = this.el(doc, "button", null, "Close keeping local draft"); closeDraft.hidden = true;
-   const append = this.el(doc, "button", null, "Append last answer"), toDiscussion = this.el(doc, "button", null, "Use in document discussion");
-   toDiscussion.hidden = !state.sourceView || !!state.sourceView.ctx.noteWorkspace;
-   append.hidden = true;
    const more = this.el(doc, "details", "abstractin-note-more"), moreLabel = this.el(doc, "summary", null, "···"), moreActions = this.el(doc, "div", "abstractin-note-more-actions");
    moreLabel.setAttribute("aria-label", "Note actions"); moreLabel.title = "Note actions";
    const trash = this.el(doc, "button", "abstractin-note-danger", "Move to Trash…"); trash.onclick = () => this.confirmTrashMarkdownNote(state);
-   moreActions.append(chatToggle, append, toDiscussion, trash, closeDraft); more.append(moreLabel, moreActions);
+   moreActions.append(chatToggle, trash, closeDraft); more.append(moreLabel, moreActions);
    moreActions.addEventListener("click", event => { if (event.target.closest("button")) more.open = false; });
    toolbar.append(save, more);
    const input = this.el(doc, "textarea", "abstractin-note-source"); input.value = data.markdown; input.placeholder = "Write Markdown and LaTeX here…"; input.setAttribute("aria-label", "Markdown note");
@@ -547,11 +530,11 @@
    actions.append(status, save, more); top.append(title, actions);
    const header = this.el(doc, "header", "abstractin-note-editor-head"), notices = this.el(doc, "div", "abstractin-note-notices");
    header.append(top, toolbar); notices.append(preview); editor.append(header, editHost, notices); (state.dockHosts?.editor || host).append(editor);
-   const review = this.el(doc, "div", "abstractin-note-review"), confirm = this.el(doc, "button", null, "Confirm changes"), cancel = this.el(doc, "button", null, "Cancel changes");
+   const review = this.el(doc, "div", "abstractin-note-review"), confirm = this.el(doc, "button", null, "Confirm changes"), cancel = this.el(doc, "button", "abstractin-note-discard", "Discard changes");
    confirm.type = "button"; confirm.title = "Keep the changes and clear the diff backgrounds";
    cancel.type = "button"; cancel.title = "Undo pending AI changes while keeping other edits";
    const reviewMessage = this.el(doc, "span"), reviewActions = this.el(doc, "div", "abstractin-note-review-actions");
-   reviewMessage.setAttribute("role", "status"); reviewActions.append(cancel, confirm);
+   reviewMessage.setAttribute("role", "status"); reviewActions.append(confirm, cancel);
    review.append(reviewMessage, reviewActions); editor.insertBefore(review, editHost);
    const updateReview = () => { review.hidden = !input._noteReviewRanges.length; reviewMessage.textContent = "Review changes · − removed / + added"; };
    updateReview(); state.reviewButton = confirm; state.cancelReviewButton = cancel;
@@ -625,7 +608,7 @@
      input._composerEditor?.flush?.();
      const source = input.value, edits = this.noteReviewCancellation(source, input._noteReviewRanges);
      if (input._composerEditor) {
-      if (!input._composerEditor.applyReplacements(source, JSON.stringify(edits), "[]")) throw new Error("The note changed. Review it and try Cancel changes again.");
+      if (!input._composerEditor.applyReplacements(source, JSON.stringify(edits), "[]")) throw new Error("The note changed. Review it and try Discard changes again.");
      } else {
       for (const edit of [...edits].sort((a, b) => b.from - a.from)) input.setRangeText(edit.text, edit.from, edit.to, "preserve");
       input._noteReviewRanges = []; input.dispatchEvent(new win.Event("input", { bubbles: true }));
@@ -643,26 +626,10 @@
    const chat = state.dockHosts?.chat || this.el(doc, "section", "abstractin-note-chat");
    chat.classList.add("abstractin-note-chat"); chat.hidden = true; state.chatHost = chat;
    host.classList.add("abstractin-note-chat-hidden");
-   if (state.dockManaged) { toDiscussion.hidden = true; closeDraft.hidden = true; }
+   if (state.dockManaged) closeDraft.hidden = true;
    chatToggle.onclick = async () => {
     try { await this.openNewChatWindow({ noteState: state, win }); }
     catch (e) { status.textContent = "Could not open discussion: " + (e.message || e); }
-   };
-   append.onclick = async () => {
-    try {
-     if (!state.chatView) throw new Error("Open the note discussion first.");
-     const history = await this.loadHistory(state.chatView.ctx.dir), answer = [...history].reverse().find(m => m.role === "assistant");
-     if (!answer?.text) throw new Error("There is no answer to append yet.");
-     input.value += (input.value ? "\n\n" : "") + this.readingVisibleText(answer.text); input._refreshMathPreview?.(); change();
-    } catch (e) { status.textContent = e.message || String(e); }
-   };
-   toDiscussion.onclick = () => {
-    const view = state.sourceView;
-    if (!view?.root.isConnected || this._views.get(view.root) !== view) { status.textContent = "The original document discussion is closed or has changed."; return; }
-    const text = input._composerEditor?.getSelectionSnapshot?.().markdown || input.value.slice(input.selectionStart, input.selectionEnd) || input.value;
-    view.input.value += (view.input.value ? "\n\n" : "") + "Note: " + title.value + "\n\n" + text;
-    this.autoGrow(view.input); view.input.dispatchEvent(new view.doc.defaultView.Event("input", { bubbles: true })); view.doc.defaultView.focus(); view.input.focus();
-    status.textContent = "Note added to the document's message draft. Review it before sending.";
    };
    let draft;
    try { draft = await this.readDiscussionJSON(OS.Path.join(state.dir, "draft.json"), null); }
@@ -694,84 +661,6 @@
    };
    if (!state.dockManaged) win.addEventListener("unload", state.dispose, { once: true });
    if (!state.dockManaged) doc.title = "NoteOut — " + (data.title || "Note"); input.focus();
-  },
-  async mountMarkdownNoteChat(state, host) {
-   if (state.chatView) return state.chatView;
-   const doc = host.ownerDocument; this.renderSkeleton(doc, host);
-   const root = host.querySelector(".abstractin-root"), input = root.querySelector(".abstractin-input");
-   root.querySelector(".abstractin-header-title").textContent = "Note assistant";
-   const dir = OS.Path.join(state.dir, "discussion"); await Zotero.File.createDirectoryIfMissingAsync(dir);
-   const ctx = this.registerChatContext({ dir, paperItem: state.note, attachmentItem: null, noteWorkspace: true, noteState: state });
-   const view = { doc, root, input, logEl: root.querySelector(".abstractin-log"), ctx };
-   view.send = (text, images) => this.sendText(view, text, images); this._views.set(root, view); state.chatView = view;
-   this.renderQuickPrompts(root, root.querySelector(".abstractin-quick"));
-   if (state.dockManaged) {
-    this.integrateReadingDiscussionHeader(state.readingLayout, "notes", root);
-   }
-   const history = await this.loadHistory(dir);
-   this.renderMessages(view, history); input.disabled = false;
-   const last = history[history.length - 1], decision = await this.readDiscussionJSON(OS.Path.join(state.dir, "edit-decision.json"), null);
-   if (last?.noteEdit && decision?.id !== last.noteEdit.id && state.input.value === last.noteEdit.baseMarkdown) this.showNoteEditProposal(state, last.noteEdit);
-   input.addEventListener("input", () => { this.autoGrow(input); if (!this._pending.has(dir)) root.querySelector(".abstractin-send").disabled = !this.canSend(view); });
-   input.addEventListener("keydown", event => { if (this.isSendKey(event) && !event.isComposing) { event.preventDefault(); this.sendOrStop(root); } });
-   this.updateControls(root); this.setBusy(view, false); input.focus();
-   if (this._pending.has(dir)) this.showPending(view, this._pending.get(dir));
-  },
-  openNoteDiscussionReferences(view, anchor) {
-   const state = view.ctx.noteState, source = state.readingLayout ? this._views.get(state.readingLayout.entry.root) : state.sourceView;
-   const readingContext = source?.ctx.discussion && state.documents?.some(ref => ref.libraryID === source.ctx.paperItem.libraryID && ref.key === source.ctx.paperItem.key) ? source.ctx : null;
-   let history = null, error = "";
-   const menu = this.openMenu(view.root, anchor, menu => {
-    const list = this.referenceMenuBody(view.doc, menu, { title: "Quote", path: state.title.value || "Note discussion" });
-    if (readingContext) {
-     this.menuItem(view.doc, list, { label: "Reading discussion", desc: "Browse saved results from the linked reading", icon: "book", onSelect: () => {
-      this.closeMenu(view.root);
-      this.openDiscussionReferences({ ...view, ctx: readingContext }, anchor);
-     } });
-     this.menuSection(view.doc, list, "Note discussion");
-    }
-    if (error) { list.append(this.el(view.doc, "p", "abstractin-menu-note", error)); return; }
-    if (!history) { list.append(this.el(view.doc, "p", "abstractin-menu-note", "Loading answers…")); return; }
-    const answers = history.map((message, at) => ({ message, at })).filter(row => row.message.role === "assistant" && row.message.text?.trim());
-    if (!answers.length) list.append(this.el(view.doc, "p", "abstractin-menu-note", "No saved answers in this note discussion yet."));
-    answers.forEach(({ message, at }, index) => {
-     const excerpt = message.text.replace(/\s+/g, " ").trim();
-     const item = this.menuItem(view.doc, list, { label: "Answer " + (index + 1), desc: excerpt.slice(0, 160), onSelect: () => {
-      this.closeMenu(view.root);
-      this.quoteDiscussionResult(view, null, message, at, "", { kind: "Answer", number: index + 1, text: message.text });
-     } });
-     item.title = excerpt;
-    });
-   });
-   if (!menu) return;
-   this.loadHistory(view.ctx.dir).then(saved => { if (menu.isConnected) { history = saved; menu.refresh(); } })
-    .catch(e => { if (menu.isConnected) { error = e.message || String(e); menu.refresh(); } });
-   return menu;
-  },
-  showNoteEditProposal(state, proposal) {
-   state.proposalHost?.remove(); const doc = state.input.ownerDocument;
-   const box = this.el(doc, "section", "abstractin-note-proposal"), preview = this.el(doc, "div", "abstractin-note-preview");
-   box.append(this.el(doc, "h3", null, "Proposed note edit"), this.el(doc, "p", null, proposal.explanation || "Review the replacement before applying it."));
-   this.renderMarkdown(doc, preview, proposal.markdown); box.append(preview);
-   const apply = this.el(doc, "button", null, "Apply edit"), discard = this.el(doc, "button", null, "Discard"), status = this.el(doc, "p");
-   box.append(apply, discard, status); state.preview.before(box); state.proposalHost = box;
-   apply.onclick = async () => {
-    state.input._composerEditor?.flush?.();
-    if (state.input.value !== proposal.baseMarkdown || state.title.value !== proposal.baseTitle) { status.textContent = "The note has changed since this proposal. Ask for a new edit against the current note."; return; }
-    if (proposal.scope === "selection" && proposal.richRange && state.input._composerEditor?.replaceMarkdownRange) {
-     if (!state.input._composerEditor.replaceMarkdownRange(proposal.markdown, proposal.richRange.from, proposal.richRange.to, proposal.richRange.sourceSelection)) { status.textContent = "This selection cannot be edited. Please select it again."; return; }
-    } else {
-     state.input.value = proposal.scope === "selection" ? proposal.baseMarkdown.slice(0, proposal.start) + proposal.markdown + proposal.baseMarkdown.slice(proposal.end) : proposal.markdown;
-     state.input._refreshMathPreview?.(); state.input.dispatchEvent(new state.win.Event("input", { bubbles: true }));
-    }
-    apply.disabled = true;
-    try { await state.flush(); await Zotero.File.putContentsAsync(OS.Path.join(state.dir, "edit-decision.json"), JSON.stringify({ id: proposal.id, action: "applied" })); status.textContent = "Edit applied and saved."; }
-    catch (e) { status.textContent = "Edit applied to editor; save failed: " + (e.message || e); }
-   };
-   discard.onclick = async () => {
-    try { await Zotero.File.putContentsAsync(OS.Path.join(state.dir, "edit-decision.json"), JSON.stringify({ id: proposal.id, action: "discarded" })); box.remove(); }
-    catch (e) { status.textContent = "Could not save discard decision: " + (e.message || e); }
-   }; return box;
   },
   async ask(ctx, question, pending) {
    if (!ctx.noteWorkspace) return previous.ask.call(this, ctx, question, pending);

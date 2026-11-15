@@ -58,23 +58,15 @@
 			const { win, launcher } = state, doc = win.document;
 			launcher.replaceChildren();
 			const header = this.el(doc, "div", "abstractin-library-picker-head");
-			header.append(this.el(doc, "h2", null, "Reading companion"),
+			header.append(this.svgIcon(doc, "app"), this.el(doc, "h2", null, "Choose documents"),
 				this.iconButton(doc, "", "Close AbstractIn", "close", () => this.closeReaderPanel(win)));
 			const welcome = this.el(doc, "div", "abstractin-library-welcome");
-			welcome.dataset.mascot = this.getAppearance().mascot;
-			welcome.append(this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].icon, "abstractin-mascot"),
-				this.el(doc, "h3", null, this.getAppearance().mascot === "none" ? "Read literature" : "Read with " + this.companionName()),
-				this.el(doc, "p", null, "Select books or papers in the document list on the left, then click Add selected documents."));
+			welcome.append(this.el(doc, "p", null, "Select books or papers in Zotero, then add them to this workspace."));
 			const add = this.el(doc, "button", "abstractin-library-add", "Add selected documents"); add.type = "button";
 			const list = this.el(doc, "div", "abstractin-library-list"); list.setAttribute("role", "group"); list.setAttribute("aria-label", "Documents");
 			const status = this.el(doc, "p", "abstractin-library-status"); status.setAttribute("role", "status");
 			const start = this.el(doc, "button", "abstractin-library-start", "Start Reading"); start.type = "button"; start.disabled = true;
 			launcher.append(header, welcome, add, list, status, start);
-			const notes = this.el(doc, "div", "abstractin-library-note-actions");
-			const newNote = this.el(doc, "button", null, "New Markdown note"), openNote = this.el(doc, "button", null, "Open selected Markdown note");
-			newNote.onclick = () => this.openNoteOutHome(win, { documents: [...selected.values()].map(item => this.noteDocumentRef(item)), create: true }).catch(e => { status.textContent = e.message || String(e); });
-			openNote.onclick = () => this.openSelectedMarkdownNote(win).catch(e => { status.textContent = e.message || String(e); });
-			notes.append(newNote, openNote); launcher.append(notes);
 			const selected = state.readingDocuments ||= new Map();
 			let busy = false;
 			const draw = () => {

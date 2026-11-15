@@ -24,6 +24,10 @@ function setup({ detached = false } = {}) {
 	win.Zotero.Items = { get: id => items.get(id) };
 	win.Zotero.Reader = { getByTabID: id => id === a.tabID ? a : id === b.tabID ? b : null };
 	p.checkInstalledBackends = async () => {};
+	// These placement fixtures omit note storage; real workspace mounting is
+	// exercised by reading-layout.test.mjs, including the default entry path.
+	p.openReadingLayout = async () => ({});
+	p.applyReadingLayoutPreset = async () => {};
 	// These fixtures model native panel placement, without Zotero items/notes.
 	// Full workspace startup and presets are covered in reading-layout.test.mjs.
 	p.startReadingLayout = async (window, preset, reader = null) => {
@@ -61,7 +65,8 @@ test("reader toolbar uses the public append hook and toggles a panel outside ite
 	const button = toolbar.querySelector(".abstractin-reader-toggle");
 	assert.equal(button.getAttribute("aria-label"), "Toggle AbstractIn panel");
 	assert.ok(button.querySelector('.abstractin-i[data-icon="app"] svg'));
-	assert.equal(button.querySelector("svg").getAttribute("stroke"), "#808088");
+	assert.equal(button.querySelector("svg").getAttribute("viewBox"), "0 0 48 48");
+	assert.ok(button.querySelector('path[fill="#EDA34F"]'));
 	await p.openReaderPanel(a);
 	const panel = doc.querySelector(".abstractin-reader-panel");
 	assert.equal(panel.hidden, false);

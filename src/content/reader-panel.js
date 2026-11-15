@@ -237,7 +237,7 @@ Object.assign(AbstractIn, {
 	createReaderPanel(win) {
 		let doc = win.document;
 		let mount = this.readerPanelMount(doc);
-		if (!mount) throw new Error("This Zotero reader layout does not expose a supported side-panel mount. Use the AbstractIn item section or open the PDF in a main-window tab.");
+		if (!mount) throw new Error("This Zotero reader layout does not expose a supported side-panel mount. Open the PDF in a main-window tab.");
 		this.addToWindow(win);
 		let splitter = doc.createXULElement("splitter");
 		splitter.classList.add("abstractin-reader-splitter");
@@ -361,7 +361,6 @@ Object.assign(AbstractIn, {
 			state.panel.append(body);
 			this.renderSkeleton(win.document, body);
 			let root = body.querySelector(".abstractin-root");
-			root.querySelector(".abstractin-header").append(this.iconButton(win.document, "abstractin-reader-close", "Close AbstractIn panel", "close", () => this.closeReaderPanel(win)));
 			entry = { body, root, itemID: item.id };
 			state.views.set(reader, entry);
 			const openingPreset = layoutPreset || this._pendingReadingLayouts?.get(win);

@@ -13,12 +13,14 @@ AbstractIn bundles the following third-party files. Each licence ships next to t
 | Obsidian TikZJax | 0.5.2, source commit recorded next to the engine | MIT; bundled TeX component licenses retained | `src/content/editor/tikzjax/tikzjax.js` | `src/content/editor/tikzjax/LICENSE.md` |
 | KaTeX | 0.16.22 | MIT | `src/content/lib/katex.min.js` | `src/content/lib/KATEX-LICENSE` |
 | Latin Modern Math | — | GUST Font License | `src/content/lib/latinmodern-math.otf` | `src/content/lib/LATINMODERN-MATH-LICENSE.txt` |
-| Phosphor Icons (Duotone) | 2.1.1 | MIT | `src/content/icons/*.svg` except `mascot-*.svg`, `app-marmoset.svg` and `lucide-*.svg` | `src/content/icons/PHOSPHOR-LICENSE` |
+| Phosphor Icons (Duotone) | 2.1.1 | MIT | `src/content/icons/*.svg` except `mascot-*.svg`, `abstractin-mark.svg`, `app-marmoset.svg` and `lucide-*.svg` | `src/content/icons/PHOSPHOR-LICENSE` |
 
 | Lucide Icons | Snapshot recorded in `LUCIDE-SOURCE.json` | ISC | `src/content/icons/lucide-*.svg` | `src/content/icons/LUCIDE-LICENSE` |
 
 Lucide mode icons were downloaded from the official [Lucide repository](https://github.com/lucide-icons/lucide). Their source commit and filenames are recorded in `src/content/icons/LUCIDE-SOURCE.json`.
 
 Additional Phosphor workspace command icons come from the official `@phosphor-icons/core` 2.1.1 package. The package integrity and upstream filenames are recorded in `src/content/icons/PHOSPHOR-SOURCE.json`.
+
+The open-book-and-conversation app mark (`src/content/icons/abstractin-mark.svg`, mirrored in `src/icons/icon16.svg` and `icon20.svg`) is original SVG artwork made for AbstractIn and distributed under the project's MIT license.
 
 The gray-brown marmoset, white wagtail, and puffin companions (`src/content/icons/mascot-marmoset.svg`, `src/content/icons/mascot-wagtail.svg`, and `src/content/icons/mascot-puffin.svg`) and app avatar (`src/content/icons/app-marmoset.svg`, also in `src/icons/`) are original SVG artwork made for AbstractIn. The illustrations (`docs/abstractin-hero.jpg` and the background in the videos) were made for Zusia with Google Gemini.

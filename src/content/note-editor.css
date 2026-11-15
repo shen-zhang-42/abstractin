@@ -186,6 +186,9 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: var(--note-g
 .abstractin-note-review, .abstractin-note-save-error { display:flex; align-items:center; justify-content:space-between; flex:0 0 auto; flex-wrap:wrap; gap:6px 10px; padding:7px 10px; font-size:12px; color:var(--note-text); background:var(--note-soft); border-bottom:1px solid var(--note-line); }
 .abstractin-note-review button, .abstractin-note-save-error button { flex:0 0 auto; white-space:nowrap; padding:4px 9px; }
 .abstractin-note-review-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.abstractin-note-review .abstractin-note-discard { color:#fff; background:#bd343c; border:1px solid #bd343c; }
+.abstractin-note-review .abstractin-note-discard:hover:not(:disabled) { background:#a42b33; border-color:#a42b33; }
+.abstractin-note-review .abstractin-note-discard:disabled { opacity:.55; cursor:default; }
 .abstractin-note-save-error > span { flex:1 1 180px; overflow-wrap:anywhere; }
 .abstractin-note-save-error { border-inline-start:3px solid #bf5555; }
 .abstractin-note-review[hidden] { display: none; }

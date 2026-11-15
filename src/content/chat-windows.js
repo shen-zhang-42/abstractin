@@ -63,7 +63,9 @@
    state.win = win;
    const doc = win.document, host = doc.getElementById("abstractin-chat-window-root");
    const scope = this.el(doc, "header", "abstractin-layout-toolbar abstractin-chat-window-scope", state.ctx.readingWorkspace?.name || this.safeField(state.ctx.paperItem, "title"));
-   host.append(scope); this.renderSkeleton(doc, host);
+   this.renderSkeleton(doc, host);
+   scope.append(this.iconButton(doc, "abstractin-global-settings", "Plugin settings", "settings", () => this.openSettings()));
+   host.prepend(scope);
    const root = host.querySelector(".abstractin-root"), input = root.querySelector(".abstractin-input");
    const view = { doc, root, input, logEl: root.querySelector(".abstractin-log"), ctx: this.registerChatContext(state.ctx) };
    state.view = view; view.send = (text, images) => this.sendText(view, text, images); this._views.set(root, view);
@@ -75,6 +77,7 @@
    win.addEventListener("unload", state.dispose, { once: true });
    root.dataset.sharedSources = "true"; root.dataset.readingTheme = "neutral";
    root.querySelector(".abstractin-header-title").textContent = "Discussion";
+   root.querySelector(".abstractin-open-settings")?.remove();
    this.updateReadingControls(view); this.renderAttachments(view);
    const history = await this.loadHistory(view.ctx.dir); if (state.disposed || win.closed) return;
    this.renderMessages(view, history); this.setBusy(view, false);

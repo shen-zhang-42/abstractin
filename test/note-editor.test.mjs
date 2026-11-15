@@ -18,7 +18,7 @@ test('pending AI replacements compose exact inverses across insertion, deletion 
   [{from:0,to:0,text:'Intro\n'},{from:16,to:20,text:''}],
  ]) { ranges=p.noteReplacementReviewRanges(edits,ranges,source); source=applyEdits(source,edits); }
  assert.equal(applyEdits(source,p.noteReviewCancellation(source,ranges)),original);
- assert.throws(()=>p.noteReviewCancellation(source+'!',ranges.map(({rollback,...r})=>r)),/predate Cancel/);
+ assert.throws(()=>p.noteReviewCancellation(source+'!',ranges.map(({rollback,...r})=>r)),/predate Discard/);
  const patch=ranges.find(r=>r.rollback).rollback.find(r=>r.after.length);
  const manual=source.slice(0,patch.from)+'Manual'+source.slice(patch.to);
  assert.throws(()=>p.noteReviewCancellation(manual,ranges),/edited manually/);
@@ -32,6 +32,8 @@ test('Cancel changes restores and saves AI replacements after reopen, retaining 
  note.setNote(p.markdownNoteHTML(note,'Review note',applyEdits(before,edits),state.parent,2,undefined,null,ranges));state.baseHTML=note.getNote();
  await p.mountMarkdownNote(window,state);
  const review=state.cancelReviewButton.closest('.abstractin-note-review');
+ assert.deepEqual([...review.querySelectorAll('button')].map(button=>button.textContent),['Confirm changes','Discard changes']);
+ assert.ok(state.cancelReviewButton.classList.contains('abstractin-note-discard'));
  assert.equal(review.hidden,false);assert.equal(state.cancelReviewButton.closest('.abstractin-note-editor-head'),null);
  // Plain-source fallback maps cancellation around disjoint manual typing too.
  state.input.setRangeText('User intro\n',0,0);state.input.dispatchEvent(new window.Event('input',{bubbles:true}));
@@ -95,32 +97,6 @@ async function setup() {
  p._markdownNoteWindows.set(state.key, state);
  return { ...env, p, dir, parent, note, state, items };
 }
-
-test('note discussion shortcuts fill a question and quote one reviewed answer without changing history', async () => {
- const {p,window,state}=await setup(); await p.mountMarkdownNote(window,state);
- state.editor.parentElement.append(state.chatHost);state.chatHost.hidden=false;await p.mountMarkdownNoteChat(state,state.chatHost);
- const view=state.chatView,row=view.root.querySelector('.abstractin-composer-shortcuts');
- const quick=row.querySelector('.abstractin-prompt-menu'),quote=row.querySelector('.abstractin-result-picker');
- assert.ok(quick && quote); assert.equal(quick.closest('.abstractin-quick').hidden,false);
- quick.click();
- const prompt=[...view.root.querySelectorAll('.abstractin-menu-item')].find(button=>button.textContent.includes('Summarize this note'));
- assert.ok(prompt); prompt.click(); assert.match(view.input.value,/Summarize the main ideas/);
- assert.equal(view.root.querySelector('.abstractin-menu'),null);
- const history=[{role:'user',text:'Question'}, {role:'assistant',text:'Keep **this answer** and $x^2$.'}];
- await p.saveHistory(view.ctx.dir,history); view.input.value='Follow-up';
- quote.click();
- for(let i=0;i<100&&![...view.root.querySelectorAll('.abstractin-result-menu button')].some(button=>button.textContent.includes('Answer 1'));i++)await new Promise(resolve=>setTimeout(resolve,10));
- const menu=view.root.querySelector('.abstractin-result-menu');
- assert.equal(menu.querySelector('.abstractin-result-menu-heading strong').textContent,'Quote');
- [...menu.querySelectorAll('button')].find(button=>button.textContent.includes('Answer 1')).click();
- assert.equal(view.input.value,'Follow-up','choosing a result requires review before insertion');
- const review=view.root.querySelector('.abstractin-reference-review');
- assert.equal(review.querySelector('textarea').value,history[1].text); review.querySelector('button').click();
- assert.match(view.input.value,/> Keep \*\*this answer\*\* and \$x\^2\$\./);
- assert.doesNotMatch(view.input.value,/result:undefined/);
- assert.deepEqual(JSON.parse(JSON.stringify(await p.loadHistory(view.ctx.dir))),history);
- state.dispose(); window.close();
-});
 
 test('note header has a compact source list and Source immediately after Save', async () => {
  const {p,window,document,state}=await setup();await p.mountMarkdownNote(window,state);
@@ -272,7 +248,9 @@ test('explicit editor selections provide focused context without preloading the 
 
 test('a plain instruction edits the open note through shared tools, saves it, and records the change',async()=>{
  const {p,window,state,note}=await setup();await p.mountMarkdownNote(window,state);
- await p.mountMarkdownNoteChat(state,state.chatHost);
+ // Historical note-scoped contexts remain readable, without recreating their UI.
+ const dir=join(state.dir,'discussion');await mkdir(dir,{recursive:true});
+ const ctx=p.registerChatContext({dir,paperItem:note,noteWorkspace:true,noteState:state});
  state.input.value='Original sentence. Preserve this.';state.input.setSelectionRange(0,0);
  let calls=0;
  const operation=op=>({text:'<abstractin-tools>'+JSON.stringify({operations:[op]})+'</abstractin-tools>'});
@@ -282,11 +260,11 @@ test('a plain instruction edits the open note through shared tools, saves it, an
   if(calls===2)return operation({tool:'editNote',noteKey:note.key,version:rows[0].result.version,edits:[{oldText:'Original sentence.',newText:'Improved sentence.'}]});
   assert.equal(rows[0].result.saved,true);return {text:'Updated the requested sentence.'};
  };
- const pending={backend:'codex',model:'fixture',progress(){},cancelled:false};p._pending.set(state.chatView.ctx.dir,pending);
- const result=await p.ask(state.chatView.ctx,'Improve the first sentence in my note.',pending);
+ const pending={backend:'codex',model:'fixture',progress(){},cancelled:false};p._pending.set(ctx.dir,pending);
+ const result=await p.ask(ctx,'Improve the first sentence in my note.',pending);
  assert.equal(result.error,undefined);assert.equal(calls,3);assert.equal(state.input.value,'Improved sentence. Preserve this.');
  assert.equal(p.markdownNoteData(note).markdown,state.input.value);
- const history=await p.loadHistory(state.chatView.ctx.dir);assert.equal(history.length,2);assert.equal(history[1].noteEdits[0].before,'Original sentence. Preserve this.');
+ const history=await p.loadHistory(ctx.dir);assert.equal(history.length,2);assert.equal(history[1].noteEdits[0].before,'Original sentence. Preserve this.');
  assert.equal(state.assistantMode,undefined);state.dispose();window.close();
 });
 
@@ -299,35 +277,11 @@ test('ordinary native notes are not silently converted and a document can own mu
  await assert.rejects(p.openMarkdownNote({ win: window, note: native }), /not an AbstractIn/); assert.equal(native.getNote(), '<p>Keep original</p>');
 });
 
-test('the note chat uses the existing send pipeline without a PDF setup and can run alongside a reading request', async () => {
- const { p, window, note, state } = await setup(); await p.mountMarkdownNote(window, state);
- await p.mountMarkdownNoteChat(state, state.chatHost);
- const view = state.chatView;
- assert.equal(view.root.querySelector('.abstractin-composer').hidden, false);
- assert.equal(view.input.disabled, false); assert.equal(view.root.dataset.readingReady, 'true');
- assert.equal(view.root.querySelector('.abstractin-start-reading'), null);
- p._pending.set('other-document', { status: 'reading' });
- let openedSetup = false; p.openReadingSetup = async () => { openedSetup = true; };
- let pending; p.showPending = (_view, current) => { pending = current; };
- p.runBackend = async () => ({ text: 'Independent note answer' }); p.getBackend = () => 'codex';
- view.input.value = 'Explain'; await p.startRequest(view, view.input.value);
- assert.ok(pending); await pending.promise;
- assert.equal(openedSetup, false); assert.equal(p._pending.get('other-document').status, 'reading');
- assert.equal((await p.loadHistory(view.ctx.dir))[1].text, 'Independent note answer');
- assert.equal(p.markdownNoteData(note).markdown, '# Heading\n\n$x^2$\n\n**Important**');
- view.root.disposeUI(); state.disposeEditor(); window.close();
-});
-
-test('NoteOut is a separate nonmodal entry that does not open or replace Reading', async () => {
- const { p, window } = await setup(); let opened = 0, focused = 0;
- const reading = { active: true }; p._readerPanelWindows.set(window, reading);
- window.openDialog = (url, name, features, args) => {
-  opened++; assert.match(features, /dialog=no/); assert.equal(args.homeKey, '1'); assert.match(url, /note-window.xhtml$/);
-  return { closed: false, focus() { focused++; } };
- };
- const first = await p.openNoteOutHome(window), second = await p.openNoteOutHome(window);
- assert.equal(first, second); assert.equal(opened, 1); assert.equal(focused, 2);
- assert.equal(p._readerPanelWindows.get(window), reading);
+test('NoteOut entry uses the current workspace or document chooser instead of the legacy home window', async () => {
+ const { p, window } = await setup();const selected={};let chooser=0;
+ p.openLibraryLauncher=async win=>{assert.equal(win,window);chooser++;return selected;};
+ window.openDialog=()=>assert.fail('Legacy note home must not open');
+ assert.equal(await p.openNoteOutHome(window),selected);assert.equal(chooser,1);window.close();
 });
 
 test('NoteOut home keeps the list and switches editors inside one window without discarding drafts', async () => {
@@ -347,10 +301,12 @@ test('NoteOut home keeps the list and switches editors inside one window without
  for (const state of home.states.values()) state.disposeEditor(); window.close();
 });
 
-test('the reading header has no extra NoteOut or workspace entry beside AbstractIn', async () => {
+test('the shared discussion header never creates the legacy app identity or note-only interfaces', async () => {
  const { p, document, window } = await setup(); p.renderSkeleton(document, document.body);
  const root = document.querySelector('.abstractin-root'), title = root.querySelector('.abstractin-header-title');
- assert.equal(title.nextElementSibling, null); assert.equal(root.querySelector('.abstractin-write-note'), null);
+ assert.equal(title.textContent,'Discussion');assert.equal(root.querySelector('.abstractin-write-note'),null);
+ assert.equal(root.querySelector('.abstractin-header-identity,.abstractin-header-icon'),null);
+ assert.equal(p.mountMarkdownNoteChat,undefined);assert.equal(p.showNoteEditProposal,undefined);assert.equal(p.openMarkdownNoteMenu,undefined);
  root.disposeUI(); window.close();
 });
 
@@ -418,24 +374,6 @@ test('opening NoteOut from either linked document finds the same shared note', a
  const button = document.querySelector('.abstractin-note-list-item'); await button.onclick();
  assert.equal(home.active.note.key, note.key); assert.equal(home.active.input.value, 'One source');
  home.active.disposeEditor(); window.close();
-});
-
-test('previously saved edit proposals can still apply a scoped change', async () => {
- const { p, window, state } = await setup(); await p.mountMarkdownNote(window, state);
- state.input.value = 'Before selected after';
- p.showNoteEditProposal(state, { explanation: 'Improved wording', markdown: '**replacement**', baseMarkdown: state.input.value, baseTitle: state.title.value, scope: 'selection', start: 7, end: 15, id: 'legacy-selection' });
- assert.equal(state.input.value, 'Before selected after'); assert.match(state.proposalHost.textContent, /Improved wording/);
- await state.proposalHost.querySelector('button').onclick();
- assert.equal(state.input.value, 'Before **replacement** after'); assert.equal(p.markdownNoteData(state.note).markdown, state.input.value);
- state.disposeEditor(); window.close();
-});
-
-test('legacy edit proposals cannot overwrite newer manual changes', async () => {
- const { p, window, state } = await setup(); await p.mountMarkdownNote(window, state);
- p.showNoteEditProposal(state, { explanation: 'Rewrite', markdown: 'Replacement', baseMarkdown: state.input.value, baseTitle: state.title.value, scope: 'full', id: 'legacy-full' });
- state.input.value = 'Newer manual version';
- await state.proposalHost.querySelector('button').onclick(); assert.equal(state.input.value, 'Newer manual version'); assert.match(state.proposalHost.textContent, /note has changed/);
- state.disposeEditor(); window.close();
 });
 
 test('linked document selection resolves child attachments and rejects other libraries', async () => {
@@ -533,16 +471,19 @@ test('a list delete button confirms and trashes an unopened note without changin
  active.dispose(); window.close();
 });
 
-test('native selected-note and new-note shortcuts route into the same three-column home', async () => {
+test('selected-note and new-note shortcuts route into the current reading workspace', async () => {
  const { p, window, note, parent } = await setup(); p._markdownNoteWindows.clear();
  window.ZoteroPane = { itemsView: { getSelectedItems: () => [note] } };
- let args; window.openDialog = (_url, _name, _features, value) => { args = value; return { closed: false, focus() {} }; };
- await p.openSelectedMarkdownNote(window); assert.equal(args.homeKey, '1'); assert.equal(args.noteKey, undefined);
- const home = p._noteOutHomes.get('1'); assert.equal(home.initialNote, note);
- await p.mountNoteOutHome(window, home); assert.equal(home.active.note, note); assert.equal(home.sidebar.hidden, false);
- await p.openNoteOutHome(window, { documents: [p.noteDocumentRef(parent)], create: true });
- assert.notEqual(home.active.note.key, note.key); assert.equal(home.active.note.parentID, parent.id); assert.equal(home.states.size, 2);
- assert.equal(home.sidebar.hidden, false); for (const state of home.states.values()) state.dispose(); window.close();
+ window.openDialog=()=>assert.fail('Legacy home window must not open');
+ const reader={itemID:12},entry={},layout={};let openedNote,created=0;
+ p.startLibraryReading=async(win,item)=>{assert.equal(item,parent);return reader;};
+ p.openReaderPanel=async(target,options)=>{assert.equal(target,reader);assert.equal(options.layoutPreset,'unified');};
+ p.readerPanelState=()=>({views:new Map([[reader,entry]])});
+ p.openReadingLayout=async(_state,target,_reader,selected)=>{assert.equal(target,entry);openedNote=selected;return layout;};
+ p.newReadingNote=async target=>{assert.equal(target,layout);created++;};
+ assert.equal(await p.openSelectedMarkdownNote(window),layout);assert.equal(openedNote,note);
+ await p.openNoteOutHome(window,{documents:[p.noteDocumentRef(parent)],create:true});assert.equal(created,1);
+ assert.equal(p._noteOutHomes.size,0);window.close();
 });
 
 test('source picker adds selected documents without conflating editor and note sources', async () => {

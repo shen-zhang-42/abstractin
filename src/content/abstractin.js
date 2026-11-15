@@ -146,7 +146,7 @@ AbstractIn = {
 		notesShow: "eye.svg",
 		notesHide: "eye-slash.svg",
 		workspace: "files.svg",
-		app: "app-document-chat.svg",
+		app: "abstractin-mark.svg",
 		"mascot-marmoset": "mascot-marmoset.svg",
 		"mascot-wagtail": "mascot-wagtail.svg",
 		"mascot-puffin": "mascot-puffin.svg",
@@ -1235,7 +1235,8 @@ AbstractIn = {
 		body.textContent = "";
 
 		let root = this.el(doc, "div", "abstractin-root");
-		if (body.closest(".abstractin-reader-panel")) root.dataset.readingTheme = "neutral";
+		root.dataset.readingTheme = "neutral";
+		root.dataset.sharedSources = "true";
 		let cleanup = [];
 		root.disposeUI = () => { root._agentSetup?.close(); for (let dispose of cleanup.splice(0)) dispose(); };
 		// Background image, veil and glow, behind everything else (see .abstractin-backdrop).
@@ -1245,15 +1246,12 @@ AbstractIn = {
 		root.appendChild(backdrop);
 		this.applyAppearance(root);
 
-		let header = this.el(doc, "div", "abstractin-header");
-		let identity = this.el(doc, "div", "abstractin-header-identity");
+		let header = this.el(doc, "header", "abstractin-header abstractin-panel-toolbar");
 		let evidence = this.ghostButton(doc, "abstractin-reading-evidence-mode", "readingSource", "", () =>
 			this.openReadingEvidenceMenu(root, evidence), { chevron: true });
 		evidence.hidden = true;
-		identity.append(this.el(doc, "span", "abstractin-header-title", "AbstractIn"));
 		header.append(
-			this.svgIcon(doc, this.MASCOTS[this.getAppearance().mascot].header, "abstractin-header-icon"),
-			identity,
+			this.el(doc, "span", "abstractin-header-title", "Discussion"),
 			this.iconButton(doc, "abstractin-history abstractin-chats", "Chats", "chatManager", () => this.openHistoryMenu(root)),
 			this.iconButton(doc, "abstractin-new-chat-window", "New chat window", "newChat", () => {
 				const view = this._views.get(root);

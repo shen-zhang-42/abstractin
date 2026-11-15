@@ -469,7 +469,7 @@
    const row = view.root.querySelector(".abstractin-composer-shortcuts");
    if (row && !row.querySelector(".abstractin-result-picker")) {
     const divider = this.el(view.doc, "span", "abstractin-quote-divider"); divider.setAttribute("aria-hidden", "true");
-    const button = this.ghostButton(view.doc, "abstractin-result-picker", null, "Quote", () => view.ctx.noteWorkspace ? this.openNoteDiscussionReferences(view, button) : this.openDiscussionReferences(view, button), { chevron: true });
+    const button = this.ghostButton(view.doc, "abstractin-result-picker", null, "Quote", () => this.openDiscussionReferences(view, button), { chevron: true });
     button.title = view.ctx.noteWorkspace ? "Quote a discussion answer" : "Quote a numbered result"; button.setAttribute("aria-label", button.title); button.setAttribute("aria-haspopup", "menu");
     const group = this.el(view.doc, "span", "abstractin-quote-controls"); group.append(divider, button); row.append(group);
    }

@@ -46,13 +46,20 @@
     const reader = await this.startLibraryReading(win, document, { layoutPreset: "unified" }), state = this.readerPanelState(this.readerPanelWindow(reader));
     return this.openReadingLayout(state, state.views.get(reader), reader, options.note);
    }
-   const reader = win?.Zotero_Tabs?.selectedType === "reader" && Zotero.Reader.getByTabID(win.Zotero_Tabs.selectedID);
-   if (reader && !options.documents && !options.create) {
-    await this.openReaderPanel(reader, { layoutPreset: "unified" });
-    const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state?.views.get(reader);
-    if (entry) return this.openReadingLayout(state, entry, reader, options.note);
+   const documents = workspaceNote?.documents || options.documents || (options.parent ? [this.noteDocumentRef(options.parent)] : []);
+   let reader = win?.Zotero_Tabs?.selectedType === "reader" && Zotero.Reader.getByTabID(win.Zotero_Tabs.selectedID);
+   if (documents.length) {
+    const document = await this.resolveNoteDocument(documents[0]);
+    if (!document) throw new Error("The note's source document is unavailable.");
+    reader = await this.startLibraryReading(win, document, { layoutPreset: "unified" });
    }
-   return original.openNoteOutHome.call(this, win, options);
+   if (!reader) return this.openLibraryLauncher(win);
+   await this.openReaderPanel(reader, { layoutPreset: "unified" });
+   const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state?.views.get(reader);
+   if (!entry) throw new Error("Open a source PDF before opening this note.");
+   const layout = await this.openReadingLayout(state, entry, reader, options.note);
+   if (options.create) await this.newReadingNote(layout);
+   return layout;
   },
   async openReaderPanel(reader, options = {}) {
    const layout = this._readingLayoutReaders.get(reader.itemID);
@@ -77,16 +84,14 @@
     this.drawReadingSources(layout);
     this.updateReaderPanelButtons(layout.win); return;
    }
-   await original.openReaderPanel.call(this, reader, options);
+   const preset = options.layoutPreset || this._pendingReadingLayouts?.get(this.readerPanelWindow(reader)) || "unified";
+   await original.openReaderPanel.call(this, reader, { ...options, layoutPreset: preset });
    const state = this.readerPanelState(this.readerPanelWindow(reader)), entry = state?.views.get(reader);
-   if (entry && !entry.layout && !entry.openingLayout && !entry.globalToolbar) {
-    this.installReadingLayoutStyle(entry.root.ownerDocument, "reading-layout.css");
-    const bar = this.el(entry.root.ownerDocument, "header", "abstractin-layout-toolbar abstractin-reading-global-toolbar");
-    const label = this.el(entry.root.ownerDocument, "span", "abstractin-layout-name", "AbstractIn");
-    const chooser = this.iconButton(entry.root.ownerDocument, "abstractin-layout-choose", "Layout", "patternGrid", () => this.openReadingLayoutMenu(state.win, chooser, { reader: state.reader }));
-    bar.append(label, chooser, this.iconButton(entry.root.ownerDocument, "abstractin-global-settings", "Plugin settings", "settings", () => this.openSettings()));
-    entry.root.querySelector(".abstractin-open-settings")?.remove();
-    entry.body.prepend(bar); entry.globalToolbar = bar;
+   if (entry && state.active && !options.layoutPreset && !entry.layout) {
+    try {
+     const workspace = await this.openReadingLayout(state, entry, reader, null, { reveal: false });
+     await this.applyReadingLayoutPreset(workspace, preset);
+    } finally { this.revealReadingLayoutEntry(entry); }
    }
   },
   prepareReadingLayoutEntry(entry, reader, preset = "unified") {
@@ -113,9 +118,15 @@
    entry.body.removeAttribute("aria-busy"); delete entry.openingLayout;
   },
   async openReadingLayout(panelState, entry, reader, note = null, options = {}) {
+   if (entry.layoutMount) {
+    const layout = await entry.layoutMount;
+    if (note && note.key !== layout.note.key) await this.switchReadingNote(layout, note);
+    return layout;
+   }
    this.prepareReadingLayoutEntry(entry, reader);
-   try { return await this.mountReadingLayout(panelState, entry, reader, note, options); }
-   finally { if (options.reveal !== false) this.revealReadingLayoutEntry(entry); }
+   entry.layoutMount = this.mountReadingLayout(panelState, entry, reader, note, options);
+   try { return await entry.layoutMount; }
+   finally { delete entry.layoutMount; if (options.reveal !== false) this.revealReadingLayoutEntry(entry); }
   },
   async waitReadingLayoutView(entry) {
    if (!this._views.get(entry.root) && entry.render) {
@@ -165,7 +176,6 @@
    const doc = layout.win.document;
    for (const file of ["reading-note.css", "reading-layout.css"]) this.installReadingLayoutStyle(doc, file);
    const shell = this.el(doc, "section", "abstractin-reading-layout"), toolbar = this.el(doc, "header", "abstractin-layout-toolbar");
-   entry.globalToolbar?.remove(); delete entry.globalToolbar;
    const title = this.el(doc, "span", "abstractin-layout-mode"); title.setAttribute("role", "img");
    const separator = this.el(doc, "span", "abstractin-layout-separator"); separator.setAttribute("aria-hidden", "true");
    const sources = this.el(doc, "button", "abstractin-layout-sources"); sources.type = "button"; sources.setAttribute("aria-haspopup", "menu");
@@ -875,14 +885,8 @@
   },
   async closeReadingLayout(layout, { discard = false } = {}) {
    if (!discard) await layout.noteState.flush();
-   const previous = this._views.get(layout.entry.root), draft = previous?.input.value || "";
-   layout.entry.root.disposeUI?.(); this._views.delete(layout.entry.root);
-   this.disposeReadingLayout(layout); layout.shell.remove(); delete layout.entry.layout; delete layout.entry.layoutButton;
-   this.renderSkeleton(layout.win.document, layout.entry.body); layout.entry.root = layout.entry.body.querySelector(".abstractin-root");
-   layout.panelState.panel.classList.remove("abstractin-reader-panel-workspace", "abstractin-reading-notes-hidden"); layout.panelState.panel.style.width = (Number(this.getPref("readerPanelWidth")) || 380) + "px";
-   layout.entry.render = this.renderContent(layout.win.document, layout.entry.body, Zotero.Items.get(layout.reader.itemID), layout.reader); await layout.entry.render;
-   const view = this._views.get(layout.entry.root); if (view) view.input.value = draft;
-   await this.openReaderPanel(layout.reader);
+   this.closeReaderPanel(layout.win);
+   this.releaseReaderPanelView(layout.panelState, layout.reader, layout.entry);
   },
   disposeReadingLayout(layout) {
    if (layout.disposed) return; layout.disposed = true;

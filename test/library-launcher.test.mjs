@@ -22,6 +22,7 @@ function setup() {
 	win.Zotero.Reader={getByTabID:()=>reader,open:async id=>{opens.push(id);win.Zotero_Tabs.selectedType='reader';win.Zotero_Tabs.selectedID=reader.tabID;return reader;}};
 	const ctx={dir:'existing-discussion',paperItem:a,attachmentItem:pdf,reading:{type:'paper'},discussion:{id:'existing-chat'}};
 	p.getContext=async()=>({...ctx});p.checkInstalledBackends=async()=>{};
+	p.openReadingLayout=async()=>({});p.applyReadingLayoutPreset=async()=>{};
 	p.renderContent=async(doc,body)=>{
 		const root=body.querySelector('.abstractin-root'),view={doc,root,ctx:await p.getContext(a),input:root.querySelector('textarea'),logEl:root.querySelector('.abstractin-log')};
 		p._views.set(root,view);p.renderMessages(view,[{role:'user',text:'Earlier question'},{role:'assistant',text:'Saved answer',backend:'codex'}]);
@@ -56,13 +57,13 @@ test('one shared icon shows graphical layout choices and removes obsolete separa
 
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 
-test('library welcome shows the chosen companion without querying or listing the library or adding existing selection',async()=>{
+test('document chooser uses the current app mark without querying or preselecting the library',async()=>{
 	const {p,window:win,document:doc,a,select,loads}=setup();select([a]);
 	win.Zotero.Search=class{constructor(){assert.fail('welcome must not search the library');}};
 	await p.openLibraryLauncher(win);
-	assert.ok(doc.querySelector('.abstractin-library-welcome .abstractin-mascot'));
-	assert.match(doc.querySelector('.abstractin-library-welcome').textContent,/Read with Ohberto/);
-	assert.match(doc.querySelector('.abstractin-library-welcome').textContent,/document list on the left/);
+	assert.ok(doc.querySelector('.abstractin-library-picker-head [data-icon="app"]'));
+	assert.equal(doc.querySelector('.abstractin-library-welcome .abstractin-mascot'),null);
+	assert.match(doc.querySelector('.abstractin-library-welcome').textContent,/Select books or papers in Zotero/);
 	assert.equal(doc.querySelectorAll('.abstractin-library-item').length,0);assert.equal(loads.length,0);
 	assert.equal(doc.querySelector('.abstractin-library-start').disabled,true);
 });
