@@ -263,7 +263,9 @@
    const instructions = this.sharedChatInstructions(scope), pending = this._pending.get(request.ctx.dir);
    const turn = pending?.sharedChatTurn || { backend, reads: new Map(), documentSearches: new Map(), documentLimits: new Map(), excerpts: new Set(), images: [...(request.images || [])], edits: [], editSerial: 0 };
    const userQuestion = request.userQuestion || request.question.split("\n\n")[0];
-   turn.noteAction ||= this.sharedNoteIntent(userQuestion);
+   // Only the user's dialog choice can lock a turn to answer-only. A keyword
+   // guess must not block a clear mixed instruction understood by the agent.
+   turn.noteAction ||= this.sharedNoteIntent(userQuestion) === "edit" ? "edit" : "unclear";
    if (pending) pending.sharedChatTurn = turn;
    const cancelled = () => this._pending.get(request.ctx.dir)?.cancelled;
    const progress = event => request.onProgress?.({ ...event, ...(event.text !== undefined ? { text: this.readingVisibleText(event.text) } : {}) });

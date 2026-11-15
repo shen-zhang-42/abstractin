@@ -40,7 +40,7 @@ test('clear note edits bypass clarification; ambiguous actions show one real dia
  await assert.rejects(p.sharedChatOperation(ctx,{tool:'editNote',noteKey:'ONE',version:read.version,edits:[{oldText:'Unique',newText:'New'}]},ambiguous),/chose answering/);window.close();
 });
 
-test('a clear conversational follow-up can edit without redundant confirmation',async()=>{
+for (const question of ['照刚才说的办','Do not edit the whole note; replace just this sentence in note TWO.']) test('clear or mixed editing intent does not trigger redundant confirmation: '+question,async()=>{
  const {p,request,window}=setup();let calls=0;
  p.clarifySharedNoteAction=async()=>{throw new Error('Unexpected redundant confirmation');};
  p.runCodex=async r=>{
@@ -49,7 +49,7 @@ test('a clear conversational follow-up can edit without redundant confirmation',
   if(calls===2)return tools([{tool:'editNote',intent:'edit',noteKey:'TWO',version:rows[0].result.version,edits:[{oldText:'Second',newText:'Updated'}]}]);
   assert.equal(rows[0].result.saved,true);return {text:'Updated.'};
  };
- assert.equal((await p.runBackend('codex',{...request(),question:'照刚才说的办',userQuestion:'照刚才说的办'})).text,'Updated.');window.close();
+ assert.equal((await p.runBackend('codex',{...request(),question,userQuestion:question})).text,'Updated.');window.close();
 });
 
 test('every shared backend receives editable plugin capabilities even in a read-only filesystem sandbox',async()=>{
