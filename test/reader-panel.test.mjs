@@ -65,8 +65,8 @@ test("reader toolbar uses the public append hook and toggles a panel outside ite
 	const button = toolbar.querySelector(".abstractin-reader-toggle");
 	assert.equal(button.getAttribute("aria-label"), "Toggle AbstractIn panel");
 	assert.ok(button.querySelector('.abstractin-i[data-icon="app"] svg'));
-	assert.equal(button.querySelector("svg").getAttribute("viewBox"), "0 0 48 48");
-	assert.ok(button.querySelector('path[fill="#EDA34F"]'));
+	assert.equal(button.querySelector("svg").getAttribute("viewBox"), "0 0 128 128");
+	assert.ok(button.querySelector('path[fill="#F0AD5B"]'));
 	await p.openReaderPanel(a);
 	const panel = doc.querySelector(".abstractin-reader-panel");
 	assert.equal(panel.hidden, false);

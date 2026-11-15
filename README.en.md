@@ -17,7 +17,7 @@ Use local **Codex, Claude Code, Gemini CLI, or Antigravity**, or connect an **AP
 
 ## Features at a glance
 
-This guide covers the features available in **v0.2.164**.
+This guide covers the features available in **v0.2.165**.
 
 | Feature | What it provides |
 |---|---|
@@ -335,7 +335,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-These feature descriptions cover **v0.2.164**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+These feature descriptions cover **v0.2.165**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 
