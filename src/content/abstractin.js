@@ -3948,14 +3948,15 @@ AbstractIn = {
 			let sessions = await this.loadSessions(ctx.dir);
 			if (ctx.reading) {
 				const noteOrHistoryTask = this.sharedNoteIntent?.(question) === "edit" || /笔记|\bnotes?\b|\bchats?\b|之前|上次|以前|\b(?:previous|earlier|history)\b|\blast\s+(?:discussion|conversation|time)\b/i.test(question);
+				const scopedTask = noteOrHistoryTask && !pending.readingAction && !pending.paperGuide;
 				const vocabularyTutor = !noteOrHistoryTask && !pending.readingAction && !pending.paperGuide && (pending.vocabularyTutor || this.isVocabularyQuestion(question, pending.selection) ||
 					this.isVocabularyFollowUp(question, sessions[backend]?.vocabularyTutor));
 				pending.answerMode ||= pending.paperGuide ? "source" : this.getReadingAnswerMode();
 				let answerMode = pending.answerMode;
 				let forbidSource = !pending.readingAction && (vocabularyTutor || answerMode === "context" || this.requestsKnowledgeDiscussion(question));
-				let preferred = vocabularyTutor ? "knowledge" : pending.evidenceMode || (answerMode === "source" ? "source" : "knowledge");
+				let preferred = vocabularyTutor || scopedTask ? "knowledge" : pending.evidenceMode || (answerMode === "source" ? "source" : "knowledge");
 				let explicitSourceRequest = this.requestsReadingSource(question);
-				let sourceLookup = !forbidSource && (pending.sourceLookup || answerMode === "source" || (answerMode === "balanced" && this.agentCanReadSources(backend) &&
+				let sourceLookup = !forbidSource && (!scopedTask || explicitSourceRequest || pending.sourceLookup) && (pending.sourceLookup || answerMode === "source" || (answerMode === "balanced" && this.agentCanReadSources(backend) &&
 					(explicitSourceRequest || this.needsReadingSource(question, pending.selection))));
 				let evidenceMode = pending.readingAction ? "source" : forbidSource ? "knowledge" : sourceLookup ? "source" : preferred;
 				await this.assertAgentReadingReady(backend, evidenceMode);

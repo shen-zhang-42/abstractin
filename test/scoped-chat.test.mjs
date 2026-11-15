@@ -30,6 +30,7 @@ test('clear note edits bypass clarification; ambiguous actions show one real dia
  const {p,ctx,turn,window}=setup();
  for(const question of ['修改笔记中的这句话','更改这个note','Please edit note TWO','Please replace this paragraph'])assert.equal(p.sharedNoteIntent(question),'edit');
  assert.equal(p.sharedNoteIntent('Do not edit the note'),'answer');assert.equal(p.sharedNoteIntent('How can I edit my note?'),'answer');
+ for(const word of ['replace','rewrite','edit'])assert.equal(p.sharedNoteIntent(word),'unclear');
  const explicit=turn();assert.equal(await p.clarifySharedNoteAction(ctx,'Question',explicit),'edit');assert.equal(window.document.querySelector('[role="dialog"]'),null);
  const ambiguous={...turn(),noteAction:'unclear'},choice=p.sharedChatOperation(ctx,{tool:'clarifyNoteAction',question:'Apply or explain?'},ambiguous);
  for(let i=0;i<30&&!window.document.querySelector('[role="dialog"]');i++)await new Promise(resolve=>setTimeout(resolve,5));

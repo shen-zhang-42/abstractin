@@ -13,6 +13,9 @@
  Object.assign(AbstractIn, {
   sharedNoteIntent(question) {
    const text = String(question || "").split(/\n(?:>|```)/)[0];
+   // A bare word such as "replace" can be a vocabulary question, not a note
+   // command. Let the agent interpret it in conversation rather than grant intent.
+   if (/^[a-z][a-z'-]*[?？.]?$/i.test(text.trim())) return "unclear";
    if (/^(?:how (?:do|can|should) I|(?:请)?(?:解释|说明|介绍)?(?:一下)?(?:如何|怎么|怎样)(?:编辑|修改|更改|保存|重命名))/i.test(text.trim())) return "answer";
    if (/(?:不要|别|不需要|无需).{0,8}(?:修改|编辑|保存|写入)|\b(?:do not|don't|no need to)\s+(?:edit|change|modify|save)\b/i.test(text)) return "answer";
    if (/(?:修改|更改|编辑|改写|重写|替换|补充|添加|加入|更新|整理|保存|写入|记录|删除|改名|重命名|改进|完善).{0,30}(?:笔记|note)|(?:笔记|note).{0,30}(?:修改|更改|编辑|改写|重写|替换|补充|添加|更新|保存|删除|改名|重命名|改进|完善)|\b(?:edit|change|update|rewrite|modify|replace|rename|save|append|add|remove|delete|record|improve)\b.{0,60}\b(?:note|notes)\b|\b(?:note|notes)\b.{0,40}\b(?:edit|update|rewrite|rename|save)\b|^(?:please\s+)?(?:edit|rewrite|replace|rename|append|insert|delete|remove)\b|^(?:(?:请|帮我|直接|现在|再)\s*)*(?:修改|更改|改写|重写|替换|补充|删除|改成|改为|保存|记下来)/i.test(text.trim())) return "edit";

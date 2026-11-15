@@ -60,6 +60,17 @@ test('reading, source verification, model changes and vocabulary all preserve th
  assert.deepEqual(Object.keys(f.store.sessions),['codex']);
 });
 
+test('note and history tasks can reach the agent in every evidence preference without first preparing the PDF',async()=>{
+ for(const mode of ['balanced','source','context']) {
+  const f=await fixture(mode);f.p.exportReadingSource=async()=>{throw new Error('A note edit must not wait for PDF extraction');};
+  for(const question of ['Edit note TWO using the previous discussion.','Find the previous chat about segmentation.']) {
+   const result=await f.ask(question);assert.equal(result.error,undefined);
+   const request=f.store.requests.at(-1);assert.equal(request.ctx.reading.evidenceMode,'knowledge');assert.equal(request.ctx.reading.vocabularyTutor,false);
+  }
+  f.window.close();
+ }
+});
+
 test('a missing Codex session reloads the vocabulary skill and saves a visible restart notice',async()=>{
  const f=await fixture();await f.ask('enhance');const old=f.store.sessions.codex.id;
  let calls=0;f.p.runBackend=async(_,request)=>{
