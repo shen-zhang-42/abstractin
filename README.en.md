@@ -17,7 +17,7 @@ Use local **Codex, Claude Code, Gemini CLI, or Antigravity**, or connect an **AP
 
 ## Features at a glance
 
-This guide covers the features available in **v0.2.162**.
+This guide covers the features available in **v0.2.163**.
 
 | Feature | What it provides |
 |---|---|
@@ -238,7 +238,7 @@ Every chat can search the current document/workspace's literature and all associ
 
 Every chat can edit associated notes; there is no special explanation-only role. Reading, evidence and vocabulary preferences do not revoke editing permissions. Reading or explanation requests receive answers without changing notes; clear edit requests apply directly without asking again. Ambiguous intent opens an **Edit note / Answer only / Cancel** dialog. The assistant must read the target first; exact text, version, and scope checks prevent stale changes from overwriting newer edits. Each applied change keeps a local `edit-before-*.json` source backup in that note's directory.
 
-AI edits use exact text replacements. Open editors apply incremental transactions that preserve the cursor and undo history. Source line numbers and `− / +` markers accompany red backgrounds for removed lines and green backgrounds for additions, while text colors stay unchanged. Removed lines are review-only and are never written back into Markdown; affected table rows also receive the addition background. **Confirm changes** above the editor clears the diff while retaining the changes, in docked and standalone windows. Pending diffs survive saving and reopening.
+AI edits use exact text replacements. Open editors apply incremental transactions that preserve the cursor and undo history. Source line numbers and `− / +` markers accompany red backgrounds for removed lines and green backgrounds for additions, while text colors stay unchanged. Deleted old-line numbers and minus signs use the same gutters as added-line numbers and plus signs, without inline numbering in the text. Removed lines are review-only and are never written back into Markdown; affected table rows also receive the addition background. **Confirm changes** above the editor keeps the changes and clears the diff. **Cancel changes** beside it reverts all pending AI edits while retaining manual edits elsewhere, in docked and standalone windows. If an AI-edited span was subsequently changed manually, cancellation reports a conflict and leaves the note unchanged. Pending diffs and exact inverse replacements survive saving and reopening. Older diffs created without inverse records must be restored from their original source backups.
 
 Renaming and body edits use the same serialized save queue. Zotero HTML normalization does not create a false source conflict, while real external source changes still prevent overwrites. Source saving and source-index updates are reported separately, so an index error does not misreport a saved note as unsaved. Save errors have a separate wrapping notice with **Retry save**; the close-with-local-draft command is kept in **More**.
 
@@ -333,7 +333,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-These feature descriptions cover **v0.2.162**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+These feature descriptions cover **v0.2.163**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

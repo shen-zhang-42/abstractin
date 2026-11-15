@@ -159,8 +159,8 @@ test('live replacements recover from a previously rejected save queue and persis
  const result=await p.sharedChatOperation(ctx,{tool:'editNote',noteKey:'ONE',version:read.version,edits:[{oldText:'Unique chloroplast finding.',newText:'Updated finding.'}]},t);
  assert.equal(result.saved,true);assert.equal(result.reviewPending,true);assert.equal(resets,0);
  assert.equal(state.input.value,'Only note one. Updated finding.\n\nKeep this paragraph.');
- assert.ok(p.markdownNoteData(one).reviewRanges.length);assert.equal(state.reviewButton.parentElement.hidden,false);
- await state.reviewButton.onclick();assert.equal(state.reviewButton.parentElement.hidden,true);
+ assert.ok(p.markdownNoteData(one).reviewRanges.length);assert.equal(state.reviewButton.closest('.abstractin-note-review').hidden,false);
+ await state.reviewButton.onclick();assert.equal(state.reviewButton.closest('.abstractin-note-review').hidden,true);
  assert.equal(p.markdownNoteData(one).reviewRanges,undefined);assert.match(p.markdownNoteData(one).markdown,/Updated finding/);
  state.dispose();window.close();
 });

@@ -331,17 +331,47 @@
    if (state.saveButton) state.saveButton.dataset.unsaved = String(state.revision !== state.savedRevision);
   },
   noteReplacementReviewRanges(edits, previous = [], source = "") {
-   let ranges = previous.map(range => ({ ...range }));
+   let ranges = previous.map(({ rollback, ...range }) => range);
+   let rollback = previous.length ? previous.find(range => Array.isArray(range.rollback))?.rollback.map(patch => ({ ...patch })) || null : [];
    for (const edit of [...edits].sort((a, b) => b.from - a.from)) {
     const delta = edit.text.length - (edit.to - edit.from);
     const map = (position, end) => position < edit.from ? position : position > edit.to ? position + delta : edit.from + (end ? edit.text.length : 0);
+    if (rollback) {
+     // Compose overlapping AI replacements into one inverse of the original text.
+     const overlap = rollback.filter(patch => patch.from <= edit.to && patch.to >= edit.from);
+     const from = Math.min(edit.from, ...overlap.map(patch => patch.from)), to = Math.max(edit.to, ...overlap.map(patch => patch.to));
+     let before = source.slice(from, to), blocked = false;
+     for (const patch of [...overlap].sort((a, b) => b.from - a.from)) {
+      blocked ||= !!patch.blocked || source.slice(patch.from, patch.to) !== patch.after;
+      before = before.slice(0, patch.from - from) + patch.before + before.slice(patch.to - from);
+     }
+     const after = source.slice(from, edit.from) + edit.text + source.slice(edit.to, to);
+     rollback = rollback.filter(patch => !overlap.includes(patch)).map(patch => ({ ...patch, from: map(patch.from, false), to: map(patch.to, true) }));
+     rollback.push({ from, to: to + delta, before, after, ...(blocked ? { blocked: true } : {}) });
+    }
     ranges = ranges.map(range => ({ ...range, from: map(range.from, false), to: map(range.to, true) }));
     const start = source.lastIndexOf("\n", edit.from - 1) + 1;
     const end = source.indexOf("\n", Math.max(edit.from, edit.to - 1));
     ranges.push({ from: edit.from, to: edit.from + edit.text.length,
      ...(edit.to > edit.from ? { removed: source.slice(start, end < 0 ? source.length : end), oldLine: source.slice(0, start).split("\n").length } : {}) });
+    source = source.slice(0, edit.from) + edit.text + source.slice(edit.to);
    }
-   return ranges.sort((a, b) => a.from - b.from);
+   ranges.sort((a, b) => a.from - b.from);
+   if (ranges.length && rollback) ranges[0].rollback = rollback.sort((a, b) => a.from - b.from);
+   return ranges;
+  },
+  noteReviewCancellation(source, ranges) {
+   const rollback = ranges.find(range => Array.isArray(range.rollback))?.rollback;
+   if (!rollback?.length) throw new Error("These changes predate Cancel changes. Restore them from the saved source backup instead.");
+   let end = -1;
+   for (const patch of rollback) {
+    if (!Number.isInteger(patch.from) || !Number.isInteger(patch.to) || patch.from < 0 || patch.from < end || patch.to < patch.from || patch.to > source.length ||
+     typeof patch.before !== "string" || typeof patch.after !== "string" || patch.blocked || source.slice(patch.from, patch.to) !== patch.after) {
+     throw new Error("Some changed text was edited manually. Cancel would overwrite it; your note has been kept unchanged.");
+    }
+    end = patch.to;
+   }
+   return rollback.map(patch => ({ from: patch.from, to: patch.to, text: patch.before }));
   },
   saveMarkdownNote(state) {
    state.input._composerEditor?.flush?.();
@@ -517,11 +547,14 @@
    actions.append(status, save, more); top.append(title, actions);
    const header = this.el(doc, "header", "abstractin-note-editor-head"), notices = this.el(doc, "div", "abstractin-note-notices");
    header.append(top, toolbar); notices.append(preview); editor.append(header, editHost, notices); (state.dockHosts?.editor || host).append(editor);
-   const review = this.el(doc, "div", "abstractin-note-review"), confirm = this.el(doc, "button", null, "Confirm changes");
+   const review = this.el(doc, "div", "abstractin-note-review"), confirm = this.el(doc, "button", null, "Confirm changes"), cancel = this.el(doc, "button", null, "Cancel changes");
    confirm.type = "button"; confirm.title = "Keep the changes and clear the diff backgrounds";
-   review.append(this.el(doc, "span", null, "Review changes · − removed / + added"), confirm); editor.insertBefore(review, editHost);
-   const updateReview = () => { review.hidden = !input._noteReviewRanges.length; };
-   updateReview(); state.reviewButton = confirm;
+   cancel.type = "button"; cancel.title = "Undo pending AI changes while keeping other edits";
+   const reviewMessage = this.el(doc, "span"), reviewActions = this.el(doc, "div", "abstractin-note-review-actions");
+   reviewMessage.setAttribute("role", "status"); reviewActions.append(cancel, confirm);
+   review.append(reviewMessage, reviewActions); editor.insertBefore(review, editHost);
+   const updateReview = () => { review.hidden = !input._noteReviewRanges.length; reviewMessage.textContent = "Review changes · − removed / + added"; };
+   updateReview(); state.reviewButton = confirm; state.cancelReviewButton = cancel;
    Object.assign(state, { title, input, preview, status, editor, saveButton: save, closeDraftButton: closeDraft });
    this.updateNoteSaveButton(state);
    const saveError = this.el(doc, "div", "abstractin-note-save-error"), saveMessage = this.el(doc, "span"), retrySave = this.el(doc, "button", null, "Retry save");
@@ -540,7 +573,22 @@
    };
    const flush = () => { win.clearTimeout(state.timer); state.timer = null; return this.saveMarkdownNote(state); };
    state.flush = flush;
+   let reviewSource = input.value, reviewRanges = input._noteReviewRanges;
    const change = () => {
+    if (!input._composerEditor && reviewRanges === input._noteReviewRanges && reviewSource !== input.value) {
+     // Keep cancellation positions usable in the plain-source fallback too.
+     let from = 0, oldEnd = reviewSource.length, newEnd = input.value.length;
+     while (from < oldEnd && from < newEnd && reviewSource[from] === input.value[from]) from++;
+     while (oldEnd > from && newEnd > from && reviewSource[oldEnd - 1] === input.value[newEnd - 1]) { oldEnd--; newEnd--; }
+     const map = (position, side) => position < from ? position : position > oldEnd ? position + newEnd - oldEnd : from + (side > 0 ? newEnd - from : 0);
+     input._noteReviewRanges = reviewRanges.map(range => ({ ...range, from: map(range.from, -1), to: map(range.to, 1),
+      ...(range.rollback ? { rollback: range.rollback.map(patch => {
+       const start = map(patch.from, 1), end = map(patch.to, patch.from === patch.to ? 1 : -1);
+       return { ...patch, from: start, to: Math.max(start, end) };
+      }) } : {}),
+     }));
+    }
+    reviewSource = input.value; reviewRanges = input._noteReviewRanges;
     updateReview();
     state.revision++; status.textContent = "Unsaved changes…"; win.clearTimeout(state.timer);
     this.updateNoteSaveButton(state);
@@ -558,16 +606,35 @@
    state.disposeEditor = this.installMathComposer(input, { note: true, compactToolbar: !!state.dockManaged, onReviewChange: updateReview,
     onToolbarChange: visible => state.formatButton?.setAttribute("aria-expanded", String(visible)) });
    confirm.onclick = async () => {
-    confirm.disabled = true;
-    const pendingReview = input._noteReviewRanges.map(range => ({ ...range }));
+    confirm.disabled = cancel.disabled = true;
+    let pendingReview;
     try {
      input._composerEditor?.flush?.();
+     pendingReview = input._noteReviewRanges.map(range => ({ ...range }));
      input._noteReviewRanges = []; input._composerEditor?.setReviewRanges?.("[]"); updateReview(); change(); await flush();
     } catch (e) {
-     input._noteReviewRanges = pendingReview; input._composerEditor?.setReviewRanges?.(JSON.stringify(pendingReview)); updateReview();
+     if (pendingReview) { input._noteReviewRanges = pendingReview; input._composerEditor?.setReviewRanges?.(JSON.stringify(pendingReview)); updateReview(); }
      state.revision++; this.updateNoteSaveButton(state); report(e);
     }
-    finally { confirm.disabled = false; }
+    finally { confirm.disabled = cancel.disabled = false; }
+   };
+   cancel.onclick = async () => {
+    confirm.disabled = cancel.disabled = true;
+    let applied = false;
+    try {
+     input._composerEditor?.flush?.();
+     const source = input.value, edits = this.noteReviewCancellation(source, input._noteReviewRanges);
+     if (input._composerEditor) {
+      if (!input._composerEditor.applyReplacements(source, JSON.stringify(edits), "[]")) throw new Error("The note changed. Review it and try Cancel changes again.");
+     } else {
+      for (const edit of [...edits].sort((a, b) => b.from - a.from)) input.setRangeText(edit.text, edit.from, edit.to, "preserve");
+      input._noteReviewRanges = []; input.dispatchEvent(new win.Event("input", { bubbles: true }));
+     }
+     applied = true; updateReview(); await flush();
+    } catch (e) {
+     // A failed save keeps the restored source in the editor and recoverable draft.
+     if (applied) report(e); else reviewMessage.textContent = e.message || String(e);
+    } finally { confirm.disabled = cancel.disabled = false; }
    };
    save.onclick = () => flush().catch(report);
    const shortcut = event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); flush().catch(report); } };

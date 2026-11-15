@@ -6,6 +6,62 @@ import { tmpdir } from 'node:os';
 import { loadPlugin } from './load-plugin.mjs';
 import { runInNewContext } from 'node:vm';
 
+const applyEdits = (source, edits) => [...edits].sort((a, b) => b.from - a.from).reduce((text, edit) => text.slice(0, edit.from) + edit.text + text.slice(edit.to), source);
+
+test('pending AI replacements compose exact inverses across insertion, deletion and overlapping edits', () => {
+ const {plugin:p,window}=loadPlugin();
+ let source='First\nOld target\nLast',ranges=[];
+ const original=source;
+ for(const edits of [
+  [{from:6,to:9,text:'New'}],
+  [{from:6,to:16,text:'Rewritten'}],
+  [{from:0,to:0,text:'Intro\n'},{from:16,to:20,text:''}],
+ ]) { ranges=p.noteReplacementReviewRanges(edits,ranges,source); source=applyEdits(source,edits); }
+ assert.equal(applyEdits(source,p.noteReviewCancellation(source,ranges)),original);
+ assert.throws(()=>p.noteReviewCancellation(source+'!',ranges.map(({rollback,...r})=>r)),/predate Cancel/);
+ const patch=ranges.find(r=>r.rollback).rollback.find(r=>r.after.length);
+ const manual=source.slice(0,patch.from)+'Manual'+source.slice(patch.to);
+ assert.throws(()=>p.noteReviewCancellation(manual,ranges),/edited manually/);
+ window.close();
+});
+
+test('Cancel changes restores and saves AI replacements after reopen, retaining other manual edits', async () => {
+ const env=await setup(),{p,window,state,note}=env;
+ const before='First\nOld target\nLast',edits=[{from:6,to:9,text:'New'}];
+ const ranges=p.noteReplacementReviewRanges(edits,[],before);
+ note.setNote(p.markdownNoteHTML(note,'Review note',applyEdits(before,edits),state.parent,2,undefined,null,ranges));state.baseHTML=note.getNote();
+ await p.mountMarkdownNote(window,state);
+ const review=state.cancelReviewButton.closest('.abstractin-note-review');
+ assert.equal(review.hidden,false);assert.equal(state.cancelReviewButton.closest('.abstractin-note-editor-head'),null);
+ // Plain-source fallback maps cancellation around disjoint manual typing too.
+ state.input.setRangeText('User intro\n',0,0);state.input.dispatchEvent(new window.Event('input',{bubbles:true}));
+ await state.cancelReviewButton.onclick();
+ assert.equal(state.input.value,'User intro\n'+before);assert.equal(p.markdownNoteData(note).markdown,state.input.value);
+ assert.equal(p.markdownNoteData(note).reviewRanges,undefined);assert.equal(review.hidden,true);
+ state.dispose();window.close();
+});
+
+test('Cancel changes refuses to overwrite manual changes inside the AI replacement',async()=>{
+ const {p,window,state,note}=await setup(),before='Old target',edits=[{from:0,to:3,text:'New'}];
+ note.setNote(p.markdownNoteHTML(note,'Review note',applyEdits(before,edits),state.parent,2,undefined,null,p.noteReplacementReviewRanges(edits,[],before)));state.baseHTML=note.getNote();
+ await p.mountMarkdownNote(window,state);
+ state.input.setRangeText('Manual',0,3);state.input.dispatchEvent(new window.Event('input',{bubbles:true}));
+ await state.cancelReviewButton.onclick();
+ assert.equal(state.input.value,'Manual target');assert.equal(state.cancelReviewButton.closest('.abstractin-note-review').hidden,false);
+ assert.match(state.cancelReviewButton.closest('.abstractin-note-review').textContent,/overwrite/);
+ assert.equal(state.cancelReviewButton.disabled,false);state.dispose();window.close();
+});
+
+test('failed cancellation save retains restored source and allows Retry save',async()=>{
+ const {p,window,state,note}=await setup(),before='Old target',edits=[{from:0,to:3,text:'New'}];
+ note.setNote(p.markdownNoteHTML(note,'Review note',applyEdits(before,edits),state.parent,2,undefined,null,p.noteReplacementReviewRanges(edits,[],before)));state.baseHTML=note.getNote();
+ await p.mountMarkdownNote(window,state);const save=note.saveTx.bind(note);note.saveTx=async()=>{throw new Error('Database busy');};
+ await state.cancelReviewButton.onclick();assert.equal(state.input.value,before);assert.equal(state.saveError.hidden,false);
+ note.saveTx=save;await state.saveError.querySelector('button').onclick();
+ assert.equal(p.markdownNoteData(note).markdown,before);assert.equal(p.markdownNoteData(note).reviewRanges,undefined);assert.equal(state.saveError.hidden,true);
+ state.dispose();window.close();
+});
+
 async function setup() {
  const env = loadPlugin(), { plugin: p, window, document } = env;
  const dir = await mkdtemp(join(tmpdir(), 'abstractin-note-editor-'));

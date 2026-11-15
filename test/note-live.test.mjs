@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
+import { loadPlugin } from './load-plugin.mjs';
 
 async function setup(text, config = {}) {
  const dom = new JSDOM('<!doctype html><div id="editor"></div>', { runScripts: 'outside-only', pretendToBeVisual: true });
@@ -15,6 +16,31 @@ async function setup(text, config = {}) {
  const api = window.AbstractInComposer.create({ text, tokens: () => [], onChange: (...args) => changes.push(args), onKey: () => false, onPaste: () => false, onDrop: () => false, ...config });
  return { api, window, changes, close() { api.destroy(); window.close(); } };
 }
+
+test('cancellation maps around manual boundary typing, survives reopen and uses one incremental transaction',async()=>{
+ const {plugin:p,window:pw}=loadPlugin(),original='First\nOld target\nLast';
+ const edits=[{from:6,to:9,text:'New'}],ranges=p.noteReplacementReviewRanges(edits,[],original);
+ const env=await setup(original),{api}=env;
+ api.applyReplacements(original,JSON.stringify(edits),JSON.stringify(ranges));
+ api.view.dispatch({changes:[{from:6,insert:'User before '},{from:9,insert:' user after'}]});
+ const saved=api.getMarkdown(),metadata=api.getReviewRanges();env.close();
+ const reopened=await setup(saved,{reviewRanges:metadata});
+ const inverse=p.noteReviewCancellation(saved,JSON.parse(reopened.api.getReviewRanges()));
+ reopened.api.view.setState=()=>{throw new Error('Must not reset the editor');};
+ assert.equal(reopened.api.applyReplacements(saved,JSON.stringify(inverse),'[]'),true);
+ assert.equal(reopened.api.getMarkdown(),'First\nUser before Old user after target\nLast');
+ assert.equal(reopened.api.getReviewRanges(),'[]');reopened.close();pw.close();
+});
+
+test('multiline deletion keeps old numbers and minus signs in the same gutters as additions',async()=>{
+ const original='First\nOld one\nOld two\nLast',env=await setup(original),{api,window}=env;
+ api.applyReplacements(original,JSON.stringify([{from:6,to:21,text:'New'}]),JSON.stringify([{from:6,to:9,removed:'Old one\nOld two',oldLine:2}]));
+ assert.deepEqual([...window.document.querySelectorAll('.cm-content .note-ai-deletion')].map(row=>row.textContent),['Old one','Old two']);
+ assert.equal(window.document.querySelector('.cm-content .note-ai-deleted-number'),null);
+ assert.deepEqual([...window.document.querySelectorAll('.cm-lineNumbers .note-ai-deleted-number')].map(row=>row.textContent),['2','3']);
+ assert.equal(window.document.querySelectorAll('.note-change-gutter .note-ai-minus').length,2);
+ assert.equal(window.document.querySelectorAll('.note-change-gutter .note-ai-plus').length,1);env.close();
+});
 
 test('Live Markdown preserves source on open, selection changes and external sync', async () => {
  const original = '# Heading\n\nBefore **bold** after.\n\n| A | B |\n| --- | --- |\n| x | y |\n';
@@ -89,7 +115,9 @@ test('review highlights survive source edits, reopen, deletion and rendered tabl
  const deletion = await setup('First\nDelete\nLast');
  assert.equal(deletion.api.applyReplacements('First\nDelete\nLast', JSON.stringify([{from:6,to:13,text:''}]), '[{"from":6,"to":6,"removed":"Delete","oldLine":2}]'), true);
  assert.equal(deletion.window.document.querySelectorAll('.cm-line.note-ai-changed').length, 0);
- assert.match(deletion.window.document.querySelector('.note-ai-deletion').textContent,/2 −Delete/);
+ assert.equal(deletion.window.document.querySelector('.note-ai-deletion').textContent,'Delete');
+ assert.equal(deletion.window.document.querySelector('.cm-lineNumbers .note-ai-deleted-number').textContent,'2');
+ assert.equal(deletion.window.document.querySelector('.note-change-gutter .note-ai-minus').textContent,'−');
  assert.equal(deletion.api.getMarkdown(),'First\nLast');deletion.close();
 });
 
@@ -99,7 +127,9 @@ test('GitHub-style note review shows old text without changing source, with line
  assert.equal(api.applyReplacements('First\nOld line\nLast',JSON.stringify([{from:6,to:14,text:'New line'}]),ranges),true);
  assert.equal(api.getMarkdown(),'First\nNew line\nLast');assert.ok(window.document.querySelector('.cm-lineNumbers'));
  assert.equal(window.document.querySelector('.note-change-gutter .note-ai-plus').textContent,'+');
- assert.match(window.document.querySelector('.note-ai-deletion').textContent,/2 −Old line/);
+ assert.equal(window.document.querySelector('.note-ai-deletion').textContent,'Old line');
+ assert.equal(window.document.querySelector('.cm-lineNumbers .note-ai-deleted-number').textContent,'2');
+ assert.equal(window.document.querySelector('.note-change-gutter .note-ai-minus').textContent,'−');
  assert.match(window.document.querySelector('.cm-line.note-ai-added').textContent,/New line/);
  api.view.dispatch({changes:{from:0,insert:'Intro\n'}});
  assert.equal(JSON.parse(api.getReviewRanges())[0].removed,'Old line');
