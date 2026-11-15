@@ -20,11 +20,67 @@ function setup() {
  };
  const one=note('ONE','Only note one. Unique chloroplast finding.\n\nKeep this paragraph.'),two=note('TWO','Second note on chloroplast analysis.');
  const ctx={dir:'/chat',paperItem:a,attachmentItem:a.pdf,reading:{type:'book',action:'discuss',answerMode:'balanced'}};
- const turn=()=>({backend:'codex',reads:new Map(),excerpts:new Set(),documentSearches:new Map(),images:[],edits:[],editSerial:0});
+ const turn=()=>({backend:'codex',noteAction:'edit',reads:new Map(),excerpts:new Set(),documentSearches:new Map(),images:[],edits:[],editSerial:0});
  const request=(context=ctx)=>({ctx:context,files:{},history:[],commonChat:true,question:'Improve the chloroplast explanation in note TWO.',model:'fixture',onProgress(){}});
  return {...env,p,w,files,items,a,b,note,one,two,ctx,turn,request};
 }
 const tools=operations=>({text:'<abstractin-tools>'+JSON.stringify({operations})+'</abstractin-tools>'});
+
+test('clear note edits bypass clarification; ambiguous actions show one real dialog and honour the choice',async()=>{
+ const {p,ctx,turn,window}=setup();
+ for(const question of ['修改笔记中的这句话','更改这个note','Please edit note TWO','Please replace this paragraph'])assert.equal(p.sharedNoteIntent(question),'edit');
+ assert.equal(p.sharedNoteIntent('Do not edit the note'),'answer');assert.equal(p.sharedNoteIntent('How can I edit my note?'),'answer');
+ const explicit=turn();assert.equal(await p.clarifySharedNoteAction(ctx,'Question',explicit),'edit');assert.equal(window.document.querySelector('[role="dialog"]'),null);
+ const ambiguous={...turn(),noteAction:'unclear'},choice=p.sharedChatOperation(ctx,{tool:'clarifyNoteAction',question:'Apply or explain?'},ambiguous);
+ for(let i=0;i<30&&!window.document.querySelector('[role="dialog"]');i++)await new Promise(resolve=>setTimeout(resolve,5));
+ const dialog=window.document.querySelector('[role="dialog"]');assert.ok(dialog);
+ [...dialog.querySelectorAll('button')].find(button=>button.textContent==='Answer only').click();
+ assert.equal((await choice).action,'answer');assert.equal(await p.clarifySharedNoteAction(ctx,'Again?',ambiguous),'answer');
+ const read=await p.sharedChatOperation(ctx,{tool:'readNote',noteKey:'ONE'},ambiguous);
+ await assert.rejects(p.sharedChatOperation(ctx,{tool:'editNote',noteKey:'ONE',version:read.version,edits:[{oldText:'Unique',newText:'New'}]},ambiguous),/chose answering/);window.close();
+});
+
+test('a clear conversational follow-up can edit without redundant confirmation',async()=>{
+ const {p,request,window}=setup();let calls=0;
+ p.clarifySharedNoteAction=async()=>{throw new Error('Unexpected redundant confirmation');};
+ p.runCodex=async r=>{
+  if(++calls===1)return tools([{tool:'readNote',noteKey:'TWO'}]);
+  const rows=JSON.parse(r.question.match(/<shared-tool-results>(.*?)<\/shared-tool-results>/s)[1]);
+  if(calls===2)return tools([{tool:'editNote',intent:'edit',noteKey:'TWO',version:rows[0].result.version,edits:[{oldText:'Second',newText:'Updated'}]}]);
+  assert.equal(rows[0].result.saved,true);return {text:'Updated.'};
+ };
+ assert.equal((await p.runBackend('codex',{...request(),question:'照刚才说的办',userQuestion:'照刚才说的办'})).text,'Updated.');window.close();
+});
+
+test('every shared backend receives editable plugin capabilities even in a read-only filesystem sandbox',async()=>{
+ const {p,request,window}=setup();p.runCodex=async r=>{
+  assert.equal(r.ctx.sharedChat,true);assert.match(p.systemPrompt(r.ctx),/NOT editNote/);
+  assert.match(r.question,/<note-action>.*explicitly requested an edit/);return {text:'Ready.'};
+ };
+ assert.equal((await p.runBackend('codex',request())).text,'Ready.');window.close();
+});
+
+test('history discovery supplies only matching turn identifiers and the agent then reads the selected turn',async()=>{
+ const {p,ctx,request,window}=setup();ctx.discussion={id:'current'};
+ const saved={chat:{id:'other-chat'},title:'Earlier analysis',history:[{role:'user',text:'What is chloroplast segmentation?'},{role:'assistant',text:'Sensitive earlier answer: use a control.'}]};
+ p.scopedChatHistories=async()=>[saved];let calls=0;
+ p.runCodex=async r=>{
+  if(++calls===1){const candidate=JSON.parse(r.question.match(/<related-chat-turns>(.*?)<\/related-chat-turns>/s)[1]).candidates[0];assert.equal(candidate.chatID,'other-chat');assert.doesNotMatch(r.question,/Sensitive earlier answer/);return tools([{tool:'readChatTurn',...candidate}]);}
+  assert.match(r.question,/Sensitive earlier answer/);return {text:'Based on the earlier turn.'};
+ };
+ assert.match((await p.runBackend('codex',request())).text,/earlier turn/);assert.equal(calls,2);window.close();
+});
+
+test('workspace history search reads canonical synced notes even with an empty local transcript',async()=>{
+ const {p,ctx,a,note,turn,window}=setup(),workspace={id:'workspace-test',name:'Test'};
+ const saved=note('SAVEDWORKSPACE','Not a Markdown discussion',[p.noteDocumentRef(a)],workspace);
+ saved.html='<pre>'+JSON.stringify({format:'abstractin-workspace-chat-v1',workspaceID:workspace.id,updatedAt:50,discussion:{id:'remote-chat',topic:'Remote decision',number:1,chapterID:null},history:[{role:'user',text:'Chloroplast threshold?'},{role:'assistant',text:'Use the saved control threshold.'}]})+'</pre>';
+ p.discussionIndex=async()=>({chats:[],chapters:[]});p.loadHistory=async()=>[];
+ const scoped={...ctx,readingWorkspace:workspace,workspaceDocuments:[p.noteDocumentRef(a)]};
+ const found=await p.sharedChatOperation(scoped,{tool:'searchChats',queries:['chloroplast']},turn());
+ assert.equal(found.matches[0].chatID,'remote-chat');
+ const read=await p.sharedChatOperation(scoped,{tool:'readChatTurn',...found.matches[0]},turn());assert.match(read.text,/saved control threshold/);window.close();
+});
 
 test('every chat has the same scope, without leaking other documents, workspaces, libraries or trash',async()=>{
  const {p,a,b,note,two,ctx,window}=setup();
@@ -116,7 +172,7 @@ test('a tool save failure reports applied versus saved honestly and permits a no
  const read=await p.sharedChatOperation(ctx,{tool:'readNote',noteKey:'ONE'},t);
  one.saveTx=async()=>{throw new Error('Database busy');};
  await assert.rejects(p.sharedChatOperation(ctx,{tool:'editNote',noteKey:'ONE',version:read.version,edits:[{oldText:'Unique',newText:'Updated'}]},t),/applied but could not be saved.*Database busy/);
- assert.match(state.status.textContent,/Not saved.*Database busy/);assert.match(state.input.value,/Updated/);
+ assert.equal(state.status.textContent,'Not saved');assert.match(state.saveError.textContent,/Database busy/);assert.match(state.input.value,/Updated/);
  assert.ok([...files.keys()].some(path=>path.endsWith('/draft.json')));
  const retryRead=await p.sharedChatOperation(ctx,{tool:'readNote',noteKey:'ONE'},t);
  const retry={tool:'editNote',noteKey:'ONE',version:retryRead.version,edits:[{oldText:'Updated',newText:'Updated'}]};
@@ -168,9 +224,15 @@ test('note chats search linked books and papers, retain source identities and ca
  await assert.rejects(p.sharedChatOperation(ctx,{tool:'searchDocument',documentKey:'OUTSIDE',queries:['secret']},t),/outside/);window.close();
 });
 
-test('explicit context-only mode blocks retrieval and editing and cancellation stops before tools',async()=>{
+test('evidence preferences never revoke note permissions and cancellation stops before tools',async()=>{
  const {p,ctx,turn,request,window}=setup();ctx.reading.answerMode='context';
- for(const tool of ['searchNotes','readNote','editNote','searchDocument']) await assert.rejects(p.sharedChatOperation(ctx,{tool,noteKey:'ONE',queries:['word']},turn()),/disables/);
+ await assert.rejects(p.sharedChatOperation(ctx,{tool:'searchDocument',queries:['word']},turn()),/disables original-document/);
+ for(const preferences of [{answerMode:'context'},{answerMode:'balanced',vocabularyTutor:true}]) {
+  Object.assign(ctx.reading,preferences);const t={...turn(),noteAction:'edit'},read=await p.sharedChatOperation(ctx,{tool:'readNote',noteKey:'TWO'},t);
+  const result=await p.sharedChatOperation(ctx,{tool:'editNote',noteKey:'TWO',version:read.version,edits:[{oldText:'chloroplast',newText:'chloroplast imaging'}]},t);assert.equal(result.saved,true);
+ }
+ ctx.reading.vocabularyTutor=false;
+ const direct=await p.sharedChatOperation(ctx,{tool:'readNote',noteKey:'ONE'},turn());assert.match(direct.markdown,/Only note one/);
  ctx.reading.answerMode='balanced';let calls=0;
  p._pending.set(ctx.dir,{cancelled:false});p.runCodex=async()=>{calls++;p._pending.get(ctx.dir).cancelled=true;return tools([{tool:'readNote',noteKey:'ONE'}]);};
  assert.equal((await p.runBackend('codex',request())).cancelled,true);

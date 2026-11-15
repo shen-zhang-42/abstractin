@@ -154,6 +154,23 @@ test('external note changes are not overwritten and the unsaved Markdown draft i
  state.disposeEditor(); window.close();
 });
 
+test('renaming survives Zotero HTML normalization and source-index failures do not misreport a saved note',async()=>{
+ const {p,window,state,note}=await setup();await p.mountMarkdownNote(window,state);
+ note.setNote('<div data-schema-version="9">'+state.baseHTML+'</div>');
+ state.title.value='New name';state.title.dispatchEvent(new window.Event('input',{bubbles:true}));
+ p.syncNoteOutLinks=async()=>{throw new Error('Cold source index unavailable');};
+ await state.flush();assert.equal(p.markdownNoteData(note).title,'New name');assert.equal(state.savedRevision,state.revision);
+ assert.equal(state.saveError.hidden,true);assert.match(state.status.textContent,/Saved to Zotero.*source links/);
+ p.syncNoteOutLinks=async()=>{};await state.flush();assert.equal(state.status.textContent,'Saved to Zotero');
+ const original=note.saveTx.bind(note);note.saveTx=async()=>{throw new Error('Database busy');};
+ state.title.value='Retry name';state.title.dispatchEvent(new window.Event('input',{bubbles:true}));await state.saveButton.onclick();
+ assert.equal(state.saveError.hidden,false);assert.match(state.saveError.textContent,/Database busy/);
+ assert.equal(state.saveError.closest('.abstractin-note-editor-head'),null);
+ assert.ok(state.closeDraftButton.closest('.abstractin-note-more-actions'));
+ note.saveTx=original;await state.saveError.querySelector('button').onclick();
+ assert.equal(state.saveError.hidden,true);assert.equal(p.markdownNoteData(note).title,'Retry name');state.dispose();window.close();
+});
+
 test('serialized saves keep the latest text and recover after a failed Zotero save', async () => {
  const { p, window, note, state } = await setup(); await p.mountMarkdownNote(window, state);
  let fail = true; note.saveTx = async () => { if (fail) { fail = false; throw new Error('Database busy'); } };

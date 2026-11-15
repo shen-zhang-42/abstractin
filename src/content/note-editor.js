@@ -311,7 +311,7 @@
     for (const ref of refs.values()) {
      const parent = await this.resolveNoteDocument(ref); if (!parent || parent.isEditable?.() === false) continue;
      if (typeof parent.loadChildItems === "function") await parent.loadChildItems();
-     const children = await Zotero.Items.getAsync(parent.getNotes());
+     const children = await this.loadMarkdownNoteItems(await Zotero.Items.getAsync(parent.getNotes()));
      let anchor = children.find(item => this.noteInMetadata(item, parent) === "out-anchor");
      let links = [];
      if (anchor) for (const pre of this.parseNoteHTML(anchor.getNote()).content.querySelectorAll("pre")) try {
@@ -330,13 +330,16 @@
   updateNoteSaveButton(state) {
    if (state.saveButton) state.saveButton.dataset.unsaved = String(state.revision !== state.savedRevision);
   },
-  noteReplacementReviewRanges(edits, previous = []) {
+  noteReplacementReviewRanges(edits, previous = [], source = "") {
    let ranges = previous.map(range => ({ ...range }));
    for (const edit of [...edits].sort((a, b) => b.from - a.from)) {
     const delta = edit.text.length - (edit.to - edit.from);
     const map = (position, end) => position < edit.from ? position : position > edit.to ? position + delta : edit.from + (end ? edit.text.length : 0);
-    ranges = ranges.map(range => ({ from: map(range.from, false), to: map(range.to, true) }));
-    ranges.push({ from: edit.from, to: edit.from + edit.text.length });
+    ranges = ranges.map(range => ({ ...range, from: map(range.from, false), to: map(range.to, true) }));
+    const start = source.lastIndexOf("\n", edit.from - 1) + 1;
+    const end = source.indexOf("\n", Math.max(edit.from, edit.to - 1));
+    ranges.push({ from: edit.from, to: edit.from + edit.text.length,
+     ...(edit.to > edit.from ? { removed: source.slice(start, end < 0 ? source.length : end), oldLine: source.slice(0, start).split("\n").length } : {}) });
    }
    return ranges.sort((a, b) => a.from - b.from);
   },
@@ -347,7 +350,7 @@
     // Keep a recoverable source draft even if Zotero rejects a save or detects a conflict.
     await Zotero.File.putContentsAsync(OS.Path.join(state.dir, "draft.json"), JSON.stringify({ ...snapshot, format: "abstractin-note-draft-v1", noteKey: state.note.key }));
     if (state.note.deleted || state.note.isEditable?.() === false) throw new Error("The note is unavailable or read-only. The source draft was kept locally.");
-    if (state.note.getNote() !== state.baseHTML) throw new Error("The note changed outside this editor. Your draft is kept locally; reopen the note to review and recover it.");
+    if (!this.sameMarkdownNoteSource(state.note.getNote(), state.baseHTML)) throw new Error("The note changed outside this editor. Your draft is kept locally; reopen the note to review and recover it.");
     let parent = null;
     for (const ref of snapshot.documents) {
      const item = await this.resolveNoteDocument(ref);
@@ -355,19 +358,38 @@
      if (snapshot.documents.length === 1) parent = item;
     }
     if (snapshot.workspace) parent = null;
+    if (!this.sameMarkdownNoteSource(state.note.getNote(), state.baseHTML)) throw new Error("The note changed while saving. Your draft was kept locally; reopen it to review the conflict.");
     state.note.parentID = parent?.id || false;
     state.note.setNote(this.markdownNoteHTML(state.note, snapshot.title, snapshot.markdown, parent, snapshot.updatedAt, snapshot.documents, snapshot.workspace, snapshot.reviewRanges));
     try { await state.note.saveTx(); }
     catch (e) { state.baseHTML = state.note.getNote(); throw e; }
     state.baseHTML = state.note.getNote(); state.parent = parent;
-    await this.syncNoteOutLinks(state.note, snapshot.documents, snapshot.title, state.linkedDocuments || []);
-    state.linkedDocuments = snapshot.documents; state.savedRevision = snapshot.revision;
+    state.savedRevision = snapshot.revision;
+    let linkWarning = "";
+    try { await this.syncNoteOutLinks(state.note, snapshot.documents, snapshot.title, state.linkedDocuments || []); state.linkedDocuments = snapshot.documents; }
+    catch (error) { linkWarning = "Saved to Zotero; source links need retry."; this.logError("note source links", error); }
     this.updateNoteSaveButton(state);
+    state.saveError && (state.saveError.hidden = true);
+    if (state.closeDraftButton) state.closeDraftButton.hidden = true;
     if (!state.dockManaged && state.win?.document && (!state.home || state.home.active === state)) state.win.document.title = (state.home ? "NoteOut — " : "AbstractIn — ") + snapshot.title;
-    if (state.status?.isConnected) state.status.textContent = state.savedRevision === state.revision ? "Saved to Zotero" : "Unsaved changes…";
+    if (state.status?.isConnected) state.status.textContent = state.savedRevision === state.revision ? linkWarning || "Saved to Zotero" : "Unsaved changes…";
    });
    state.saveQueue = task;
    return task;
+  },
+  sameMarkdownNoteSource(current, baseline) {
+   if (current === baseline) return true;
+   const identity = html => {
+    for (const pre of this.parseNoteHTML(html).content.querySelectorAll('pre')) try {
+     const data = JSON.parse(pre.textContent);
+     if (data.format === "abstractin-markdown-note-v1") return JSON.stringify([data.title, data.markdown, data.documents, data.workspace || null, data.reviewRanges || []]);
+    } catch (_) {}
+    return null;
+   };
+   const saved = identity(baseline);
+   // Zotero may normalize the rendered HTML; the plugin's Markdown source,
+   // title and source links are the conflict boundary.
+   return saved !== null && identity(current) === saved;
   },
   installNoteSplitter(state, host, editor, chat, { sidebar = false } = {}) {
    const win = state.win, doc = win.document, splitter = this.el(doc, "div", "abstractin-note-splitter");
@@ -484,30 +506,34 @@
    const more = this.el(doc, "details", "abstractin-note-more"), moreLabel = this.el(doc, "summary", null, "···"), moreActions = this.el(doc, "div", "abstractin-note-more-actions");
    moreLabel.setAttribute("aria-label", "Note actions"); moreLabel.title = "Note actions";
    const trash = this.el(doc, "button", "abstractin-note-danger", "Move to Trash…"); trash.onclick = () => this.confirmTrashMarkdownNote(state);
-   moreActions.append(chatToggle, append, toDiscussion, trash); more.append(moreLabel, moreActions);
+   moreActions.append(chatToggle, append, toDiscussion, trash, closeDraft); more.append(moreLabel, moreActions);
    moreActions.addEventListener("click", event => { if (event.target.closest("button")) more.open = false; });
-   toolbar.append(save, more, closeDraft);
+   toolbar.append(save, more);
    const input = this.el(doc, "textarea", "abstractin-note-source"); input.value = data.markdown; input.placeholder = "Write Markdown and LaTeX here…"; input.setAttribute("aria-label", "Markdown note");
    input._noteReviewRanges = (data.reviewRanges || []).filter(range => Number.isInteger(range.from) && Number.isInteger(range.to) && range.from >= 0 && range.to >= range.from && range.to <= input.value.length);
    const editHost = this.el(doc, "div", "abstractin-note-edit-host"); editHost.append(input);
    const preview = this.el(doc, "div", "abstractin-note-preview"); preview.hidden = true;
    const top = this.el(doc, "div", "abstractin-note-topline"), actions = this.el(doc, "div", "abstractin-note-file-actions");
-   actions.append(status, save, more, closeDraft); top.append(title, actions);
+   actions.append(status, save, more); top.append(title, actions);
    const header = this.el(doc, "header", "abstractin-note-editor-head"), notices = this.el(doc, "div", "abstractin-note-notices");
    header.append(top, toolbar); notices.append(preview); editor.append(header, editHost, notices); (state.dockHosts?.editor || host).append(editor);
    const review = this.el(doc, "div", "abstractin-note-review"), confirm = this.el(doc, "button", null, "Confirm changes");
-   confirm.type = "button"; confirm.title = "Keep the changes and remove red highlighting";
-   review.append(this.el(doc, "span", null, "AI edits are shown in red."), confirm); header.append(review);
+   confirm.type = "button"; confirm.title = "Keep the changes and clear the diff backgrounds";
+   review.append(this.el(doc, "span", null, "Review changes · − removed / + added"), confirm); editor.insertBefore(review, editHost);
    const updateReview = () => { review.hidden = !input._noteReviewRanges.length; };
    updateReview(); state.reviewButton = confirm;
-   Object.assign(state, { title, input, preview, status, editor, saveButton: save });
+   Object.assign(state, { title, input, preview, status, editor, saveButton: save, closeDraftButton: closeDraft });
    this.updateNoteSaveButton(state);
-   const report = e => { status.textContent = "Not saved: " + (e.message || e); closeDraft.hidden = false; this.logError("Markdown note", e); };
+   const saveError = this.el(doc, "div", "abstractin-note-save-error"), saveMessage = this.el(doc, "span"), retrySave = this.el(doc, "button", null, "Retry save");
+   saveError.hidden = true; saveError.setAttribute("role", "alert"); retrySave.type = "button"; saveError.append(saveMessage, retrySave); editor.insertBefore(saveError, editHost); state.saveError = saveError;
+   const report = e => { status.textContent = "Not saved"; saveMessage.textContent = e.message || String(e); saveError.hidden = false; closeDraft.hidden = false; this.logError("Markdown note", e); };
+   state.reportSaveError = report;
+   retrySave.onclick = () => state.flush().catch(report);
    closeDraft.onclick = async () => {
     try {
      await state.saveQueue.catch(() => {});
      await Zotero.File.putContentsAsync(OS.Path.join(state.dir, "draft.json"), JSON.stringify({ format: "abstractin-note-draft-v1", noteKey: state.note.key,
-      title: title.value, markdown: input.value, documents: state.documents, updatedAt: Date.now() }));
+      title: title.value, markdown: input.value, documents: state.documents, reviewRanges: input._noteReviewRanges, updatedAt: Date.now() }));
      state.forceClose = true;
      if (state.dockManaged) await this.closeReadingLayout(state.readingLayout, { discard: true }); else win.close();
     } catch (e) { report(e); }
@@ -689,7 +715,7 @@
    try {
     await this.assertAgentReadingReady(pending.backend, "knowledge");
     const history = await this.loadHistory(ctx.dir), sessions = await this.loadSessions(ctx.dir), session = sessions[pending.backend];
-    const request = { ctx, files: {}, history, commonChat: true, session: session?.model === pending.model ? session : null,
+    const request = { ctx, files: {}, history, commonChat: true, userQuestion: question, session: session?.model === pending.model ? session : null,
      question: question + (selection.trim() ? "\n<selected-note-text>" + JSON.stringify({ noteKey: state.note.key, text: selection }) + "</selected-note-text>" : ""),
      images: pending.images || [], model: pending.model, effort: pending.effort, summaryOnly: true, onProgress: pending.progress,
      onSpawn: proc => { pending.proc = proc; if (pending.cancelled) proc.kill(); } };

@@ -87,8 +87,24 @@ test('review highlights survive source edits, reopen, deletion and rendered tabl
  const reopened = await setup(saved, { reviewRanges: marks });
  assert.equal(reopened.api.getReviewRanges(), marks); reopened.api.setReviewRanges('[]'); reopened.close();
  const deletion = await setup('First\nDelete\nLast');
- assert.equal(deletion.api.applyReplacements('First\nDelete\nLast', JSON.stringify([{from:6,to:13,text:''}]), '[{"from":6,"to":6}]'), true);
- assert.equal(deletion.window.document.querySelectorAll('.cm-line.note-ai-changed').length, 1); deletion.close();
+ assert.equal(deletion.api.applyReplacements('First\nDelete\nLast', JSON.stringify([{from:6,to:13,text:''}]), '[{"from":6,"to":6,"removed":"Delete","oldLine":2}]'), true);
+ assert.equal(deletion.window.document.querySelectorAll('.cm-line.note-ai-changed').length, 0);
+ assert.match(deletion.window.document.querySelector('.note-ai-deletion').textContent,/2 −Delete/);
+ assert.equal(deletion.api.getMarkdown(),'First\nLast');deletion.close();
+});
+
+test('GitHub-style note review shows old text without changing source, with line numbers and plus/minus gutters',async()=>{
+ const env=await setup('First\nOld line\nLast'),{api,window}=env;
+ const ranges=JSON.stringify([{from:6,to:14,removed:'Old line',oldLine:2}]);
+ assert.equal(api.applyReplacements('First\nOld line\nLast',JSON.stringify([{from:6,to:14,text:'New line'}]),ranges),true);
+ assert.equal(api.getMarkdown(),'First\nNew line\nLast');assert.ok(window.document.querySelector('.cm-lineNumbers'));
+ assert.equal(window.document.querySelector('.note-change-gutter .note-ai-plus').textContent,'+');
+ assert.match(window.document.querySelector('.note-ai-deletion').textContent,/2 −Old line/);
+ assert.match(window.document.querySelector('.cm-line.note-ai-added').textContent,/New line/);
+ api.view.dispatch({changes:{from:0,insert:'Intro\n'}});
+ assert.equal(JSON.parse(api.getReviewRanges())[0].removed,'Old line');
+ api.setReviewRanges('[]');assert.equal(window.document.querySelector('.note-ai-deletion'),null);
+ assert.equal(window.document.querySelector('.note-ai-plus'),null);assert.match(api.getMarkdown(),/New line/);env.close();
 });
 
 test('Live Markdown flush commits table cells and read-only state disables cell editing and commands', async () => {

@@ -24,6 +24,11 @@
 	color: inherit;
 	cursor: pointer;
 }
+.abstractin-note-intent-overlay { position:fixed; inset:0; z-index:2147483647; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.3); padding:20px; }
+.abstractin-note-intent-dialog { width:min(430px,100%); padding:20px; border:1px solid var(--fill-quarternary,#aaa); border-radius:10px; background:var(--material-toolbar,Canvas); color:var(--fill-primary,CanvasText); box-shadow:0 12px 42px #0003; font:13px/1.5 system-ui,sans-serif; }
+.abstractin-note-intent-dialog h3 { margin:0 0 10px; font-size:15px; }
+.abstractin-note-intent-dialog > div { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:18px; }
+.abstractin-note-intent-dialog button { font:inherit; color:inherit; background:var(--material-background,Canvas); border:1px solid var(--fill-quarternary,#aaa); border-radius:5px; padding:6px 12px; cursor:pointer; }
 .abstractin-main-toggle:hover { background: var(--fill-quinary, rgba(0, 0, 0, .05)); }
 .abstractin-main-toggle .abstractin-i, .abstractin-main-toggle svg { display: block; width: 20px; height: 20px; }
 #abstractin-main-toggle, #abstractin-notes-toggle { color: var(--fill-primary, CanvasText) !important; opacity: 1; }

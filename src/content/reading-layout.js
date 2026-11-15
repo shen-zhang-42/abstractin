@@ -541,7 +541,7 @@
     layout.note.addToCollection(workspace.collectionID); await layout.note.saveTx(); layout.noteState.baseHTML = layout.note.getNote();
     for (const note of relatedNotes) if (note.key !== layout.note.key) {
      const data = this.markdownNoteData(note);
-     note.setNote(this.markdownNoteHTML(note, data.title, data.markdown, null, Date.now(), refs, workspace));
+     note.setNote(this.markdownNoteHTML(note, data.title, data.markdown, null, Date.now(), refs, workspace, data.reviewRanges || []));
      await note.saveTx(); await this.syncNoteOutLinks(note, refs, data.title, data.documents || []);
     }
     await this.saveReadingWorkspaceManifest(layout);

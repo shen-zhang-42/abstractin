@@ -184,8 +184,12 @@
 .abstractin-note-empty-heading { font-weight: 600; }
 .abstractin-note-proposal { margin: 20px 0; padding: 18px; border: 1px solid var(--note-accent); border-radius: 10px; background: var(--note-soft); }
 .abstractin-note-proposal h3 { margin: 0; font-size: 14px; }
-.abstractin-note-review { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12px; color: #bd3535; }
+.abstractin-note-review, .abstractin-note-save-error { display:flex; align-items:center; justify-content:space-between; flex:0 0 auto; flex-wrap:wrap; gap:6px 10px; padding:7px 10px; font-size:12px; color:var(--note-text); background:var(--note-soft); border-bottom:1px solid var(--note-line); }
+.abstractin-note-review button, .abstractin-note-save-error button { flex:0 0 auto; white-space:nowrap; padding:4px 9px; }
+.abstractin-note-save-error > span { flex:1 1 180px; overflow-wrap:anywhere; }
+.abstractin-note-save-error { border-inline-start:3px solid #bf5555; }
 .abstractin-note-review.abstractin-dock-host [hidden] { display: none; }
+.abstractin-note-save-error.abstractin-dock-host [hidden] { display:none; }
 .abstractin-note-proposal > p { color: var(--note-muted); font-size: 12px; }
 .abstractin-note-proposal .abstractin-note-preview { max-height: 350px; overflow: auto; margin: 14px 0; padding: 14px; border-radius: 7px; background: var(--note-paper); }
 .abstractin-note-proposal button { margin-right: 8px; }

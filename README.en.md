@@ -17,7 +17,7 @@ Use local **Codex, Claude Code, Gemini CLI, or Antigravity**, or connect an **AP
 
 ## Features at a glance
 
-This guide covers the features available in **v0.2.159**.
+This guide covers the features available in **v0.2.160**.
 
 | Feature | What it provides |
 |---|---|
@@ -236,11 +236,13 @@ Every chat can search the current document/workspace's literature and all associ
 
 **Quick questions** and **Quote** sit at the upper left of the composer. Quote selects saved discussion results for review before inserting them into a question. You can also directly ask any chat to summarize, explain, or improve a named note, or search earlier discussions for a specific topic.
 
-Ask a question to receive an answer, or explicitly ask to change a named note to have it edited and saved. There is no Answer/Edit mode button. The assistant must read the target first; exact text, version, and scope checks prevent stale changes from overwriting newer edits. Each applied change keeps a local `edit-before-*.json` source backup in that note's directory. Plain explanation or improvement suggestions do not authorize changing the note.
+Every chat can edit associated notes; there is no special explanation-only role. Reading, evidence and vocabulary preferences do not revoke editing permissions. Reading or explanation requests receive answers without changing notes; clear edit requests apply directly without asking again. Ambiguous intent opens an **Edit note / Answer only / Cancel** dialog. The assistant must read the target first; exact text, version, and scope checks prevent stale changes from overwriting newer edits. Each applied change keeps a local `edit-before-*.json` source backup in that note's directory.
 
-AI edits use exact text replacements. Open editors apply incremental transactions that preserve the cursor and undo history. Changed lines, including affected table rows, appear in red; click **Confirm changes** below the note title to keep the changes and restore normal display. Pending review marks are saved with the note and survive reopening, as display metadata separate from Markdown source. Save errors explain the cause and preserve the recovery draft and original-source backup; saving can be retried without applying the edits again.
+AI edits use exact text replacements. Open editors apply incremental transactions that preserve the cursor and undo history. Source line numbers and `− / +` markers accompany red backgrounds for removed lines and green backgrounds for additions, while text colors stay unchanged. Removed lines are review-only and are never written back into Markdown; affected table rows also receive the addition background. **Confirm changes** above the editor clears the diff while retaining the changes, in docked and standalone windows. Pending diffs survive saving and reopening.
 
-New chat windows use ordinary document/workspace discussion storage and the same Zotero sync policy. Earlier per-note conversations remain locally saved and searchable. All chats can search questions and answers in scoped histories, then read only the relevant turn, with repeated ranges omitted within the request. Historical answers are prior discussion, not verified document evidence. Document text and images use the same protocol for CLI and API agents. Papers have no fixed lookup quota; books allow ceil(physical PDF pages/100) lookups per user turn. Context only disables retrieval and editing.
+Renaming and body edits use the same serialized save queue. Zotero HTML normalization does not create a false source conflict, while real external source changes still prevent overwrites. Source saving and source-index updates are reported separately, so an index error does not misreport a saved note as unsaved. Save errors have a separate wrapping notice with **Retry save**; the close-with-local-draft command is kept in **More**.
+
+New chat windows use ordinary document/workspace discussion storage and the same Zotero sync policy. Earlier per-note conversations remain searchable. Each question first matches history locally and supplies only candidate turn identifiers and questions; the agent then reads relevant turns on demand. Entire histories and historical answers are not automatically inserted, and repeated ranges are omitted within the request. Workspace searches also inspect synced Zotero conversation notes instead of relying only on local cache. Historical answers are prior discussion, not verified document evidence. Document text and images use the same protocol for CLI and API agents. Papers have no fixed lookup quota; books allow ceil(physical PDF pages/100) lookups per user turn. Context only constrains original-document evidence, without revoking user-directed note access, editing or discussion-history lookup. Standalone chat windows have opaque neutral gray surfaces.
 
 ### Independent note management and deletion
 
@@ -331,7 +333,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-These feature descriptions cover **v0.2.159**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+These feature descriptions cover **v0.2.160**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 

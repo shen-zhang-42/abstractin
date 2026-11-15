@@ -3947,7 +3947,8 @@ AbstractIn = {
 			}
 			let sessions = await this.loadSessions(ctx.dir);
 			if (ctx.reading) {
-				const vocabularyTutor = !pending.readingAction && !pending.paperGuide && (pending.vocabularyTutor || this.isVocabularyQuestion(question, pending.selection) ||
+				const noteOrHistoryTask = this.sharedNoteIntent?.(question) === "edit" || /笔记|\bnotes?\b|\bchats?\b|之前|上次|以前|\b(?:previous|earlier|history)\b|\blast\s+(?:discussion|conversation|time)\b/i.test(question);
+				const vocabularyTutor = !noteOrHistoryTask && !pending.readingAction && !pending.paperGuide && (pending.vocabularyTutor || this.isVocabularyQuestion(question, pending.selection) ||
 					this.isVocabularyFollowUp(question, sessions[backend]?.vocabularyTutor));
 				pending.answerMode ||= pending.paperGuide ? "source" : this.getReadingAnswerMode();
 				let answerMode = pending.answerMode;
@@ -4041,6 +4042,7 @@ AbstractIn = {
 				const requestCtx = ctx.reading?.vocabularyTutor ? { ...ctx, reading: { ...ctx.reading,
 					vocabularySkill: activeSession?.vocabularySkillVersion === (this.version || "development") ? "" : ctx.reading.vocabularySkill } } : ctx;
 				const request = {
+					userQuestion: question,
 					commonChat: !pending.readingAction || pending.readingAction === "summary",
 					ctx: requestCtx, files, history: pending.readingAction === "contents" || ctx.reading?.vocabularyTutor ? [] : history, session: activeSession, images,
 					question: (question || "Look at the attached image.") + this.imageNote(backend, images) +

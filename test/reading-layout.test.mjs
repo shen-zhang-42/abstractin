@@ -115,6 +115,8 @@ test('the default layout has one shared discussion and restores it after hiding 
  assert.deepEqual([...p.readingLayoutPanels(layout.groups.get('main').tree)],['editor','reading']);
  assert.equal(layout.surfaces.has('notes'),false);
  assert.equal(layout.surfaces.get('reading').label.textContent,'Discussion');
+ assert.equal(layout.noteState.reviewButton.closest('.abstractin-note-editor-head'),null,'confirmation must not inherit the hidden compact editor head');
+ assert.equal(layout.noteState.saveError.closest('.abstractin-note-editor-head'),null);
  p.saveReadingDockLayout(layout);
  assert.deepEqual([...p.readingLayoutPanels(p.getJSONPref('readingDockLayout',null))],['editor','reading']);
  assert.equal(p.getJSONPref('readingDockGroups',null).flatMap(group=>p.readingLayoutPanels(group.tree)).length,2);
