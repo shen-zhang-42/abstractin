@@ -32,6 +32,9 @@
    return fresh;
   },
   async openNewChatWindow(options = {}) {
+   const sourceLayout = options.noteState?.readingLayout;
+   const sourceView = options.view || (sourceLayout && this._views.get(sourceLayout.entry.root)) || options.noteState?.sourceView;
+   const agentSettings = sourceView ? JSON.parse(JSON.stringify(this.chatAgentSettings(sourceView))) : null;
    const ctx = await this.newChatWindowContext(options), root = this.discussionRoot(ctx);
    if (this._discussionLocks.has(root)) throw new Error("Wait for the current discussion change to finish.");
    this._discussionLocks.add(root);
@@ -49,7 +52,7 @@
     await this.writeDiscussionIndex(ctx, index);
     fresh = this.discussionContext(ctx, chat); await this.saveSessions(fresh.dir, {});
    } finally { this._discussionLocks.delete(root); }
-   const state = { id: ctx.chatWindowID, ctx: fresh, view: null, win: null };
+   const state = { id: ctx.chatWindowID, ctx: fresh, view: null, win: null, agentSettings };
    this._chatWindows.set(state.id, state);
    try {
     const win = options.win || options.view?.doc.defaultView || options.noteState?.win || Zotero.getMainWindow();
@@ -67,7 +70,8 @@
    scope.append(this.iconButton(doc, "abstractin-global-settings", "Plugin settings", "settings", () => this.openSettings()));
    host.prepend(scope);
    const root = host.querySelector(".abstractin-root"), input = root.querySelector(".abstractin-input");
-   const view = { doc, root, input, logEl: root.querySelector(".abstractin-log"), ctx: this.registerChatContext(state.ctx) };
+   const view = { doc, root, input, logEl: root.querySelector(".abstractin-log"), ctx: this.registerChatContext(state.ctx), agentSettings: state.agentSettings };
+   this.chatAgentSettings(view);
    state.view = view; view.send = (text, images) => this.sendText(view, text, images); this._views.set(root, view);
    state.dispose = event => {
     if (event && !this.isHostWindowEvent(event, win)) return;
@@ -80,7 +84,7 @@
    root.dataset.sharedSources = "true"; root.dataset.readingTheme = "neutral";
    root.querySelector(".abstractin-header-title").textContent = "Discussion";
    root.querySelector(".abstractin-open-settings")?.remove();
-   this.updateReadingControls(view); this.renderAttachments(view);
+   this.updateControls(root); this.renderAttachments(view);
    const history = await this.loadHistory(view.ctx.dir); if (state.disposed || win.closed) return;
    this.renderMessages(view, history); this.setBusy(view, false);
    input.addEventListener("input", () => { this.autoGrow(input); if (!this._pending.has(view.ctx.dir)) root.querySelector(".abstractin-send").disabled = !this.canSend(view); });

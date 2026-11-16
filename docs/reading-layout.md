@@ -1,5 +1,9 @@
 # Reading and note layout
 
+## Independent discussion windows
+
+Standalone discussion windows reserve all remaining height for the scrollable message area, keeping the composer at the bottom even before the first message. Each discussion owns an independent agent, model and reasoning-effort selection. A new window copies the opener's selection without sharing its mutable settings or conversation context. Sending, setup completion, manually entered Codex models, reading exports and discussion remounts use the local selection. Connection configuration and model catalogs remain shared. The Assistants settings select defaults for new chats and show Ready or Not tested badges instead of a single In use indicator.
+
 Click the single top-level AbstractIn icon to choose a layout before opening any panels. Every preset includes a graphical preview: blue represents Zotero's native reader and gray represents plugin panels. **Read literature** opens the native reader with reading discussion. **Four panels** adds a full-height note editor with reading discussion above note discussion on the right. **Four columns** places all four surfaces side by side. **Separate note window** keeps the note and its discussion in one floating window. The native PDF reader remains in place. Both discussions keep their own history and message draft.
 
 Choose **None** under **Settings → Appearance → Reading companion** to hide the entire companion row and free vertical space in discussions, including floating panels. Choose a companion again to restore it.

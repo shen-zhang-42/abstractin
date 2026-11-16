@@ -710,7 +710,11 @@
    layout.entry.render.then(() => ready(this._views.get(root)), failed);
    let view;
    try { view = await mounted; } finally { delete root._readingLayoutReady; }
-   if (view) { view.input.value = draft; this.autoGrow(view.input); layout.readingContext = view.ctx; layout.noteState.sourceView = view; }
+   if (view) {
+    if (oldView?.agentSettings) view.agentSettings = oldView.agentSettings;
+    this.updateControls(root);
+    view.input.value = draft; this.autoGrow(view.input); layout.readingContext = view.ctx; layout.noteState.sourceView = view;
+   }
   },
   async moveReadingNoteGroup(layout, groupID, target, edge = "right") {
    return this.moveReadingSurface(layout, "editor", groupID, target, edge, { single: true });

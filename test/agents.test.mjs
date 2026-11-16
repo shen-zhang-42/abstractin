@@ -174,6 +174,21 @@ test('settings add/edit/remove custom agents without running commands or changin
  assert.equal(launched, false);
 });
 
+test('assistant cards show every ready connection independently of the default and label untested agents', () => {
+ const { plugin: p, document, window } = loadPlugin();
+ p.getAgentValidation = id => id === 'claude' ? { discussion: true, source: true } : null;
+ p.setPref('readingAgent', 'codex');
+ const card = p.buildAssistantsCard(document);
+ for (const id of ['codex', 'claude']) {
+  const badge = card.querySelector('[data-backend="' + id + '"] .abstractin-agent-readiness');
+  assert.equal(badge.textContent, 'Ready'); assert.equal(badge.dataset.ready, 'true'); assert.equal(badge.hidden, false);
+ }
+ const untested = card.querySelector('[data-backend="gemini"] .abstractin-agent-readiness');
+ assert.equal(untested.textContent, 'Not tested'); assert.equal(untested.dataset.ready, 'false');
+ assert.doesNotMatch(card.textContent, /In use/); assert.match(card.textContent, /Default agent for new chats/);
+ window.close();
+});
+
 test('custom adapters inherit locally configured credentials while native subscription defaults remain unchanged', () => {
  const { plugin: p, window } = loadPlugin();
  window.Subprocess.getEnvironment = () => ({ HOME: '/tmp/home', PATH: '/bin', OPENAI_API_KEY: 'test-key', ANTHROPIC_API_KEY: 'other-test-key' });

@@ -200,7 +200,9 @@
       try {
        this.assertAgentIdle("deepseek");
        if (!valid()) throw new Error("Configuration changed. Go back and test again.");
-       if (options.reading ?? !!this._views.get(root)?.ctx.reading) this.selectReadingAgent("deepseek"); else this.setPref("backend", "deepseek");
+       const view = this._views.get(root);
+       if (view) this.selectChatAgent(view, "deepseek", this.getModel("deepseek"));
+       else if (options.reading) this.selectReadingAgent("deepseek"); else this.setPref("backend", "deepseek");
        close(); if (this._views.has(root)) this.updateControls(root); options.onComplete?.();
       } catch (e) { status.textContent = e.message; }
      }));

@@ -2191,6 +2191,18 @@
 	color: var(--abstractin-accent-ink);
 	background: var(--abstractin-accent-soft);
 }
+.abstractin-agent-readiness {
+	flex: 0 0 auto;
+	white-space: nowrap;
+	border: 1px solid var(--abstractin-border);
+	color: var(--abstractin-muted);
+	background: transparent;
+}
+.abstractin-agent-readiness[data-ready="true"] {
+	border-color: #2c914d;
+	color: #278343;
+	background: rgba(44, 145, 77, .09);
+}
 .abstractin-agent-chevron {
 	width: 12px;
 	height: 12px;

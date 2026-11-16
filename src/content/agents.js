@@ -68,6 +68,31 @@
    const selected = this.getPref("readingAgent") || this.getPref("backend");
    return registry[selected] ? selected : "codex";
   },
+  chatAgentSettings(view) {
+   if (!view) return null;
+   if (!view.agentSettings) {
+    const ids = Object.keys(this.agentRegistry());
+    view.agentSettings = { backend: view.ctx?.reading ? this.readingAgent() : this.getBackend(),
+     models: Object.fromEntries(ids.map(id => [id, this.getModel(id)])),
+     efforts: Object.fromEntries(ids.map(id => [id, this.getEffort(id)])) };
+   }
+   return view.agentSettings;
+  },
+  chatBackend(view) {
+   const id = this.chatAgentSettings(view)?.backend;
+   return this.agentRegistry()[id] ? id : view?.ctx?.reading ? this.readingAgent() : this.getBackend();
+  },
+  chatModel(view, id = this.chatBackend(view)) { return this.chatAgentSettings(view)?.models[id] ?? this.getModel(id); },
+  chatEffort(view, id = this.chatBackend(view)) {
+   const effort = this.chatAgentSettings(view)?.efforts[id] ?? this.getEffort(id);
+   return this.getEfforts(id, this.chatModel(view, id)).includes(effort) ? effort : "";
+  },
+  selectChatAgent(view, id, model = this.chatModel(view, id), effort = this.chatEffort(view, id)) {
+   if (!this.agentRegistry()[id]) throw new Error("Unknown agent.");
+   if (!this.agentReadyForDiscussion(id)) throw new Error("Test this agent before enabling it for reading.");
+   const settings = this.chatAgentSettings(view);
+   settings.backend = id; settings.models[id] = model; settings.efforts[id] = effort;
+  },
   selectReadingAgent(id) {
    if (!this.agentRegistry()[id]) throw new Error("Unknown agent.");
    if (!this.agentReadyForDiscussion(id)) throw new Error("Test this agent before enabling it for reading.");
@@ -139,9 +164,9 @@
    const result = this.getAgentValidation(id);
    return [{ id: "", label: "Default" }, ...(result?.models || [])];
   },
-  getEfforts(id) {
+  getEfforts(id, model) {
    this.agentRegistry();
-   if (!this.BACKENDS[id]?.custom) return nativeGetEfforts.call(this, id);
+   if (!this.BACKENDS[id]?.custom) return nativeGetEfforts.call(this, id, model);
    return ["", ...(this.getAgentValidation(id)?.efforts || [])];
   },
   async hashAgentText(text) {
@@ -489,7 +514,7 @@ Object.assign(AbstractIn, {
 
 Object.assign(AbstractIn, {
  buildAssistantsCard(doc) {
-  const card = this.card(doc, "Assistants", "Manage reading agents. Built-in Codex is ready; other agents must pass skill compatibility checks before activation.");
+  const card = this.card(doc, "Assistants", "Manage connections and defaults for new chats. Each chat window chooses its own agent and model.");
   const status = this.el(doc, "div", "abstractin-notice"); status.setAttribute("role", "status");
   const list = this.el(doc, "div", "abstractin-agent-list");
   const editor = this.el(doc, "div", "abstractin-agent-editor"); editor.hidden = true;
@@ -497,18 +522,20 @@ Object.assign(AbstractIn, {
    list.replaceChildren();
    const registry = this.agentRegistry();
    const select = this.select(doc, Object.entries(registry).map(([id, agent]) => [id, agent.fullName]), this.readingAgent(), id => {
-    try { this.selectReadingAgent(id); status.textContent = "Reading agent selected."; redraw(); }
+    try { this.selectReadingAgent(id); status.textContent = "Default agent for new chats selected."; redraw(); }
     catch (e) { status.textContent = e.message; select.value = this.readingAgent(); this.openAgentSetup(card, id, { reading: true, onComplete: redraw }); }
    });
-   list.append(this.row(doc, "Reading agent", select));
+   list.append(this.row(doc, "Default agent for new chats", select));
    for (const [id, agent] of Object.entries(registry)) {
     const details = this.el(doc, "details", "abstractin-agent"); details.dataset.backend = id;
     const summary = this.el(doc, "summary");
     const name = this.el(doc, "strong", null, agent.fullName);
     const checked = this.getAgentValidation(id);
-   const label = id === "codex" ? "Built-in reading support" : checked?.discussion && (agent.api || checked.inlineSource) ? "Reading checks passed; plugin supplies sources" : checked?.source ? "Discussion & source checks passed" : checked?.discussion ? "Discussion checks passed; source access unavailable" : "Not tested";
+   const label = id === "codex" ? "Built-in reading support" : checked?.discussion && (agent.api || checked.inlineSource) ? "Reading checks passed; plugin supplies sources" : checked?.source ? "Discussion & source checks passed" : checked?.discussion ? "Discussion checks passed; source access unavailable" : "Compatibility checks required";
     summary.append(name, this.el(doc, "span", "abstractin-agent-status", label));
-    const badge = this.el(doc, "span", "abstractin-badge", "In use"); badge.hidden = id !== this.readingAgent(); summary.append(badge);
+    const ready = id === "codex" || checked?.discussion === true;
+    const badge = this.el(doc, "span", "abstractin-badge abstractin-agent-readiness", ready ? "Ready" : "Not tested");
+    badge.dataset.ready = String(ready); details.dataset.ready = String(ready); summary.append(badge);
     const body = this.el(doc, "div", "abstractin-agent-body");
     const path = this.el(doc, "input", "abstractin-field"); path.type = "text";
     path.placeholder = "Detect “" + agent.command + "” automatically";

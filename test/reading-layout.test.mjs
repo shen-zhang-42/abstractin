@@ -171,6 +171,47 @@ test('new chat windows share the source store but start with empty histories, se
  }finally{for(const state of [...p._chatWindows.values()])state.dispose?.();for(const w of windows)w.close();dispose();}
 });
 
+test('chat windows choose and send with independent agents, models and reasoning efforts', async () => {
+ const { p, layout, win, dispose } = await setup();
+ const original = p._views.get(layout.entry.root), windows = [], mounts = [];
+ p.agentReadyForDiscussion = () => true; p.agentCanReadSources = () => true;
+ p.setPref('readingAgent', 'codex'); p.setPref('codex.model', 'model-a');
+ p._codexModels = [{ id: 'model-a', label: 'Model A', efforts: ['low'] }, { id: 'model-b', label: 'Model B', efforts: ['high'] }];
+ p.loadCodexModels = async () => p._codexModels; p.loadClaudeModels = async () => [];
+ p.selectChatAgent(original, 'codex', 'model-a', 'low');
+ win.openDialog = (url, name, features, args) => {
+  const dom = new JSDOM('<main id="abstractin-chat-window-root"></main>'), w = dom.window; w.focus = () => {};
+  windows.push(w); queueMicrotask(() => mounts.push(p.mountChatWindow(p._chatWindows.get(args.chatWindowID), w))); return w;
+ };
+ try {
+  const first = await p.openNewChatWindow({ view: original }), second = await p.openNewChatWindow({ view: original });
+  await Promise.all(mounts);
+  const choose = (view, agent, label) => {
+   p.openModelMenu(view.root, view.root.querySelector('.abstractin-model-btn'));
+   view.root.querySelector('[data-agent="' + agent + '"]').dispatchEvent(new view.doc.defaultView.Event('mouseenter'));
+   [...view.root.querySelectorAll('.abstractin-model-submenu .abstractin-menu-item')].find(item => item.querySelector('.abstractin-menu-label')?.textContent === label).click();
+  };
+  choose(first.view, 'claude', p.getModels('claude')[0].label);
+  choose(second.view, 'codex', 'Model B');
+  p.openEffortMenu(second.view.root, second.view.root.querySelector('.abstractin-effort-btn'));
+  [...second.view.root.querySelectorAll('.abstractin-menu-item')].find(item => item.querySelector('.abstractin-menu-label')?.textContent === p.EFFORTS.high.label).click();
+  assert.equal(p.chatBackend(first.view), 'claude'); assert.equal(p.chatBackend(second.view), 'codex'); assert.equal(p.chatBackend(original), 'codex');
+  assert.equal(p.chatModel(second.view), 'model-b'); assert.equal(p.chatModel(original), 'model-a');
+  assert.equal(p.chatEffort(second.view), 'high'); assert.equal(p.chatEffort(original), 'low');
+  assert.equal(p.readingAgent(), 'codex'); assert.equal(p.getModel('codex'), 'model-a');
+  p.setPref('readingAgent', 'claude'); p.setPref('codex.model', 'changed-default');
+  assert.equal(p.chatModel(original), 'model-a'); assert.equal(p.chatModel(second.view), 'model-b');
+  const requests = [];
+  p.ask = async (ctx, question, pending) => { requests.push([pending.backend, pending.model, pending.effort]); p._pending.delete(ctx.dir); return {}; };
+  for (const view of [first.view, second.view, original]) await p.startRequest(view, 'Explain this in the current conversation');
+  assert.deepEqual(requests, [['claude', p.getModels('claude')[0].id, ''], ['codex', 'model-b', 'high'], ['codex', 'model-a', 'low']]);
+  await p.refreshLayoutReading(layout);
+  const remounted = p._views.get(layout.entry.root);
+  assert.equal(p.chatBackend(remounted), 'codex'); assert.equal(p.chatModel(remounted), 'model-a');
+  assert.equal(p.chatBackend(first.view), 'claude');
+ } finally { for (const state of [...p._chatWindows.values()]) state.dispose?.(); for (const w of windows) w.close(); p._pending.clear(); dispose(); }
+});
+
 test('a new workspace conversation keeps workspace membership and cannot auto-route into another chat',async()=>{
  const {p,layout,win,a,b,dispose}=await setup();
  await p.updateReadingSources(layout,[p.noteDocumentRef(a),p.noteDocumentRef(b)],{name:'Workspace chats'});

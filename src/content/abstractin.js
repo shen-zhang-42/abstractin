@@ -327,8 +327,8 @@ AbstractIn = {
 		return this.getEfforts(backend).includes(effort) ? effort : "";
 	},
 
-	getEfforts(backend) {
-		let model = backend === "codex" && this._codexModels?.find(m => m.id === this.getModel(backend));
+	getEfforts(backend, modelID = this.getModel(backend)) {
+		let model = backend === "codex" && this._codexModels?.find(m => m.id === modelID);
 		return model?.efforts?.length ? ["", ...model.efforts] : this.BACKENDS[backend].efforts;
 	},
 
@@ -1409,10 +1409,11 @@ AbstractIn = {
 	},
 
 	updateControls(root) {
-		let backend = this._views.get(root)?.ctx.reading ? this.readingAgent() : this.getBackend();
+		const chatView = this._views.get(root);
+		let backend = this.chatBackend(chatView);
 		let info = this.BACKENDS[backend];
-		let model = this.getModel(backend);
-		let effort = this.getEffort(backend);
+		let model = this.chatModel(chatView, backend);
+		let effort = this.chatEffort(chatView, backend);
 		let modelButton = root.querySelector(".abstractin-model-btn");
 		if (modelButton) {
 			let full = model ? info.label + " · " + this.modelLabel(backend, model) : info.label;
@@ -1422,7 +1423,7 @@ AbstractIn = {
 		}
 		let effortButton = root.querySelector(".abstractin-effort-btn");
 		if (effortButton) {
-			effortButton.hidden = this.getEfforts(backend).length < 2;
+			effortButton.hidden = this.getEfforts(backend, model).length < 2;
 			effortButton.setLabel(this.EFFORTS[effort].label);
 		}
 		let attachment = root.querySelector(".abstractin-attach");
@@ -1471,7 +1472,7 @@ AbstractIn = {
 		const menu = this.openMenu(root, anchor, menu => {
 			menu.classList.add("abstractin-model-menu");
 			const reading = this._views.get(root)?.ctx.reading;
-			const current = reading ? this.readingAgent() : this.getBackend();
+			const view = this._views.get(root), current = this.chatBackend(view);
 			if (level !== "setup" && !this.BACKENDS[level]) level = null;
 			const agents = this.el(doc, "div", "abstractin-model-agents"); agents.dataset.menuColumn = "agents";
 			const models = this.el(doc, "div", "abstractin-model-submenu"); models.dataset.menuColumn = "models"; models.setAttribute("role", "menu");
@@ -1481,7 +1482,7 @@ AbstractIn = {
 				if (key !== current && (root._installed?.[key] === null || !this.agentReadyForDiscussion(key))) continue;
 				let item = this.menuItem(doc, agents, {
 					label: this.BACKENDS[key].fullName,
-					desc: this.modelLabel(key, this.getModel(key)) || "Default",
+					desc: this.modelLabel(key, this.chatModel(view, key)) || "Default",
 					checked: key === current,
 					onSelect: () => show(key),
 				});
@@ -1519,14 +1520,13 @@ AbstractIn = {
 					this.menuItem(doc, models, {
 						label: model.label,
 						desc: model.id ? "" : model.desc,
-						checked: key === current && model.id === this.getModel(key),
+						checked: key === current && model.id === this.chatModel(view, key),
 						onSelect: () => {
 							if ((backend.api && model.id !== this.getModel(key)) || !this.agentReadyForDiscussion(key)) {
 								this.openAgentSetup(root, key, { model: model.id, reading: !!reading }); return;
 							}
-							this.setPref(key + ".model", model.id);
-							if (reading) this.selectReadingAgent(key);
-							else this.setPref("backend", key);
+							if (view) this.selectChatAgent(view, key, model.id);
+							else { this.setPref(key + ".model", model.id); this.setPref("backend", key); }
 							this.closeMenu(root);
 							this.updateControls(root);
 						},
@@ -1573,11 +1573,11 @@ AbstractIn = {
 		}
 	},
 
-	codexModelInput(doc) {
+	codexModelInput(doc, model = this.getModel("codex")) {
 		let control = this.el(doc, "div", "abstractin-codex-model-control");
 		let input = this.el(doc, "input", "abstractin-codex-model-input");
 		input.type = "text";
-		input.value = this.getModel("codex");
+		input.value = model;
 		input.placeholder = "Default, or a model ID such as gpt-6-sol";
 		let list = this.el(doc, "datalist");
 		list.id = "abstractin-models-" + Math.random().toString(36).slice(2);
@@ -1593,14 +1593,15 @@ AbstractIn = {
 		return control;
 	},
 
-	saveCodexModel(value) {
+	saveCodexModel(value, view = null) {
 		let model = value.trim();
 		if (model && !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/.test(model)) throw new Error("Enter a model ID without spaces, or leave empty for Default.");
 		if (model && !this.getModels("codex").some(m => m.id === model)) {
 			let models = (this.getPref("codex.models") || "").trim();
 			this.setPref("codex.models", models ? models + "\n" + model : model);
 		}
-		this.setPref("codex.model", model);
+		if (view) this.selectChatAgent(view, "codex", model);
+		else this.setPref("codex.model", model);
 	},
 
 	openCodexModelSetup(root) {
@@ -1614,13 +1615,13 @@ AbstractIn = {
 			this.iconButton(doc, "abstractin-small", "Close", "close", () => panel.remove()));
 		let body = this.el(doc, "div", "abstractin-panel-body abstractin-reading-form");
 		let label = this.el(doc, "label", "abstractin-reading-field");
-		let control = this.codexModelInput(doc);
+		let control = this.codexModelInput(doc, this.chatModel(this._views.get(root), "codex"));
 		label.append(this.el(doc, "span", null, "Model ID"), control);
 		let status = this.el(doc, "div", "abstractin-notice");
 		status.setAttribute("role", "status");
 		let save = this.ghostButton(doc, "abstractin-model-save", "check", "Use model", () => {
 			try {
-				this.saveCodexModel(control.querySelector("input").value);
+				this.saveCodexModel(control.querySelector("input").value, this._views.get(root));
 				this.updateControls(root);
 				panel.remove();
 			}
@@ -1644,7 +1645,7 @@ AbstractIn = {
 				this.menuItem(doc, menu, {
 					icon,
 					label, desc, checked: this.getReadingAnswerMode() === value,
-					disabled: value === "source" && !this.agentCanReadSources(),
+					disabled: value === "source" && !this.agentCanReadSources(this.chatBackend(this._views.get(root))),
 					onSelect: () => {
 						this.setPref("readingEvidenceMode", value);
 						this.closeMenu(root);
@@ -1665,16 +1666,17 @@ AbstractIn = {
 	openEffortMenu(root, anchor) {
 		let doc = root.ownerDocument;
 		this.openMenu(root, anchor, (menu) => {
-			let backend = this._views.get(root)?.ctx.reading ? this.readingAgent() : this.getBackend();
-			let current = this.getEffort(backend);
+			const view = this._views.get(root), backend = this.chatBackend(view);
+			let current = this.chatEffort(view, backend);
 			this.menuSection(doc, menu, "Reasoning effort · " + this.BACKENDS[backend].label);
-			for (let effort of this.getEfforts(backend)) {
+			for (let effort of this.getEfforts(backend, this.chatModel(view, backend))) {
 				this.menuItem(doc, menu, {
 					label: this.EFFORTS[effort].label,
 					desc: this.EFFORTS[effort].desc,
 					checked: effort === current,
 					onSelect: () => {
-						this.setPref(backend + ".effort", effort);
+						if (view) this.chatAgentSettings(view).efforts[backend] = effort;
+						else this.setPref(backend + ".effort", effort);
 						this.closeMenu(root);
 						this.updateControls(root);
 					},
@@ -2596,6 +2598,8 @@ AbstractIn = {
 		if (live?.readingSetup && [live.ctx.paperItem?.id, live.ctx.attachmentItem?.id].includes(item.id)) return;
 		this.rememberChatPosition(this._views.get(root));
 		this._views.set(root, view);
+		view.agentSettings = live?.agentSettings;
+		this.chatAgentSettings(view);
 		root._readingLayoutReady?.(view);
 		this.updateReadingControls(view);
 		this.renderPaperChip(root, this.paperInfo(ctx));
@@ -2681,7 +2685,7 @@ AbstractIn = {
 			this.renderAttachments(view);
 		}
 
-		let backend = view.ctx.noteWorkspace ? this.getBackend() : this.readingAgent();
+		let backend = this.chatBackend(view);
 		let pending = {
 			question,
 			images,
@@ -2691,11 +2695,11 @@ AbstractIn = {
 			paperGuide,
 			vocabularyTutor,
 			sessionNotice,
-			evidenceMode: this.getReadingEvidenceMode(),
+			evidenceMode: this.agentCanReadSources(backend) ? this.getReadingEvidenceMode() : "context",
 			currentPage: currentPage !== undefined ? currentPage : this.currentReadingLocation(view.ctx),
 			backend,
-			model: this.getModel(backend),
-			effort: this.getEffort(backend),
+			model: this.chatModel(view, backend),
+			effort: this.chatEffort(view, backend),
 			startedAt: Date.now(),
 			partial: "",
 			status: "",

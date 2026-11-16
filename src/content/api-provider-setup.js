@@ -106,7 +106,9 @@ Object.assign(AbstractIn, {
    try {
     if (dirty || !config || !this.getAgentValidation(config.id)?.discussion) throw new Error("Save and test this configuration first.");
     this.assertAgentIdle(config.id);
-    if (options.reading ?? !!this._views.get(root)?.ctx.reading) this.selectReadingAgent(config.id); else this.setPref("backend", config.id);
+    const view = this._views.get(root);
+    if (view) this.selectChatAgent(view, config.id, this.getModel(config.id));
+    else if (options.reading) this.selectReadingAgent(config.id); else this.setPref("backend", config.id);
     close(); if (this._views.has(root)) this.updateControls(root); options.onComplete?.();
    } catch (error) { status.textContent = error.message; }
   });

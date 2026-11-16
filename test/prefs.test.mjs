@@ -112,7 +112,8 @@ test("settings pane renders its cards", () => {
 	const { container } = pane();
 	assert.deepEqual([...container.querySelectorAll(".abstractin-card-title")].map(h => h.textContent),
 		["Assistants", "Chat", "Appearance", "Behaviour"]);
-	assert.equal(container.querySelectorAll(".abstractin-agent").length, 4);
+	assert.equal(container.querySelectorAll(".abstractin-agent").length, 5);
+	assert.ok(container.querySelector('.abstractin-agent[data-backend="gemini"]'));
 });
 
 test("reading agent selection requires checks; native models and efforts remain configurable", () => {

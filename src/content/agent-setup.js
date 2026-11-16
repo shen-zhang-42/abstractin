@@ -42,7 +42,8 @@
     node.addEventListener("click", action); return node;
    };
    let disposed = false, busy = false, step = 0, command = "", detectedKey = "", checkedKey = "", testedKey = "";
-   let model = options.model ?? this.getModel(id), effort = this.getEffort(id);
+   const chatView = this._views.get(root);
+   let model = options.model ?? this.chatModel(chatView, id), effort = this.chatEffort(chatView, id);
    const close = () => {
     disposed = true; overlay.remove();
     if (root._agentSetup?.close === close) delete root._agentSetup;
@@ -176,9 +177,11 @@
       try {
        this.assertAgentIdle(id);
        if (!this.getAgentValidation(id)?.discussion || checkedKey !== this.agentConfigKey(id) || testedKey !== this.agentConfigKey(id)) throw new Error("Configuration changed or the test expired. Go back and test again.");
-       if (options.reading ?? !!this._views.get(root)?.ctx.reading) this.selectReadingAgent(id);
-       else this.setPref("backend", id);
-       this.setPref(id + ".model", model); this.setPref(id + ".effort", effort);
+       if (chatView) this.selectChatAgent(chatView, id, model, effort);
+       else {
+        if (options.reading) this.selectReadingAgent(id); else this.setPref("backend", id);
+        this.setPref(id + ".model", model); this.setPref(id + ".effort", effort);
+       }
        close(); if (this._views.has(root)) this.updateControls(root); options.onComplete?.();
       } catch (e) { status.textContent = e.message || String(e); }
      }, "abstractin-button abstractin-primary"));

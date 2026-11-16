@@ -230,7 +230,7 @@ Object.assign(AbstractIn, {
   const status = this.el(doc, "p", "abstractin-notice"), preview = this.el(doc, "textarea");
   status.setAttribute("role", "status"); preview.setAttribute("aria-label", "Reading summary Markdown"); preview.readOnly = true; preview.hidden = true; preview.style.cssText = "width:100%;min-height:280px;box-sizing:border-box";
   const generate = this.el(doc, "button", "abstractin-btn", "Generate summary"), save = this.el(doc, "button", "abstractin-btn", "Save Markdown…"), close = this.el(doc, "button", "abstractin-btn", "Close"); save.hidden = true;
-  const job = { backend: this.readingAgent(), model: this.getModel(this.readingAgent()), cancelled: false, progress: text => { status.textContent = text; }, onPreview: text => { if (!job.cancelled) { preview.value = text; preview.hidden = false; } } };
+  const job = { backend: this.chatBackend(view), model: this.chatModel(view), cancelled: false, progress: text => { status.textContent = text; }, onPreview: text => { if (!job.cancelled) { preview.value = text; preview.hidden = false; } } };
   const cleanup = () => { job.cancelled = true; job.proc?.kill(); panel.remove(); if (root.disposeUI === disposeExport) root.disposeUI = dispose; if (this._readingExports.get(key) === job) this._readingExports.delete(key); };
   const dispose = root.disposeUI, disposeExport = () => { cleanup(); dispose?.(); }; root.disposeUI = disposeExport;
   this._readingExports.set(key, job);

@@ -14,7 +14,10 @@
 .abstractin-dock-host { position:relative; flex:1 1 0; min-width:0; min-height:0; height:100%; overflow:hidden; color:var(--note-text); background:var(--note-ground); }
 .abstractin-dock-panel { position:absolute; display:flex; flex-direction:column; padding:3px; min-width:0; min-height:0; overflow:hidden; }
 .abstractin-chat-window { display:flex; flex-direction:column; height:100%; min-width:0; min-height:0; }
-.abstractin-chat-window > .abstractin-root { flex:1 1 0; min-height:0; }
+.abstractin-chat-window > .abstractin-root { flex:1 1 0; min-height:0; overflow:hidden; }
+.abstractin-chat-window .abstractin-log-wrap { display:flex; flex-direction:column; flex:1 1 0; min-height:0; }
+.abstractin-chat-window .abstractin-log { flex:1 1 0; min-height:0; max-height:none; }
+.abstractin-chat-window :is(.abstractin-header,.abstractin-reading-bar,.abstractin-composer,.abstractin-quick) { flex:0 0 auto; }
 .abstractin-chat-body { background:var(--material-toolbar,Canvas); color:var(--fill-primary,CanvasText); }
 .abstractin-chat-window, .abstractin-chat-window > .abstractin-root, .abstractin-chat-window .abstractin-log-wrap, .abstractin-chat-window .abstractin-log { background:var(--note-paper,Canvas); color:var(--note-text,CanvasText); }
 .abstractin-chat-window-scope { flex:0 0 auto; font-size:12px; color:var(--note-muted); }

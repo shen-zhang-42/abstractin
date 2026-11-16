@@ -143,7 +143,7 @@
   async runTextCLIAgent(id, request) {
    if (request.images?.length) return { text: "", error: "Text CLI does not support image input. Use an ACP or JSONL adapter for images." };
    const prompt = this.systemPrompt(request.ctx) + "\n\n" + this.transcriptFor(request.history || [], null) + (request.question || "") + this.formattingReminder(this.getLanguage());
-   const model = request.model || this.getModel(id) || "";
+   const model = request.model ?? this.getModel(id) ?? "";
    const args = this.BACKENDS[id].args.map(value => value.replace(/\{model\}/g, () => model).replace(/\{prompt\}/g, () => prompt));
    const invocation = await this.cliInvocation(id, args);
    const result = await this.runAgentProcess(invocation.command, invocation.args, request.ctx.dir, null, request.onSpawn,

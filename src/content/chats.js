@@ -391,7 +391,7 @@
     const selection = options.selection || (view.pageImageSource && images.includes(view.pageImageSource.path) ? view.pageImageSource.selection : null);
     if (selection && selection.attachmentID !== view.ctx.attachmentItem.id) throw new Error("The selection belongs to a different PDF.");
     const vocabularyTutor = !options.readingAction && !options.paperGuide && (options.vocabularyTutor || this.isVocabularyQuestion(question, selection) ||
-     this.isVocabularyFollowUp(question, (await this.loadSessions(view.ctx.dir))[this.readingAgent()]?.vocabularyTutor));
+     this.isVocabularyFollowUp(question, (await this.loadSessions(view.ctx.dir))[this.chatBackend(view)]?.vocabularyTutor));
     let route = options.readingAction ? { chapterID: this.INITIALIZATION_CHAPTER } : vocabularyTutor ? { chapterID: view.ctx.discussion.chapterID } : this.resolveDiscussionChapter(view.ctx, index, question, selection, location);
     // A standalone conversation never jumps into another window's thread due
     // to its page/chapter routing, including dedicated initialization chats.

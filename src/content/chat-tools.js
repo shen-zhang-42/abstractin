@@ -169,7 +169,7 @@
    close.onclick = () => panel.remove(); panel.append(ai, apply, close); view.root.querySelector(".abstractin-log-wrap").append(panel);
   },
   async suggestLegacyChapters(view, index, turns) {
-   const backend = this.readingAgent(); await this.assertAgentReadingReady(backend, "knowledge");
+   const backend = this.chatBackend(view); await this.assertAgentReadingReady(backend, "knowledge");
    const container = OS.Path.join(this.discussionRoot(view.ctx), "migration-reviews"); await Zotero.File.createDirectoryIfMissingAsync(container);
    const dir = OS.Path.join(container, this.chatSyncID()); await Zotero.File.createDirectoryIfMissingAsync(dir);
    const ctx = { ...view.ctx, dir, discussion: { id: "migration-review" }, reading: { ...view.ctx.reading, action: "classify", evidenceMode: "knowledge", currentPage: null } };
@@ -179,7 +179,7 @@
    for (let offset = 0; offset < unknown.length; offset += 8) {
     const batch = unknown.slice(offset, offset + 8);
     const question = "Classify these legacy question/answer turns by the chapter the USER QUESTION IS ABOUT, not the chapter cited as supporting evidence. This is an explicit migration inspection, separate from all reading chats. Use only the supplied excerpts and verified chapter headings. Never infer a chapter from a theorem number or printed page without a verified mapping. If uncertain return null. Do not open files or use tools. Return only JSON {\"assignments\":[{\"key\":\"turn-key\",\"chapterID\":\"verified-id or null\"}]}.\n" + JSON.stringify({ chapters: index.chapters.map(({ id, title }) => ({ id, title })), turns: batch.map(t => ({ key: t.key, question: (t.messages.find(m => m.role === "user")?.text || t.subject || "").slice(0, 8000), answer: t.messages.filter(m => m.role === "assistant").map(m => m.text).join("\n").slice(0, 2000) })) });
-    const result = await this.runBackend(backend, { ctx, files: {}, history: [], session: null, question, images: [], model: this.getModel(backend), effort: this.getEffort(backend), onProgress() {}, onSpawn() {} });
+    const result = await this.runBackend(backend, { ctx, files: {}, history: [], session: null, question, images: [], model: this.chatModel(view, backend), effort: this.chatEffort(view, backend), onProgress() {}, onSpawn() {} });
     if (result.error) throw new Error(result.error);
     const data = this.parseAgentObject(result.text);
     if (!Array.isArray(data.assignments)) throw new Error("The agent did not return a classification list.");

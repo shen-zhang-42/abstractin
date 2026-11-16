@@ -435,7 +435,7 @@ Object.assign(AbstractIn, {
 		status.setAttribute("role", "status");
 		view.logEl.appendChild(status);
 		try {
-			let agent = this.readingAgent();
+			let agent = this.chatBackend(view);
 			if (!this.BACKENDS[agent]?.api) await this.findBinary(agent);
 			await this.assertAgentReadingReady(agent, this.getReadingEvidenceMode());
 			let skill = await this.findReadingSkill(state.type);

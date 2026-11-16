@@ -17,9 +17,9 @@ Use local **Codex, Claude Code, Gemini CLI, or Antigravity**, or connect an **AP
 
 ## Features at a glance
 
-This guide covers the features available in **v0.2.166**.
+This guide covers the features available in **v0.2.167**.
 
-v0.2.166 fixes workspaces disappearing during note saves and stale-window errors on reopening: nested editor unloads no longer close the host workspace, layout snapshots tolerate closed floating windows, and asynchronous saves skip disposed controls while preserving Markdown, titles and recovery drafts. Failed saves remain available for retry.
+v0.2.167 keeps standalone discussion composers at the bottom for both empty and long conversations. Each discussion selects its own agent, model and reasoning effort. New windows initially inherit the opener's selection and then operate independently. Settings show available connections as **Ready** with a green border and untested connections as **Not tested**; the global agent selection supplies defaults for new chats.
 
 | Feature | What it provides |
 |---|---|
@@ -337,7 +337,7 @@ Each official release provides **`abstractin.xpi`** and **`updates.json`** under
 
 You can send the XPI to others for installation through Zotero's Install Add-on From File option. AbstractIn installations using this repository's plugin ID and update URL can check for updates in the plugin manager or upgrade according to Zotero's automatic-update settings.
 
-These feature descriptions cover **v0.2.166**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
+These feature descriptions cover **v0.2.167**; see Releases for the latest package. The original Zusia uses a different plugin ID; its users must install AbstractIn manually once before receiving updates from this project.
 
 ## Data and privacy
 
