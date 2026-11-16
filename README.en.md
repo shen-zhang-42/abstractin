@@ -4,7 +4,7 @@
 
 <p align="center"><b>Read, ask, verify, and organize discussions in Zotero.</b><br>An AI reading assistant for books and scientific papers.</p>
 
-<p align="center"><img src="src/content/icons/abstractin-mark.svg" alt="AbstractIn open book and conversation" width="112"></p>
+<p align="center"><img src="src/content/icons/abstractin-mark.svg" alt="AbstractIn bubbles and knowledge transformation" width="112"></p>
 
 <p align="center">
   <a href="https://github.com/shen-zhang-42/abstractin/releases/latest"><img src="https://img.shields.io/github/v/release/shen-zhang-42/abstractin?label=release" alt="Latest release"></a>
@@ -17,7 +17,9 @@ Use local **Codex, Claude Code, Gemini CLI, or Antigravity**, or connect an **AP
 
 ## Features at a glance
 
-This guide covers the features available in **v0.2.167**.
+This guide covers the features available in **v0.2.168**.
+
+v0.2.168 introduces the Air bubble icon. The plugin remains named AbstractIn and retains its existing data and update channel.
 
 v0.2.167 keeps standalone discussion composers at the bottom for both empty and long conversations. Each discussion selects its own agent, model and reasoning effort. New windows initially inherit the opener's selection and then operate independently. Settings show available connections as **Ready** with a green border and untested connections as **Not tested**; the global agent selection supplies defaults for new chats.
 

@@ -4,7 +4,7 @@
 
 <p align="center"><b>在 Zotero 中阅读、提问、查证和整理讨论。</b><br>面向书籍与科学论文的 AI 阅读助手。</p>
 
-<p align="center"><img src="src/content/icons/abstractin-mark.svg" alt="AbstractIn：书本与对话" width="112"></p>
+<p align="center"><img src="src/content/icons/abstractin-mark.svg" alt="AbstractIn：气泡与知识转换" width="112"></p>
 
 <p align="center">
   <a href="https://github.com/shen-zhang-42/abstractin/releases/latest"><img src="https://img.shields.io/github/v/release/shen-zhang-42/abstractin?label=release" alt="最新版本"></a>
@@ -17,7 +17,9 @@ AbstractIn 把 Zotero 原生 PDF 阅读器、Markdown 笔记和独立 AI 会话�
 
 ## 功能概览
 
-以下说明覆盖 **v0.2.167** 的功能。
+以下说明覆盖 **v0.2.168** 的功能。
+
+v0.2.168 更新为 Air 气泡图标；插件名称仍为 AbstractIn，已有数据与更新方式保持不变。
 
 v0.2.167 修复独立讨论窗口的输入框位置，空聊天和长聊天均保持贴底。每个讨论界面独立选择 agent、模型和推理强度；新窗口继承打开来源的选择，之后互不影响。设置页用绿色边框的 **Ready** 标识可用连接，未测试项显示 **Not tested**；全局 agent 选择作为新聊天的默认值。
 

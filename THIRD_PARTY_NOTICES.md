@@ -21,6 +21,6 @@ Lucide mode icons were downloaded from the official [Lucide repository](https://
 
 Additional Phosphor workspace command icons come from the official `@phosphor-icons/core` 2.1.1 package. The package integrity and upstream filenames are recorded in `src/content/icons/PHOSPHOR-SOURCE.json`.
 
-The open-book-and-conversation app mark (`src/content/icons/abstractin-mark.svg`, mirrored in `src/icons/icon16.svg` and `icon20.svg`) is original SVG artwork made for AbstractIn and distributed under the project's MIT license.
+The Air bubble-and-knowledge app mark (`src/content/icons/abstractin-mark.svg`, mirrored in `src/icons/icon16.svg` and `icon20.svg`) is original SVG artwork made for AbstractIn and distributed under the project's MIT license.
 
 The gray-brown marmoset, white wagtail, and puffin companions (`src/content/icons/mascot-marmoset.svg`, `src/content/icons/mascot-wagtail.svg`, and `src/content/icons/mascot-puffin.svg`) and app avatar (`src/content/icons/app-marmoset.svg`, also in `src/icons/`) are original SVG artwork made for AbstractIn. The illustrations (`docs/abstractin-hero.jpg` and the background in the videos) were made for Zusia with Google Gemini.
