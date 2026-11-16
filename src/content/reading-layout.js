@@ -32,6 +32,10 @@
   readingLayoutPanels: panels,
   readingLayoutRemove: without,
   readingLayoutInsert: insert,
+  readingLayoutAlive(layout) {
+   return !layout.disposed && this.readerPanelNodeAlive(layout.panelState.panel) &&
+    [...layout.surfaces.values()].every(surface => this.readerPanelNodeAlive(surface.node));
+  },
   readingLayoutPreset(name) {
    return split("x", leaf("editor"), leaf("reading"), .58);
   },
@@ -40,7 +44,11 @@
    const workspaceNote = options.note && this.markdownNoteData(options.note);
    if (workspaceNote?.workspace) {
     const existing = [...this._readingLayouts.values()].find(layout => layout.note.libraryID === options.note.libraryID && layout.workspace?.id === workspaceNote.workspace.id);
-    if (existing) { await this.switchReadingNote(existing, options.note); existing.surfaces.get("editor").node.ownerDocument.defaultView.focus(); return existing; }
+    if (existing && this.readingLayoutAlive(existing)) { await this.switchReadingNote(existing, options.note); existing.surfaces.get("editor").node.ownerDocument.defaultView.focus(); return existing; }
+    if (existing) {
+     this.releaseReaderPanelView(existing.panelState, existing.reader, existing.entry);
+     await existing.noteState.saveQueue.catch(error => this.logError("workspace recovery save", error));
+    }
     const document = await this.resolveNoteDocument(workspaceNote.documents[0]);
     if (!document) throw new Error("The workspace's source document is unavailable.");
     const reader = await this.startLibraryReading(win, document, { layoutPreset: "unified" }), state = this.readerPanelState(this.readerPanelWindow(reader));
@@ -62,7 +70,14 @@
    return layout;
   },
   async openReaderPanel(reader, options = {}) {
-   const layout = this._readingLayoutReaders.get(reader.itemID);
+   let layout = this._readingLayoutReaders.get(reader.itemID);
+   if (layout && !layout.disposed && !this.readingLayoutAlive(layout)) {
+    // A floating window may disappear without the normal return-to-dock path.
+    // Reopen from the saved note/draft rather than reuse its dead DOM wrappers.
+    this.releaseReaderPanelView(layout.panelState, layout.reader, layout.entry);
+    await layout.noteState.saveQueue.catch(error => this.logError("workspace recovery save", error));
+    layout = null;
+   }
    if (layout && !layout.disposed) {
     // A native detached PDF window is another reading surface, not a request to
     // relocate the existing plugin panels or change their source selection.
@@ -213,8 +228,8 @@
    panelState.panel.style.width = (Number(this.getPref("readingWorkspaceWidth")) || 850) + "px";
    await this.mountLayoutNote(layout); this.drawReadingLayout(layout); this.drawReadingSources(layout);
    if (layout.workspace) await this.refreshLayoutReading(layout);
-   layout.unload = () => this.disposeReadingLayout(layout);
-   layout.win.addEventListener("unload", layout.unload, { once: true });
+   layout.unload = event => { if (this.isHostWindowEvent(event, layout.win)) this.disposeReadingLayout(layout); };
+   layout.win.addEventListener("unload", layout.unload);
    if (restoreGroups?.some(group => !group.main)) {
     layout.restoring = true;
     const floating = restoreGroups.filter(group => !group.main && group.tree);
@@ -365,10 +380,11 @@
   },
   clearReadingDropHints(layout) { for (const surface of layout.surfaces.values()) delete surface.node.dataset.dropEdge; },
   drawReadingLayout(layout) {
+   if (layout.disposed) return;
    const visible = new Set([...layout.groups.values()].flatMap(group => panels(group.tree)));
-   for (const surface of layout.surfaces.values()) surface.node.hidden = !visible.has(surface.id);
+   for (const surface of layout.surfaces.values()) if (this.readerPanelNodeAlive(surface.node)) surface.node.hidden = !visible.has(surface.id);
    for (const group of layout.groups.values()) {
-    if (!group.host) continue;
+    if (!this.readerPanelNodeAlive(group.host)) continue;
     if (group.id !== "main") group.win.document.title = "AbstractIn — " + panels(group.tree).map(id => names[id]).join(" + ");
     for (const dispose of group.splitDisposers || []) dispose(); group.splitDisposers = [];
     group.host.querySelectorAll(".abstractin-dock-divider").forEach(node => node.remove());
@@ -376,7 +392,7 @@
      if (!tree) return;
      if (tree.panel) {
       const surface = layout.surfaces.get(tree.panel);
-      if (surface) Object.assign(surface.node.style, { left: box.x + "%", top: box.y + "%", width: box.w + "%", height: box.h + "%" });
+      if (surface && this.readerPanelNodeAlive(surface.node)) Object.assign(surface.node.style, { left: box.x + "%", top: box.y + "%", width: box.w + "%", height: box.h + "%" });
       return;
      }
      const ratio = Math.max(.15, Math.min(.85, Number(tree.ratio) || .5)), horizontal = tree.axis === "x";
@@ -420,6 +436,7 @@
     walk(group.tree, { x: 0, y: 0, w: 100, h: 100 });
    }
    for (const surface of layout.surfaces.values()) {
+    if (!this.readerPanelNodeAlive(surface.node)) continue;
     surface.destination.replaceChildren();
     const option = (value, text) => { const node = this.el(surface.node.ownerDocument, "option", null, text); node.value = value; surface.destination.append(node); };
     option("", "Move…"); option("new", "New window");
@@ -430,8 +447,7 @@
    if (layout.restoring || layout.disposed || layout.bundling || layout.notesHidden || layout.togglingNotes) return;
    const main = layout.groups.get("main");
    if (completePanels(panels(main.tree))) this.setPref("readingDockLayout", JSON.stringify(main.tree));
-   const groups = [...layout.groups.values()].filter(group => group.id === "main" || group.tree).map(group => ({ main: group.id === "main", tree: group.tree,
-    bounds: group.win ? { width: group.win.outerWidth, height: group.win.outerHeight, left: group.win.screenX, top: group.win.screenY } : null }));
+   const groups = [...layout.groups.values()].filter(group => group.id === "main" || group.tree).map(group => ({ main: group.id === "main", tree: group.tree, bounds: this.readingGroupBounds(group) }));
    if (completePanels(groups.flatMap(group => panels(group.tree)))) this.setPref("readingDockGroups", JSON.stringify(groups));
   },
   showReadingSources(layout, added = []) {
@@ -749,7 +765,7 @@
    group.win = win; group.host = win.document.getElementById("abstractin-floating-root"); group.host.classList.add("abstractin-dock-host");
    win.document.title = "AbstractIn — " + names[group.pendingPanel];
    const beforeClose = event => {
-    if (event.target !== win && event.target !== win.document) return;
+    if (!this.isHostWindowEvent(event, win)) return;
     if (group.allowClose || layout.disposed) return;
     event.preventDefault();
     if (group.returning) return; group.returning = true;
@@ -777,8 +793,16 @@
     }
     this.drawReadingLayout(layout); this.saveReadingDockLayout(layout);
    }
-   const resized = () => this.saveReadingDockLayout(layout); win.addEventListener("resize", resized);
-   win.addEventListener("unload", () => { win.removeEventListener("resize", resized); group.splitDisposers?.forEach(dispose => dispose()); }, { once: true });
+   const resized = () => { this.readingGroupBounds(group); this.saveReadingDockLayout(layout); }; win.addEventListener("resize", resized);
+   resized();
+   const unloaded = event => {
+    if (!this.isHostWindowEvent(event, win)) return;
+    win.removeEventListener("unload", unloaded); win.removeEventListener("resize", resized);
+    win.removeEventListener("close", beforeClose); win.removeEventListener("DOMWindowClose", beforeClose);
+    group.splitDisposers?.splice(0).forEach(dispose => this.cleanupReaderPanelResource(dispose));
+    if (!group.tree) layout.groups.delete(group.id);
+   };
+   win.addEventListener("unload", unloaded);
   },
   async applyReadingLayoutPreset(layout, name) {
    if (!["reading", "unified", "separate"].includes(name)) throw new Error("Unknown reading layout.");
@@ -832,7 +856,17 @@
   },
   saveReadingDockLayoutSnapshot(layout) {
    layout.hiddenNoteLayout = { width: layout.panelState.panel.style.width, groups: [...layout.groups.values()].map(group => ({ main: group.id === "main", tree: JSON.parse(JSON.stringify(group.tree)),
-    bounds: group.id === "main" ? null : { width: group.win.outerWidth, height: group.win.outerHeight, left: group.win.screenX, top: group.win.screenY } })) };
+    bounds: this.readingGroupBounds(group) })) };
+  },
+  readingGroupBounds(group) {
+   if (group.id === "main") return null;
+   try {
+    if (group.win && !group.win.closed) {
+     const bounds = { width: group.win.outerWidth, height: group.win.outerHeight, left: group.win.screenX, top: group.win.screenY };
+     if (Object.values(bounds).every(Number.isFinite)) group.bounds = bounds;
+    }
+   } catch (_) { /* Closed Gecko windows may throw even when reading .closed. */ }
+   return group.bounds || null;
   },
   drawReadingSources(layout) {
    layout.readingContext = this._views.get(layout.entry.root)?.ctx || layout.readingContext;
@@ -890,19 +924,35 @@
   },
   disposeReadingLayout(layout) {
    if (layout.disposed) return; layout.disposed = true;
-   layout.closeSourceMenu?.();
-   for (const surface of layout.surfaces.values()) surface.destination._closeMenu?.();
+   this.cleanupReaderPanelResource(() => layout.closeSourceMenu?.());
+   for (const surface of layout.surfaces.values()) this.cleanupReaderPanelResource(() => surface.destination._closeMenu?.());
    const state = layout.noteState;
    if (state?.input && !state.forceClose && !state.note.deleted && (state.revision !== state.savedRevision || state.timer)) {
     // Snapshot synchronously before destroying an editor, including when its
     // native PDF tab closes. Track the write so plugin shutdown can await it.
-    const task = state.flush().catch(error => this.logError("layout closing save", error));
+    let saving;
+    try {
+     let snapshot = state.lastSnapshot;
+     if (this.readerPanelNodeAlive(state.input)) {
+      try { snapshot = this.markdownNoteSnapshot(state); }
+      catch (error) { this.logError("closing note editor snapshot", error); }
+     }
+     if (!snapshot) throw new Error("The closing note has no recoverable source snapshot.");
+     saving = this.saveMarkdownNote(state, snapshot);
+    }
+    catch (error) { saving = Promise.reject(error); }
+    const task = saving.catch(error => this.logError("layout closing save", error));
     this._readingLayoutSaves.add(task); task.finally(() => this._readingLayoutSaves.delete(task));
    }
-   layout.noteState?.dispose?.(); this._readingLayouts.delete(layout.id);
+   // Capture source before editor teardown; persistence must not need its DOM.
+   this.cleanupReaderPanelResource(() => layout.noteState?.dispose?.()); this._readingLayouts.delete(layout.id);
+   if (layout.entry.layout === layout) delete layout.entry.layout;
    for (const [id, value] of this._readingLayoutReaders) if (value === layout) this._readingLayoutReaders.delete(id);
-   for (const group of layout.groups.values()) { group.splitDisposers?.forEach(dispose => dispose()); if (group.id !== "main" && group.win && !group.win.closed) { group.allowClose = true; group.win.close(); } }
-   layout.win.removeEventListener("unload", layout.unload);
+   for (const group of layout.groups.values()) {
+    group.splitDisposers?.splice(0).forEach(dispose => this.cleanupReaderPanelResource(dispose));
+    this.cleanupReaderPanelResource(() => { if (group.id !== "main" && group.win && !group.win.closed) { group.allowClose = true; group.win.close(); } });
+   }
+   this.cleanupReaderPanelResource(() => layout.win.removeEventListener("unload", layout.unload));
   },
   releaseReaderPanelView(state, reader, entry) {
    if (entry.layout) this.disposeReadingLayout(entry.layout);

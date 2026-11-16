@@ -112,6 +112,47 @@ test('note header has a compact source list and Source immediately after Save', 
  state.dispose();window.close();
 });
 
+test('nested editor lifecycle events cannot close or dispose the note window', async () => {
+ const { p, window, document, state } = await setup(); await p.mountMarkdownNote(window, state);
+ let closed = 0; const close = window.close.bind(window); window.close = () => { closed++; };
+ state.input.value = 'Unsaved nested-frame edit'; state.input.dispatchEvent(new window.Event('input'));
+ for (const type of ['beforeunload', 'unload']) {
+  const event = new window.Event(type, { cancelable: true });
+  Object.defineProperty(event, 'originalTarget', { value: document.implementation.createHTMLDocument('child') });
+  window.dispatchEvent(event); assert.equal(event.defaultPrevented, false);
+ }
+ await Promise.resolve();
+ assert.equal(closed, 0); assert.equal(!!state.disposed, false);
+ await state.flush(); window.dispatchEvent(new window.Event('unload'));
+ assert.equal(state.disposed, true); close();
+});
+
+test('a committed note save does not access UI from an editor disposed during the transaction', async () => {
+ const { p, window, state, note } = await setup(); await p.mountMarkdownNote(window, state);
+ let entered, release; const started = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { release = resolve; });
+ const save = note.saveTx.bind(note);
+ note.saveTx = async () => { entered(); await gate; return save(); };
+ state.input.value = 'Source survives editor disposal'; state.input.dispatchEvent(new window.Event('input'));
+ const saving = state.flush(); await started; state.dispose();
+ Object.defineProperty(state, 'saveButton', { get() { throw new Error('Dead save button wrapper'); } });
+ Object.defineProperty(state, 'status', { get() { throw new Error('Dead status wrapper'); } });
+ release(); await assert.doesNotReject(saving);
+ assert.equal(p.markdownNoteData(note).markdown, 'Source survives editor disposal');
+ assert.equal(state.savedRevision, state.revision); window.close();
+});
+
+test('a synchronous editor flush failure is reported without closing the note or losing its recovery snapshot', async () => {
+ const { p, window, state, note } = await setup(); await p.mountMarkdownNote(window, state);
+ state.input.value = 'Draft before the embedded editor failed'; state.input.dispatchEvent(new window.Event('input'));
+ state.input._composerEditor = { flush() { throw new Error('Detached editor document'); } };
+ await assert.doesNotReject(state.saveButton.onclick());
+ assert.equal(state.saveError.hidden, false); assert.match(state.saveError.textContent, /Detached editor document/);
+ assert.equal(!!state.disposed, false); assert.equal(state.lastSnapshot.markdown, state.input.value);
+ delete state.input._composerEditor; await state.flush();
+ assert.equal(p.markdownNoteData(note).markdown, 'Draft before the embedded editor failed');
+ state.dispose(); window.close();
+});
+
 test('Save button tracks unsaved edits, successful saves, failures and newer edits during a save',async()=>{
  const {p,window,state,note}=await setup();await p.mountMarkdownNote(window,state);
  const edit=text=>{state.input.value=text;state.input.dispatchEvent(new window.Event('input',{bubbles:true}));};

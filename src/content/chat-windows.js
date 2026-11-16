@@ -69,12 +69,14 @@
    const root = host.querySelector(".abstractin-root"), input = root.querySelector(".abstractin-input");
    const view = { doc, root, input, logEl: root.querySelector(".abstractin-log"), ctx: this.registerChatContext(state.ctx) };
    state.view = view; view.send = (text, images) => this.sendText(view, text, images); this._views.set(root, view);
-   state.dispose = () => {
+   state.dispose = event => {
+    if (event && !this.isHostWindowEvent(event, win)) return;
     if (state.disposed) return; state.disposed = true; view.disposed = true;
+    win.removeEventListener("unload", state.dispose);
     this.rememberChatPosition(view); this._pending.get(view.ctx.dir)?.cancel(); root.disposeUI?.(); this._views.delete(root); this._chatWindows.delete(state.id);
     if (!this.noteStorageViews().some(other => other.ctx?.dir === view.ctx.dir && !other.disposed && other.root?.isConnected)) this.endNoteSession(view.ctx.dir);
    };
-   win.addEventListener("unload", state.dispose, { once: true });
+   win.addEventListener("unload", state.dispose);
    root.dataset.sharedSources = "true"; root.dataset.readingTheme = "neutral";
    root.querySelector(".abstractin-header-title").textContent = "Discussion";
    root.querySelector(".abstractin-open-settings")?.remove();

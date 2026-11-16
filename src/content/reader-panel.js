@@ -11,7 +11,10 @@ Object.assign(AbstractIn, {
 
 	readerPanelNodeAlive(node) {
 		// Even reading isConnected throws on Gecko wrappers from destroyed windows.
-		try { return !!node?.isConnected && !node.ownerDocument?.defaultView?.closed; }
+		try {
+			const doc = node?.ownerDocument, win = doc?.defaultView;
+			return !!win && !win.closed && win.document === doc && !!node.isConnected;
+		}
 		catch (_) { return false; }
 	},
 
@@ -311,8 +314,8 @@ Object.assign(AbstractIn, {
 			}
 			else this.closeReaderPanel(win, { restoreContext: false });
 		} }, ["tab"], "abstractinReaderPanel");
-		state.unload = () => this.removeReaderPanel(win);
-		win.addEventListener("unload", state.unload, { once: true });
+		state.unload = event => { if (this.isHostWindowEvent(event, win)) this.removeReaderPanel(win); };
+		win.addEventListener("unload", state.unload);
 		return state;
 	},
 

@@ -916,6 +916,15 @@ AbstractIn = {
 	// DOM helpers
 	// ---------------------------------------------------------------------
 
+	isHostWindowEvent(event, win) {
+		// Chrome listeners can also receive lifecycle events from nested editors.
+		// Use the original target before Gecko retargets it to the chrome window.
+		try {
+			const target = event.originalTarget || event.target;
+			return target === win || target === win.document;
+		} catch (_) { return false; }
+	},
+
 	el(doc, tag, className, text) {
 		let node = doc.createElementNS("http://www.w3.org/1999/xhtml", tag);
 		if (className) {
@@ -1002,7 +1011,10 @@ AbstractIn = {
 	},
 
 	parseIcon(doc, text) {
-		let svg = new doc.defaultView.DOMParser().parseFromString(text, "image/svg+xml").documentElement;
+		// Inert documents have no defaultView. Never depend on a disposed frame
+		// for the parser used to create portable SVG nodes.
+		const win = doc.defaultView || Zotero.getMainWindow();
+		let svg = new win.DOMParser().parseFromString(text, "image/svg+xml").documentElement;
 		if (svg.localName !== "svg") {
 			throw new Error("not an SVG");
 		}

@@ -150,6 +150,10 @@ test('new chat windows share the source store but start with empty histories, se
   for(const state of [first,second]){
    assert.equal((await p.loadHistory(state.view.ctx.dir)).length,0);assert.equal(Object.keys(await p.loadSessions(state.view.ctx.dir)).length,0);
    assert.equal(state.view.input.value,'');assert.equal(state.view.ctx.reading.knowledgeContext,undefined);assert.equal(state.view.ctx.reading.sourceSearchHistory,undefined);
+   const event = new state.win.Event('unload');
+   Object.defineProperty(event, 'originalTarget', { value: state.win.document.implementation.createHTMLDocument('composer') });
+   state.win.dispatchEvent(event);
+   assert.equal(!!state.disposed, false); assert.ok(p._views.has(state.view.root));
   }
   const firstID=first.view.ctx.discussion.id,secondID=second.view.ctx.discussion.id,originalID=original.ctx.discussion.id;
   await p.newChat(first.view.root);
@@ -359,6 +363,79 @@ test('closing the native reader snapshots an unsaved docked note before disposin
  p.disposeReadingLayout(layout);
  await Promise.all([...p._readingLayoutSaves]);
  assert.equal(p.markdownNoteData(layout.note).markdown, 'Last keystroke before the tab closes');
+ dispose();
+});
+
+test('an editor document unloading during a note save does not dispose the workspace', async () => {
+ const { p, layout, win, panel, dispose } = await setup();
+ const note = layout.note, save = note.saveTx.bind(note);
+ note.saveTx = async () => {
+  // Gecko chrome listeners can receive a lifecycle event from a child document.
+  const event = new win.Event('unload');
+  Object.defineProperty(event, 'originalTarget', { value: win.document.implementation.createHTMLDocument('editor') });
+  win.dispatchEvent(event);
+  return save();
+ };
+ layout.noteState.input.value = 'Saved without closing the workspace';
+ layout.noteState.input.dispatchEvent(new win.Event('input'));
+ await layout.noteState.flush();
+ assert.equal(!!layout.disposed, false);
+ assert.equal(p.readerPanelState(win), panel);
+ assert.equal(p._readingLayouts.get(layout.id), layout);
+ assert.equal(p.markdownNoteData(note).markdown, 'Saved without closing the workspace');
+ // Ignoring a child event must not consume the listener for the real unload.
+ win.dispatchEvent(new win.Event('unload'));
+ assert.equal(layout.disposed, true);
+ assert.equal(p.readerPanelState(win), undefined);
+ dispose();
+});
+
+test('layout snapshots tolerate a destroyed floating window and reuse its last bounds', async () => {
+ const { p, layout, dispose } = await setup();
+ const bounds = { width: 930, height: 720, left: 100, top: 80 };
+ const dead = new Proxy({}, { get() { throw new Error('NS_ERROR_FAILURE'); } });
+ layout.groups.set('destroyed', { id: 'destroyed', tree: { panel: 'editor' }, win: dead, bounds });
+ assert.doesNotThrow(() => p.saveReadingDockLayoutSnapshot(layout));
+ assert.deepEqual(JSON.parse(JSON.stringify(layout.hiddenNoteLayout.groups.find(group => !group.main).bounds)), bounds);
+ assert.doesNotThrow(() => p.saveReadingDockLayout(layout));
+ assert.doesNotThrow(() => p.disposeReadingLayout(layout));
+ dispose();
+});
+
+test('opening a workspace with a dead editor document rebuilds it without restarting the plugin', async () => {
+ const { p, layout, reader, win, dispose } = await setup();
+ layout.noteState.title.value = 'Recovered title'; layout.noteState.title.dispatchEvent(new win.Event('input'));
+ layout.noteState.input.value = 'Last input before the editor window disappeared'; layout.noteState.input.dispatchEvent(new win.Event('input'));
+ const floating = new JSDOM('<main id="float"></main>');
+ const surface = layout.surfaces.get('editor');
+ floating.window.document.body.append(surface.node);
+ floating.window.close();
+ await p.openReaderPanel(reader);
+ const entry = p.readerPanelState(win).views.get(reader);
+ if (entry.render) await entry.render;
+ assert.notEqual(entry.layout, layout);
+ assert.equal(layout.disposed, true);
+ assert.ok(p.readerPanelNodeAlive(entry.layout.surfaces.get('editor').node));
+ assert.equal(entry.layout.noteState.input.value, 'Last input before the editor window disappeared');
+ assert.equal(entry.layout.noteState.title.value, 'Recovered title');
+ await p.applyReadingLayoutPreset(entry.layout, 'reading');
+ await p.applyReadingLayoutPreset(entry.layout, 'unified');
+ p.disposeReadingLayout(entry.layout); dispose();
+});
+
+test('a failed docked save keeps the workspace open and retries the unsaved title and source', async () => {
+ const { p, layout, win, dispose } = await setup();
+ const state = layout.noteState, save = layout.note.saveTx.bind(layout.note);
+ layout.note.saveTx = async () => { throw new Error('Database busy'); };
+ state.title.value = 'Renamed while saving'; state.title.dispatchEvent(new win.Event('input'));
+ state.input.value = 'Recoverable note source'; state.input.dispatchEvent(new win.Event('input'));
+ await state.saveButton.onclick();
+ assert.equal(state.saveError.hidden, false); assert.equal(!!layout.disposed, false);
+ assert.ok(p.readerPanelNodeAlive(layout.shell));
+ layout.note.saveTx = save; await state.saveError.querySelector('button').onclick();
+ assert.equal(state.saveError.hidden, true);
+ assert.equal(p.markdownNoteData(layout.note).title, 'Renamed while saving');
+ assert.equal(p.markdownNoteData(layout.note).markdown, 'Recoverable note source');
  dispose();
 });
 

@@ -459,6 +459,15 @@ test("dedicated reading panel ignores old decorations and follows the chosen acc
  assert.equal(root.style.getPropertyValue('--abstractin-accent'), '#6d4fd6');
 });
 
+test('a connected node without a live document window is stale and icons use a live parser', () => {
+ const { plugin: p, document: doc, window: win } = setup();
+ const detached = doc.implementation.createHTMLDocument('detached editor'), node = detached.createElement('div');
+ detached.body.append(node); assert.equal(node.isConnected, true); assert.equal(detached.defaultView, null);
+ assert.equal(p.readerPanelNodeAlive(node), false);
+ assert.equal(p.parseIcon(detached, '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>').localName, 'svg');
+ win.close();
+});
+
 test("opening a panel discards toolbar nodes from a destroyed reader document", async () => {
  const { plugin: p, window: win, document: doc, a } = setup();
  const dead = new Proxy({}, { get() { throw new Error("can't access dead object"); } });

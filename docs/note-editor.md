@@ -38,3 +38,9 @@ The bundled TikZJax engine compiles locally in a Worker inside a disposable cont
 Mathematics inside table cells is not yet rendered by the KaTeX adapter. Native Mermaid and external draw.io file loading from the VS Code extension are not connected to Zotero. Ordinary reading and discussion inputs continue to use their separate lightweight editor.
 
 Source revisions and licenses are recorded in `vendor/tshoot/SOURCE.json`, `src/content/editor/TSHOOT-LICENSE` and `src/content/editor/tikzjax/`.
+
+## Save and window lifetime
+
+Note saves capture the Markdown, title, source links and pending review before entering the serialized Zotero save queue. The latest source snapshot also remains available if an embedded editor or floating window disappears. Completing a save must not update controls belonging to a disposed or replaced editor. Failures keep the workspace open and expose Retry save; a synchronous editor-flush error follows the same path.
+
+Only lifecycle events originating from the host window or its own document may close an editor or dispose a workspace. Unloading a nested editor, diagram frame or discussion composer does not close its host, and does not consume the host's unload listener. Layout snapshots use cached bounds when a floating Gecko window is no longer readable. Reopening a workspace with a destroyed surface releases stale registrations, waits for its pending note save, and rebuilds the interface from the saved note and recovery draft.
